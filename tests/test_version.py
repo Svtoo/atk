@@ -1,0 +1,59 @@
+"""Test ATK version and basic imports."""
+
+from typer.testing import CliRunner
+
+
+class TestVersion:
+    """Tests for ATK version and package structure."""
+
+    def setup_method(self) -> None:
+        """Set up test fixtures."""
+        self.expected_version = "0.1.0"
+        self.runner = CliRunner()
+
+    def test_version_is_defined(self) -> None:
+        """Verify that __version__ is defined and matches expected value."""
+        # Given
+        expected = self.expected_version
+
+        # When
+        from atk import __version__
+
+        # Then
+        assert __version__ == expected
+
+    def test_cli_app_is_importable(self) -> None:
+        """Verify that the CLI app can be imported."""
+        # When
+        from atk.cli import app
+
+        # Then
+        assert app is not None
+        assert app.info.name == "atk"
+
+    def test_version_flag_shows_version(self) -> None:
+        """Verify that --version flag outputs the version."""
+        # Given
+        from atk.cli import app
+
+        expected_output = f"atk {self.expected_version}\n"
+
+        # When
+        result = self.runner.invoke(app, ["--version"])
+
+        # Then
+        assert result.exit_code == 0
+        assert result.output == expected_output
+
+    def test_status_command_exists(self) -> None:
+        """Verify that status command is available."""
+        # Given
+        from atk.cli import app
+
+        # When
+        result = self.runner.invoke(app, ["status"])
+
+        # Then
+        assert result.exit_code == 0
+        assert "No plugins installed" in result.output
+
