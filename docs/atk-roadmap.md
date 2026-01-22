@@ -4,10 +4,10 @@
 
 ## Phase 0: Foundation
 
-- [ ] Create new repo `atk` with clean structure
-- [ ] Set up Python project (pyproject.toml, uv)
-- [ ] Define plugin YAML schema (full spec in `plugin-schema.md`)
-- [ ] Implement schema validation
+- [x] Create new repo `atk` with clean structure
+- [x] Set up Python project (pyproject.toml, uv)
+- [x] Define plugin YAML schema (full spec in `plugin-schema.md`)
+- [x] Implement schema validation
 
 ## Phase 1: Core CLI
 
