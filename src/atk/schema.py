@@ -5,6 +5,7 @@ how to install and manage AI development tools.
 """
 
 from enum import Enum
+from typing import Literal
 
 from pydantic import BaseModel, Field
 
@@ -29,27 +30,41 @@ class ServiceConfig(BaseModel):
         default=None,
         description="Path to docker-compose file (for docker-compose type)",
     )
+    unit_name: str | None = Field(
+        default=None,
+        description="Systemd unit name (for systemd type)",
+    )
 
 
 class VendorConfig(BaseModel):
-    """Configuration for cloning from an upstream repository."""
+    """Configuration for the plugin vendor/upstream source."""
 
-    url: str = Field(description="Git repository URL")
-    ref: str = Field(description="Git ref (tag, branch, or commit)")
+    name: str = Field(description="Vendor name")
+    url: str | None = Field(
+        default=None,
+        description="Vendor website URL",
+    )
+    docs: str | None = Field(
+        default=None,
+        description="Documentation URL",
+    )
 
 
 class PortConfig(BaseModel):
     """Configuration for a network port exposed by the plugin."""
 
-    name: str = Field(description="Human-readable port name")
     port: int = Field(description="Port number")
-    configurable: bool = Field(
-        default=False,
-        description="Whether the port can be changed during install",
-    )
-    health_endpoint: str | None = Field(
+    name: str | None = Field(
         default=None,
-        description="HTTP GET endpoint for health checks",
+        description="Human-readable port name",
+    )
+    protocol: str = Field(
+        default="http",
+        description="Protocol (http, https, tcp, etc.)",
+    )
+    description: str | None = Field(
+        default=None,
+        description="Port description",
     )
 
 
@@ -102,22 +117,37 @@ class LifecycleConfig(BaseModel):
         default=None,
         description="Command to check status (exit 0 = running)",
     )
+    health_endpoint: str | None = Field(
+        default=None,
+        description="Health check endpoint URL",
+    )
 
 
 class McpConfig(BaseModel):
     """Configuration for MCP (Model Context Protocol) integration."""
 
-    enabled: bool = Field(
-        default=False,
-        description="Whether MCP is enabled for this plugin",
+    transport: Literal["stdio", "sse"] = Field(
+        description="Transport type: stdio (command-based) or sse (URL-based)",
     )
-    type: str | None = Field(
+    command: str | None = Field(
         default=None,
-        description="MCP transport type (http-proxy, stdio, binary)",
+        description="Command to run (for stdio transport)",
+    )
+    args: list[str] | None = Field(
+        default=None,
+        description="Command arguments (for stdio transport)",
+    )
+    working_dir: str | None = Field(
+        default=None,
+        description="Working directory for command execution",
     )
     endpoint: str | None = Field(
         default=None,
-        description="MCP endpoint URL (for http-proxy type)",
+        description="SSE endpoint URL (for sse transport)",
+    )
+    env: list[str] | None = Field(
+        default=None,
+        description="Environment variable names to include in MCP config",
     )
 
 
