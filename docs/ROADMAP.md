@@ -16,7 +16,7 @@
 |-------|------|--------|---------|
 | 0 | Foundation | ✅ | Project setup, plugin schema, CLI skeleton |
 | 1 | Core CLI | ✅ | init, add, remove, git integration |
-| 2 | Service Lifecycle | ⏳ | start, stop, restart, status, logs, run |
+| 2 | Service Lifecycle | 🔄 | start, stop, restart, status, logs, run |
 | 3 | Configuration | ⏳ | .env management, port conflicts, MCP config |
 | 4 | Plugin Sources | ⏳ | Registry, git URL sources, version pinning |
 | 5 | Polish | ⏳ | Error messages, help text, documentation |

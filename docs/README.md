@@ -27,7 +27,7 @@ Detailed task lists for each implementation phase.
 | Document | Status |
 |----------|--------|
 | [phases/phase-1-core-cli.md](phases/phase-1-core-cli.md) | ✅ Complete |
-| phases/phase-2-lifecycle.md | ⏳ Next |
+| [phases/phase-2-lifecycle.md](phases/phase-2-lifecycle.md) | 🔄 Current |
 
 ## Legacy
 
