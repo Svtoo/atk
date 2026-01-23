@@ -10,6 +10,7 @@ from atk import __version__, exit_codes
 from atk.add import add_plugin
 from atk.home import get_atk_home, validate_atk_home
 from atk.init import init_atk_home
+from atk.remove import remove_plugin
 
 app = typer.Typer(
     name="atk",
@@ -18,6 +19,26 @@ app = typer.Typer(
 )
 
 console = Console()
+
+
+def require_initialized_home() -> Path:
+    """Get ATK Home and verify it is initialized.
+
+    Returns:
+        Path to the initialized ATK Home directory.
+
+    Raises:
+        typer.Exit: With HOME_NOT_INITIALIZED if ATK Home is not initialized.
+    """
+    atk_home = get_atk_home()
+    validation = validate_atk_home(atk_home)
+
+    if not validation.is_valid:
+        console.print(f"[red]✗[/red] ATK Home not initialized at {atk_home}")
+        console.print("  Run [bold]atk init[/bold] first.")
+        raise typer.Exit(exit_codes.HOME_NOT_INITIALIZED)
+
+    return atk_home
 
 
 def print_banner() -> None:
@@ -146,14 +167,7 @@ def add(
     Copies plugin files to ATK Home and updates the manifest.
     If the plugin directory already exists, it will be overwritten.
     """
-    atk_home = get_atk_home()
-
-    # Validate ATK Home is initialized
-    validation = validate_atk_home(atk_home)
-    if not validation.is_valid:
-        console.print(f"[red]✗[/red] ATK Home not initialized at {atk_home}")
-        console.print("  Run [bold]atk init[/bold] first.")
-        raise typer.Exit(exit_codes.HOME_NOT_INITIALIZED)
+    atk_home = require_initialized_home()
 
     # Validate source exists
     if not source.exists():
@@ -167,6 +181,35 @@ def add(
     except ValueError as e:
         console.print(f"[red]✗[/red] Failed to add plugin: {e}")
         raise typer.Exit(exit_codes.PLUGIN_INVALID) from e
+
+
+@app.command()
+def remove(
+    plugin: Annotated[
+        str,
+        typer.Argument(
+            help="Plugin name or directory to remove.",
+        ),
+    ],
+) -> None:
+    """Remove a plugin from ATK Home.
+
+    Removes the plugin directory and updates the manifest.
+    Accepts either the plugin name or directory name.
+    If the plugin is not found, this is a no-op.
+    """
+    atk_home = require_initialized_home()
+
+    try:
+        removed = remove_plugin(plugin, atk_home)
+        if removed:
+            console.print(f"[green]✓[/green] Removed plugin '{plugin}'")
+        else:
+            console.print(f"[yellow]![/yellow] Plugin '{plugin}' not found (no-op)")
+        raise typer.Exit(exit_codes.SUCCESS)
+    except ValueError as e:
+        console.print(f"[red]✗[/red] Failed to remove plugin: {e}")
+        raise typer.Exit(exit_codes.GENERAL_ERROR) from e
 
 
 @app.command()

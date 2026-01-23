@@ -1,0 +1,63 @@
+"""Plugin remove functionality for ATK.
+
+Handles removing plugins from ATK Home.
+"""
+
+import shutil
+from pathlib import Path
+
+import yaml
+
+from atk.home import validate_atk_home
+from atk.manifest_schema import ManifestSchema
+
+
+def remove_plugin(identifier: str, atk_home: Path) -> bool:
+    """Remove a plugin from ATK Home.
+
+    Args:
+        identifier: Plugin identifier - can be directory name or plugin name.
+        atk_home: Path to ATK Home directory.
+
+    Returns:
+        True if plugin was removed, False if plugin was not found (no-op).
+
+    Raises:
+        ValueError: If ATK Home is not initialized.
+    """
+    # Validate ATK Home is initialized
+    validation = validate_atk_home(atk_home)
+    if not validation.is_valid:
+        msg = f"ATK Home '{atk_home}' is not initialized: {', '.join(validation.errors)}"
+        raise ValueError(msg)
+
+    # Check if plugin exists in manifest
+    manifest_path = atk_home / "manifest.yaml"
+    manifest_data = yaml.safe_load(manifest_path.read_text())
+    manifest = ManifestSchema.model_validate(manifest_data)
+
+    # Find plugin in manifest by directory OR name
+    plugin_entry = next(
+        (p for p in manifest.plugins if p.directory == identifier or p.name == identifier),
+        None,
+    )
+
+    if plugin_entry is None:
+        # Plugin not found - no-op (idempotent)
+        return False
+
+    # Remove plugin directory if it exists
+    plugin_dir = atk_home / "plugins" / plugin_entry.directory
+    if plugin_dir.exists():
+        shutil.rmtree(plugin_dir)
+
+    # Remove from manifest
+    manifest.plugins = [p for p in manifest.plugins if p.directory != plugin_entry.directory]
+
+    # Write updated manifest
+    manifest_path.write_text(
+        yaml.dump(manifest.model_dump(), default_flow_style=False, sort_keys=False)
+    )
+
+    return True
+

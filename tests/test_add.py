@@ -146,7 +146,7 @@ class TestLoadPluginSchema:
             load_plugin_schema(plugin_yaml)
 
     def test_load_missing_required_field_raises(self, tmp_path: Path) -> None:
-        """Verify missing required field raises ValueError."""
+        """Verify missing required field raises ValueError with clean message."""
         # Given
         plugin_yaml = tmp_path / "incomplete.yaml"
         plugin_yaml.write_text("""
@@ -154,8 +154,8 @@ schema_version: "2026-01-23"
 name: "Missing Description"
 """)
 
-        # When/Then
-        with pytest.raises(ValueError, match="validation failed"):
+        # When/Then - error message should be clean (no Pydantic URL)
+        with pytest.raises(ValueError, match="Invalid plugin.*description.*required"):
             load_plugin_schema(plugin_yaml)
 
     def test_load_nonexistent_raises(self, tmp_path: Path) -> None:

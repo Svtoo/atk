@@ -10,6 +10,7 @@ from pathlib import Path
 import yaml
 from pydantic import ValidationError
 
+from atk.errors import format_validation_errors
 from atk.home import validate_atk_home
 from atk.manifest_schema import ManifestSchema, PluginEntry
 from atk.plugin_schema import PluginSchema
@@ -102,7 +103,8 @@ def load_plugin_schema(source: Path) -> PluginSchema:
     try:
         return PluginSchema.model_validate(data)
     except ValidationError as e:
-        msg = f"Plugin schema validation failed for '{plugin_yaml}': {e}"
+        clean_errors = format_validation_errors(e)
+        msg = f"Invalid plugin '{plugin_yaml}': {clean_errors}"
         raise ValueError(msg) from e
 
 

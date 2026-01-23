@@ -49,14 +49,16 @@
 - [x] Tests for both source types (18 tests)
 
 ### 1.4 `atk remove`
-- [ ] Implement `atk remove <plugin>` command
-  - [ ] Find plugin by directory name in manifest
-  - [ ] Run stop lifecycle event (graceful shutdown)
-  - [ ] Remove plugin directory
-  - [ ] Remove entry from manifest
-  - [ ] Git commit (if auto_commit: true)
-  - [ ] No-op if plugin not found (idempotent)
-- [ ] Tests
+- [x] Implement `atk remove <plugin>` command
+  - [x] Find plugin by name OR directory in manifest
+  - [ ] Run stop lifecycle event (graceful shutdown) — deferred to Phase 2
+  - [x] Remove plugin directory
+  - [x] Remove entry from manifest
+  - [ ] Git commit (if auto_commit: true) — deferred to Phase 1.6
+  - [x] No-op if plugin not found (idempotent)
+- [x] Tests (9 tests: 5 unit, 4 CLI)
+- [x] Clean error messages (no Pydantic URLs) via `errors.py`
+- [x] `require_initialized_home()` helper for CLI commands
 
 ### 1.5 `atk status`
 - [ ] Implement `atk status [plugin]` command
