@@ -7,6 +7,15 @@
 
 This document specifies all ATK CLI commands, their parameters, behavior, and error handling.
 
+## ATK Home Location
+
+ATK Home is resolved in this order:
+
+1. `ATK_HOME` environment variable (if set)
+2. Default: `~/.atk/`
+
+All commands that require ATK Home check this resolution order.
+
 ## Exit Codes
 
 All commands use consistent exit codes:
@@ -66,19 +75,21 @@ Initialize ATK Home directory.
 
 **Usage:**
 ```bash
-atk init
+atk init              # Initialize at ~/.atk/ (or ATK_HOME if set)
+atk init ./my-atk     # Initialize at custom path
 ```
 
 **Behavior:**
-1. Check if `~/.atk` exists
-2. If exists and is valid ATK Home → no-op, exit 0
-3. If exists but invalid → exit 1 with error message
+1. Resolve target directory (argument > ATK_HOME > ~/.atk/)
+2. If target exists and is valid ATK Home → no-op, exit 0
+3. If target exists but invalid → exit 1 with error message
 4. Create directory structure:
-   - `~/.atk/`
-   - `~/.atk/manifest.yaml` (empty plugins list, `auto_commit: true`)
-   - `~/.atk/plugins/`
+   - `<target>/`
+   - `<target>/manifest.yaml` (empty plugins list, `auto_commit: true`)
+   - `<target>/plugins/`
+   - `<target>/.gitignore` (with `*.env` pattern)
 5. Initialize git repository
-6. Create initial commit
+6. Create initial commit: "Initialize ATK Home"
 
 **Exit Codes:**
 - 0: Success (including no-op when already initialized)
@@ -92,35 +103,44 @@ Add a plugin to ATK Home.
 
 **Usage:**
 ```bash
-atk add ./path/to/plugin
-atk add https://github.com/user/plugin
+atk add ./path/to/plugin-dir    # Directory containing plugin.yaml
+atk add ./my-plugin.yaml        # Single plugin.yaml file
 ```
 
 **Parameters:**
 
 | Parameter | Required | Description |
 |-----------|----------|-------------|
-| `source` | Yes | Local path or Git URL to plugin |
+| `source` | Yes | Local path to directory (containing plugin.yaml) or plugin.yaml file |
+
+**Source Types (MVP):**
+
+| Source | Example | Behavior |
+|--------|---------|----------|
+| Directory | `atk add ./openmemory/` | Copies entire directory to plugins/ |
+| Single file | `atk add ./mcp-server.yaml` | Creates plugin dir, copies only the yaml |
 
 **Behavior:**
 1. Validate ATK Home is initialized (exit 3 if not)
-2. Validate source exists and contains valid `plugin.yaml` (exit 5 if invalid)
-3. Parse plugin.yaml, extract display name
-4. Generate directory name from display name (sanitized)
-5. Copy plugin files to `~/.atk/plugins/<directory>/`:
-   - `plugin.yaml`
-   - `docker-compose.yaml` (if exists)
-   - `*.sh` scripts (if exist)
-6. Add entry to manifest: `{name: "<display>", directory: "<sanitized>"}`
-7. If directory already exists → **overwrite without confirmation** (recovery scenario)
-8. Run `install` lifecycle event (execute install.sh if exists)
-9. Commit changes (if `auto_commit: true`)
+2. Determine source type (directory or single file)
+3. Validate source exists and contains/is valid `plugin.yaml` (exit 5 if invalid)
+4. Parse plugin.yaml, extract display name
+5. Generate directory name from display name (sanitized)
+6. Copy plugin files to `<ATK_HOME>/plugins/<directory>/`:
+   - **Directory source**: copy entire directory contents
+   - **Single file source**: create directory, copy only plugin.yaml
+7. Add entry to manifest: `{name: "<display>", directory: "<sanitized>"}`
+8. If directory already exists → **overwrite without confirmation** (recovery scenario)
+9. Run `install` lifecycle event (if defined in plugin.yaml)
+10. Commit changes (if `auto_commit: true`)
 
 **Exit Codes:**
 - 0: Success
 - 3: ATK Home not initialized
 - 5: Plugin source invalid or plugin.yaml missing/invalid
 - 7: Git commit failed
+
+**Note:** Git URL sources are deferred to post-MVP (Phase 4).
 
 ---
 
@@ -153,38 +173,6 @@ atk remove openmemory
 - 4: Plugin not found
 - 6: Failed to stop containers
 - 7: Git commit failed
-
----
-
-### `atk list`
-
-List installed plugins.
-
-**Usage:**
-```bash
-atk list
-```
-
-**Behavior:**
-1. Validate ATK Home is initialized (exit 3 if not)
-2. Read manifest.yaml
-3. Print list of plugins (name and directory)
-
-**Output Format:**
-```
-NAME              DIRECTORY
-OpenMemory        openmemory
-Langfuse          langfuse
-```
-
-**Notes:**
-- Fast operation (reads manifest only, no container queries)
-- For status information, use `atk status`
-
-**Exit Codes:**
-- 0: Success
-- 3: ATK Home not initialized
-
 
 ---
 
@@ -396,45 +384,12 @@ Display MCP (Model Context Protocol) configuration for a plugin.
 
 ---
 
-# Nice-to-Have (Not MVP)
+# Deferred to Future
 
-Features deferred from MVP but designed for future addition:
+The following commands and features are documented in `atk-future.md`:
 
-## `--json` Output Flag
-
-All commands could support `--json` for machine-readable output.
-
-```bash
-atk list --json
-atk status --json
-```
-
-**Rationale:** Useful for scripting and integration, but human-readable output is sufficient for MVP.
-
-## Verbosity Flags
-
-Control output detail level via logging system:
-
-- Default: Info level (success messages only)
-- `-v` / `--verbose`: Debug level (show operations)
-- `-q` / `--quiet`: No output (exit code only)
-
-**Implementation:** Control via logging system (info/debug levels), not custom flags.
-
----
-
-# NOT MVP
-
-Commands and features explicitly out of scope for MVP:
-
-## `atk doctor`
-
-Validate ATK Home structure, check Docker availability, verify all plugins are valid.
-
-**Rationale:** Status management is complex. Deferred to avoid scope creep.
-
-## `atk config`
-
-View or edit manifest configuration (e.g., `auto_commit` flag).
-
-**Rationale:** Users can edit `manifest.yaml` directly for now.
+- `atk list` — fast manifest-only listing (use `atk status` for MVP)
+- `atk doctor` — validate ATK Home structure
+- `atk config` — view/edit manifest configuration
+- `--json` output flag for all commands
+- Verbosity flags (`-v`, `-q`)

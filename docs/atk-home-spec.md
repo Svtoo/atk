@@ -1,12 +1,24 @@
 # ATK Home Specification
 
 > **Status**: Approved
-> **Last Updated**: 2026-01-22
+> **Last Updated**: 2026-01-23
 
 ## Overview
 
 **ATK Home** is the local git-backed repository that stores the manifest and all installed plugins. Every mutation is
 committed to git, enabling rollback, sync across machines, and full audit trail.
+
+## Location Resolution
+
+ATK Home location is resolved in this order:
+
+1. **`ATK_HOME` environment variable** — if set, use this path
+2. **Default** — `~/.atk/`
+
+This allows:
+- Custom locations for users who prefer non-default paths
+- Easy testing without polluting `~/.atk/`
+- Multiple ATK installations on the same machine (advanced use case)
 
 ## Directory Structure
 
@@ -145,16 +157,22 @@ All lifecycle commands are plugin-agnostic,they execute whatever the plugin defi
 
 ## Plugin Sources (MVP)
 
-For MVP, only local YAML files are supported:
+For MVP, local sources are supported:
 
 ```bash
-atk add ./my-plugin.yaml
+atk add ./openmemory/        # Directory containing plugin.yaml
+atk add ./mcp-server.yaml    # Single plugin.yaml file
 ```
 
-### Explicitly NOT Supported
+| Source Type | Use Case |
+|-------------|----------|
+| Directory | Docker Compose plugins with multiple files (compose.yml, scripts) |
+| Single file | Simple MCP servers installed via command line |
 
-- **Git URL in manifest**: Use git commands directly to manage remotes
-- **Registry**: Deferred to post-MVP
+### Explicitly NOT Supported (MVP)
+
+- **Git URL**: Deferred to Phase 4
+- **Registry**: Deferred to Phase 4
 
 ### Rationale
 
