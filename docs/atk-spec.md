@@ -1,6 +1,6 @@
 # ATK: Agent Toolkit Specification
 
-> **Status**: Draft
+> **Status**: In progress
 > **Last Updated**: 2026-01-22
 
 ## Problem
@@ -16,8 +16,7 @@ Managing AI development tools is fragmented:
 A CLI tool that manages AI development tools through a **git-backed, declarative manifest**. Install once, sync everywhere.
 
 ```
-atk install openmemory    # Add to manifest, install, commit
-atk apply                 # Ensure all plugins match manifest
+atk add openmemory        # Copy plugin, update manifest, run install lifecycle, commit
 git push                  # Backup/sync to remote
 ```
 
@@ -51,7 +50,7 @@ flowchart TB
         LocalYAML["Local YAML file"]
     end
 
-    CLI -->|install/update| Sources
+    CLI -->|add| Sources
     CLI -->|manages| Manifest
     CLI -->|start/stop| Services
     Manifest -->|git push| Remote["GitHub/GitLab<br/>(backup & sync)"]
@@ -127,17 +126,17 @@ Full schema reference: see `docs/plugin-schema.md` (TODO)
 ## CLI Commands
 
 ```bash
-atk init [directory]       # Initialize manifest directory
-atk install <plugin>       # Install from registry, URL, or local file
-atk remove <plugin>        # Remove plugin
-atk update [plugin]        # Update one or all plugins
-atk apply                  # Ensure running state matches manifest
-atk start <plugin>         # Start a plugin's service
-atk stop <plugin>          # Stop a plugin's service
-atk status                 # Show all plugins and their status
+atk init [directory]       # Initialize ATK Home directory
+atk add <plugin>           # Copy plugin files, update manifest, run install lifecycle, commit
+atk remove <plugin>        # Stop plugin, remove files, update manifest, commit
+atk list                   # List plugins from manifest (fast, no container queries)
+atk start <plugin>         # Start a plugin's service (--all for all plugins)
+atk stop <plugin>          # Stop a plugin's service (--all for all plugins)
+atk restart <plugin>       # Restart a plugin's service (--all for all plugins)
+atk status [plugin]        # Show plugin status (all plugins if none specified)
 atk logs <plugin>          # View plugin logs
+atk run <plugin> <script>  # Run a plugin script (e.g., atk run openmemory backup)
 atk mcp <plugin>           # Show MCP config for IDE integration
-atk                        # Launch interactive TUI (optional)
 ```
 
 All commands return structured output suitable for AI agent consumption.
@@ -146,9 +145,9 @@ All commands return structured output suitable for AI agent consumption.
 
 | Source | Example | Use Case |
 |--------|---------|----------|
-| **Registry** | `atk install openmemory` | Curated, tested plugins |
-| **Git URL** | `atk install github.com/org/repo` | Any repo with `atk.yaml` |
-| **Local** | `atk install ./my-plugin.yaml` | Custom/private plugins |
+| **Registry** | `atk add openmemory` | Curated, tested plugins |
+| **Git URL** | `atk add github.com/org/repo` | Any repo with `atk.yaml` |
+| **Local** | `atk add ./my-plugin.yaml` | Custom/private plugins |
 
 Registry: `atk-registry` repo (same org), community contributions welcome (Homebrew model).
 
