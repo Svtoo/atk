@@ -360,3 +360,82 @@ class TestAddCLI:
         # Then
         assert result.exit_code == PLUGIN_INVALID
         assert "does not exist" in result.output
+
+
+class TestAddAutoCommit:
+    """Tests for auto_commit behavior in add command."""
+
+    @pytest.fixture(autouse=True)
+    def setup_method(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+        """Set up ATK_HOME for each test."""
+        self.tmp_path = tmp_path
+        self.atk_home = tmp_path / "atk-home"
+        monkeypatch.setenv("ATK_HOME", str(self.atk_home))
+
+    def test_add_creates_git_commit_when_auto_commit_true(self) -> None:
+        """Verify add creates a git commit when auto_commit is enabled."""
+        import subprocess
+
+        # Given - initialized ATK home with auto_commit=true (default)
+        init_atk_home(self.atk_home)
+        source = Path("tests/fixtures/plugins/minimal-plugin")
+
+        # When
+        result = runner.invoke(app, ["add", str(source)])
+
+        # Then - command succeeds
+        assert result.exit_code == SUCCESS
+
+        # And - git log shows a commit for adding the plugin
+        git_result = subprocess.run(
+            ["git", "log", "--oneline", "-1"],
+            cwd=self.atk_home,
+            capture_output=True,
+            text=True,
+            check=True,
+        )
+        assert "Add plugin" in git_result.stdout
+
+    def test_add_skips_git_commit_when_auto_commit_false(self) -> None:
+        """Verify add does NOT create a git commit when auto_commit is disabled."""
+        import subprocess
+
+        import yaml
+
+        # Given - initialized ATK home
+        init_atk_home(self.atk_home)
+
+        # And - auto_commit is disabled in manifest
+        manifest_path = self.atk_home / "manifest.yaml"
+        manifest_data = yaml.safe_load(manifest_path.read_text())
+        manifest_data["config"]["auto_commit"] = False
+        manifest_path.write_text(yaml.dump(manifest_data))
+
+        # Get initial commit count
+        initial_result = subprocess.run(
+            ["git", "rev-list", "--count", "HEAD"],
+            cwd=self.atk_home,
+            capture_output=True,
+            text=True,
+            check=True,
+        )
+        initial_count = int(initial_result.stdout.strip())
+
+        source = Path("tests/fixtures/plugins/minimal-plugin")
+
+        # When
+        result = runner.invoke(app, ["add", str(source)])
+
+        # Then - command succeeds
+        assert result.exit_code == SUCCESS
+
+        # And - no new commit was created
+        final_result = subprocess.run(
+            ["git", "rev-list", "--count", "HEAD"],
+            cwd=self.atk_home,
+            capture_output=True,
+            text=True,
+            check=True,
+        )
+        final_count = int(final_result.stdout.strip())
+        assert final_count == initial_count

@@ -11,6 +11,7 @@ import yaml
 from pydantic import ValidationError
 
 from atk.errors import format_validation_errors
+from atk.git import git_add, git_commit
 from atk.home import validate_atk_home
 from atk.manifest_schema import ManifestSchema, PluginEntry
 from atk.plugin_schema import PluginSchema
@@ -151,19 +152,27 @@ def add_plugin(source: Path, atk_home: Path) -> str:
         target_dir.mkdir(parents=True)
         shutil.copy2(source, target_dir / "plugin.yaml")
 
-    # Update manifest
-    _update_manifest(atk_home, schema.name, directory)
+    # Update manifest and get auto_commit setting
+    auto_commit = _update_manifest(atk_home, schema.name, directory)
+
+    # Commit changes if auto_commit is enabled
+    if auto_commit:
+        git_add(atk_home)
+        git_commit(atk_home, f"Add plugin '{schema.name}'")
 
     return directory
 
 
-def _update_manifest(atk_home: Path, plugin_name: str, directory: str) -> None:
+def _update_manifest(atk_home: Path, plugin_name: str, directory: str) -> bool:
     """Update manifest.yaml with new plugin entry.
 
     Args:
         atk_home: Path to ATK Home directory.
         plugin_name: Display name of the plugin.
         directory: Sanitized directory name.
+
+    Returns:
+        True if auto_commit is enabled in config, False otherwise.
     """
     manifest_path = atk_home / "manifest.yaml"
     content = manifest_path.read_text()
@@ -180,3 +189,5 @@ def _update_manifest(atk_home: Path, plugin_name: str, directory: str) -> None:
     manifest_path.write_text(
         yaml.dump(manifest.model_dump(), default_flow_style=False, sort_keys=False)
     )
+
+    return manifest.config.auto_commit

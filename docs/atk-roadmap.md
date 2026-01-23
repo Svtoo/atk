@@ -60,25 +60,19 @@
 - [x] Clean error messages (no Pydantic URLs) via `errors.py`
 - [x] `require_initialized_home()` helper for CLI commands
 
-### 1.5 `atk status`
-- [ ] Implement `atk status [plugin]` command
-  - [ ] List all plugins if no argument
-  - [ ] Show single plugin status if argument provided
-  - [ ] Display: name, directory, status (running/stopped/unknown)
-  - [ ] Call plugin's status lifecycle event
-- [ ] Tests
+### 1.5 Git Integration ✅
+- [x] Extract git operations to `git.py` module (currently inline in init.py)
+  - [x] `git_init(path)` — initialize git repo
+  - [x] `git_add(path, files)` — stage files
+  - [x] `git_commit(path, message)` — commit with message (returns False if nothing to commit)
+  - [x] `is_git_repo(path)` — check if directory is git repo
+  - [x] `has_staged_changes(path)` — check if there are staged changes
+- [x] Tests for git operations (11 tests)
+- [x] Wire up auto_commit in add/remove commands
 
-### 1.6 Git Integration
-- [ ] Extract git operations to `git.py` module (currently inline in init.py)
-  - [ ] `git_init(path)` — initialize git repo
-  - [ ] `git_add(path, files)` — stage files
-  - [ ] `git_commit(path, message)` — commit with message
-  - [ ] `is_git_repo(path)` — check if directory is git repo
-- [ ] Tests for git operations
-
-### 1.7 Exit Codes ✅
+### 1.6 Exit Codes ✅
 - [x] Create `exit_codes.py` with constants (0-7)
-- [ ] Use exit codes consistently across all commands
+- [x] Use exit codes consistently across all commands
 
 ## Phase 2: Service Lifecycle
 
@@ -87,6 +81,7 @@ See `atk-future.md` for details. Includes:
 - `atk logs <plugin>`
 - `atk run <plugin> <script>`
 - Health checks and sensible defaults
+- `atk status` command (moved from Phase 1 — depends on lifecycle events)
 
 ## Phases 3-10
 

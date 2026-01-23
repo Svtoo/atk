@@ -4,12 +4,12 @@ Provides functionality to create and initialize an ATK Home directory
 with the required structure, git repository, and initial commit.
 """
 
-import os
 import subprocess
 from pathlib import Path
 
 import yaml
 
+from atk.git import git_add, git_commit, git_init
 from atk.home import validate_atk_home
 from atk.manifest_schema import (
     MANIFEST_SCHEMA_VERSION,
@@ -94,9 +94,9 @@ def init_atk_home(path: Path) -> ValidationResult:
         (path / ".gitignore").write_text(GITIGNORE_CONTENT)
 
         # Initialize git repository
-        _git_init(path)
-        _git_add_all(path)
-        _git_commit(path, "Initialize ATK Home")
+        git_init(path)
+        git_add(path)
+        git_commit(path, "Initialize ATK Home")
 
         return ValidationResult(is_valid=True, errors=[])
 
@@ -110,41 +110,3 @@ def init_atk_home(path: Path) -> ValidationResult:
             is_valid=False,
             errors=[f"Git operation failed: {e}"],
         )
-
-
-def _git_init(path: Path) -> None:
-    """Initialize a git repository."""
-    subprocess.run(
-        ["git", "init"],
-        cwd=path,
-        check=True,
-        capture_output=True,
-    )
-
-
-def _git_add_all(path: Path) -> None:
-    """Stage all files for commit."""
-    subprocess.run(
-        ["git", "add", "-A"],
-        cwd=path,
-        check=True,
-        capture_output=True,
-    )
-
-
-def _git_commit(path: Path, message: str) -> None:
-    """Create a commit with the given message."""
-    subprocess.run(
-        ["git", "commit", "-m", message],
-        cwd=path,
-        check=True,
-        capture_output=True,
-        env={
-            **os.environ,
-            "GIT_AUTHOR_NAME": "ATK",
-            "GIT_AUTHOR_EMAIL": "atk@localhost",
-            "GIT_COMMITTER_NAME": "ATK",
-            "GIT_COMMITTER_EMAIL": "atk@localhost",
-        },
-    )
-

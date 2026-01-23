@@ -79,6 +79,25 @@ class TestInitAtkHome:
         assert result.returncode == 0
         assert "Initialize ATK Home" in result.stdout
 
+    def test_git_commit_uses_atk_author(self, tmp_path: Path) -> None:
+        """Verify git commit uses ATK as author (from git module)."""
+        # Given
+        target = tmp_path / ".atk"
+
+        # When
+        init_atk_home(target)
+
+        # Then - check git log shows ATK as author
+        result = subprocess.run(
+            ["git", "log", "--format=%an <%ae>", "-1"],
+            cwd=target,
+            capture_output=True,
+            text=True,
+            check=True,
+        )
+        expected_author = "ATK <atk@localhost>"
+        assert result.stdout.strip() == expected_author
+
     def test_idempotent_when_already_initialized(self, tmp_path: Path) -> None:
         """Verify init is no-op when ATK Home already valid."""
         # Given - already initialized

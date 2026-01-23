@@ -8,6 +8,7 @@ from pathlib import Path
 
 import yaml
 
+from atk.git import git_add, git_commit
 from atk.home import validate_atk_home
 from atk.manifest_schema import ManifestSchema
 
@@ -46,6 +47,10 @@ def remove_plugin(identifier: str, atk_home: Path) -> bool:
         # Plugin not found - no-op (idempotent)
         return False
 
+    # Capture plugin name before removal for commit message
+    plugin_name = plugin_entry.name
+    auto_commit = manifest.config.auto_commit
+
     # Remove plugin directory if it exists
     plugin_dir = atk_home / "plugins" / plugin_entry.directory
     if plugin_dir.exists():
@@ -58,6 +63,11 @@ def remove_plugin(identifier: str, atk_home: Path) -> bool:
     manifest_path.write_text(
         yaml.dump(manifest.model_dump(), default_flow_style=False, sort_keys=False)
     )
+
+    # Commit changes if auto_commit is enabled
+    if auto_commit:
+        git_add(atk_home)
+        git_commit(atk_home, f"Remove plugin '{plugin_name}'")
 
     return True
 
