@@ -41,6 +41,7 @@ flowchart TB
 
     subgraph Manage["Plugin Management"]
         add[atk add]
+        install[atk install]
         remove[atk remove]
         list[atk list]
     end
@@ -173,6 +174,45 @@ atk remove openmemory
 - 4: Plugin not found
 - 6: Failed to stop containers
 - 7: Git commit failed
+
+---
+
+## `atk install [plugin]`
+
+Run the install lifecycle command for plugin(s).
+
+**Use Cases:**
+1. **Update**: Re-run install after plugin files changed (pulls new images, rebuilds containers)
+2. **Bootstrap**: Install all plugins on a new machine after `git clone` of ATK Home
+
+**Arguments:**
+- `[plugin]`: Plugin name or directory (optional if `--all`)
+
+**Flags:**
+- `--all`: Install all plugins in manifest order
+
+**Usage:**
+```bash
+atk install langfuse       # Install/update one plugin
+atk install --all          # Install all plugins (bootstrap scenario)
+```
+
+**Behavior:**
+1. Validate ATK Home is initialized (exit 3 if not)
+2. Find plugin(s) by name or directory
+3. Run `install` lifecycle command from plugin.yaml
+4. If `install` not defined → skip silently (no-op)
+5. Report output to user
+
+**Workflow Clarification:**
+- `atk add` = copy files + run install (for adding new plugins from source)
+- `atk install` = run install only (for update or bootstrap after git pull)
+
+**Exit Codes:**
+- 0: Success (including no-op when install not defined)
+- 3: ATK Home not initialized
+- 4: Plugin not found
+- 6: Install command failed
 
 ---
 

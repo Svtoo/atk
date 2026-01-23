@@ -45,7 +45,30 @@ Phase 2 adds the ability to control plugin services. All lifecycle commands are 
 
 ---
 
-## 2.2 `atk start`
+## 2.2 `atk install`
+
+Run the install lifecycle command for plugin(s). Used for:
+1. **Update**: Re-run install after plugin files changed
+2. **Bootstrap**: Install all plugins on new machine after `git clone`
+
+- [ ] Implement `atk install <plugin>` command
+  - [ ] Find plugin by name or directory
+  - [ ] Run `install` lifecycle command
+  - [ ] Skip silently if `install` not defined (no-op)
+  - [ ] Report output to user
+- [ ] Implement `atk install --all`
+  - [ ] Install all plugins in manifest order
+  - [ ] Continue on failure, report summary
+- [ ] CLI integration with proper exit codes
+- [ ] Tests (5+ tests: unit + CLI)
+
+**Workflow:**
+- `atk add` = copy files + run install (adding new plugins)
+- `atk install` = run install only (update or bootstrap)
+
+---
+
+## 2.3 `atk start`
 
 - [ ] Implement `atk start <plugin>` command
   - [ ] Find plugin by name or directory
@@ -59,7 +82,7 @@ Phase 2 adds the ability to control plugin services. All lifecycle commands are 
 
 ---
 
-## 2.3 `atk stop`
+## 2.4 `atk stop`
 
 - [ ] Implement `atk stop <plugin>` command
   - [ ] Find plugin by name or directory
@@ -73,7 +96,7 @@ Phase 2 adds the ability to control plugin services. All lifecycle commands are 
 
 ---
 
-## 2.4 `atk restart`
+## 2.5 `atk restart`
 
 - [ ] Implement `atk restart <plugin>` command
   - [ ] Find plugin by name or directory
@@ -87,7 +110,7 @@ Phase 2 adds the ability to control plugin services. All lifecycle commands are 
 
 ---
 
-## 2.5 `atk status`
+## 2.6 `atk status`
 
 - [ ] Implement `atk status [plugin]` command
   - [ ] If plugin specified: show status for that plugin
@@ -105,7 +128,7 @@ Phase 2 adds the ability to control plugin services. All lifecycle commands are 
 
 ---
 
-## 2.6 `atk logs`
+## 2.7 `atk logs`
 
 - [ ] Implement `atk logs <plugin>` command
   - [ ] Find plugin by name or directory
@@ -117,7 +140,7 @@ Phase 2 adds the ability to control plugin services. All lifecycle commands are 
 
 ---
 
-## 2.7 `atk run`
+## 2.8 `atk run`
 
 - [ ] Implement `atk run <plugin> <script>` command
   - [ ] Find plugin by name or directory
@@ -129,7 +152,7 @@ Phase 2 adds the ability to control plugin services. All lifecycle commands are 
 
 ---
 
-## 2.8 Wire Up Deferred Items
+## 2.9 Wire Up Deferred Items
 
 ### Install Lifecycle on Add
 
