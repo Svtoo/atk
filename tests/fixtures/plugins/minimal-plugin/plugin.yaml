@@ -1,0 +1,4 @@
+schema_version: "2026-01-23"
+name: Minimal Plugin
+description: A minimal plugin with just the required fields for testing.
+

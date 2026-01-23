@@ -1,0 +1,5 @@
+# Invalid plugin - missing required 'description' field
+schema_version: "2026-01-23"
+name: Invalid Plugin
+# description is missing - this should fail validation
+

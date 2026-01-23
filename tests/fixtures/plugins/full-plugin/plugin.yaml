@@ -1,0 +1,39 @@
+schema_version: "2026-01-23"
+name: Full Plugin
+description: A complete plugin with lifecycle events and all optional fields for testing.
+
+vendor:
+  name: Test Vendor
+  url: https://example.com
+  docs: https://example.com/docs
+
+service:
+  type: script
+
+ports:
+  - port: 8080
+    name: http
+    protocol: http
+    description: Main HTTP endpoint
+
+env_vars:
+  - name: FULL_PLUGIN_API_KEY
+    required: true
+    secret: true
+    description: API key for the plugin
+  - name: FULL_PLUGIN_DEBUG
+    required: false
+    default: "false"
+    description: Enable debug mode
+
+lifecycle:
+  install: ./install.sh
+  start: ./start.sh
+  stop: ./stop.sh
+  status: ./status.sh
+
+mcp:
+  transport: stdio
+  command: ./mcp-server.sh
+  args: ["--mode", "stdio"]
+
