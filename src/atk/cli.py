@@ -38,7 +38,7 @@ def print_banner() -> None:
         "     /==============\\",
         "    / /#####/\\#####\\ \\",
         "   / /## /      \\ ##\\ \\",
-        "   ==      _     _    ==",
+        "   ==      _     _   ==",
         ]
 
     # Lowercase "atk" text - spaced out for readability

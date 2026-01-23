@@ -1,19 +1,19 @@
 # atk
 
-**AI Agent Toolkit** — Manage AI development tools through a git-backed, declarative manifest.
+**A**I **T**ool**K**it (read as "Attic") — Manage AI development tools through a git-backed, declarative manifest.
 
 > ⚠️ **In active development.** Not functional yet. Everything here is subject to change.
 
-## What is ATK?
+## What is atk?
 
-ATK is like Homebrew for AI tools. Install once, sync everywhere via git.
+atk is like Homebrew for AI tools. Install once, sync everywhere via git.
 
 ```bash
 # Install a tool
-atk install openmemory
+atk add openmemory
 
 # Sync your setup to a new machine
-git clone ~/.atk && atk sync
+git clone git@github.com:<your-username>/.atk.git ~/.atk && atk install --all
 ```
 
 The manifest (`~/.atk/manifest.yaml`) describes your desired state. ATK makes it real. Every action is a git commit, so you can version control your entire AI development environment.
