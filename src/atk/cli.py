@@ -11,7 +11,9 @@ from atk.add import add_plugin
 from atk.git import is_git_available
 from atk.home import get_atk_home, validate_atk_home
 from atk.init import init_atk_home
+from atk.install import install_all_plugins, install_plugin
 from atk.manifest_schema import load_manifest
+from atk.plugin import PluginNotFoundError
 from atk.remove import remove_plugin
 
 app = typer.Typer(
@@ -252,6 +254,63 @@ def remove(
     except ValueError as e:
         console.print(f"[red]✗[/red] Failed to remove plugin: {e}")
         raise typer.Exit(exit_codes.GENERAL_ERROR) from e
+
+
+@app.command()
+def install(
+    plugin: Annotated[
+        str | None,
+        typer.Argument(
+            help="Plugin name or directory to install.",
+        ),
+    ] = None,
+    all_plugins: Annotated[
+        bool,
+        typer.Option(
+            "--all",
+            help="Install all plugins in manifest order.",
+        ),
+    ] = False,
+) -> None:
+    """Run the install lifecycle command for a plugin.
+
+    Executes the install command defined in the plugin's plugin.yaml.
+    If no install command is defined, this is a no-op.
+    """
+    atk_home = require_ready_home()
+
+    # Validate arguments
+    if all_plugins and plugin:
+        console.print("[red]✗[/red] Cannot specify both plugin and --all")
+        raise typer.Exit(exit_codes.INVALID_ARGS)
+
+    if not all_plugins and not plugin:
+        console.print("[red]✗[/red] Must specify plugin or --all")
+        raise typer.Exit(exit_codes.INVALID_ARGS)
+
+    if all_plugins:
+        result = install_all_plugins(atk_home)
+        for name in result.succeeded:
+            console.print(f"[green]✓[/green] Installed plugin '{name}'")
+        for name, code in result.failed:
+            console.print(f"[red]✗[/red] Install failed for plugin '{name}' (exit code {code})")
+
+        if result.all_succeeded:
+            raise typer.Exit(exit_codes.SUCCESS)
+        else:
+            raise typer.Exit(exit_codes.GENERAL_ERROR)
+
+    # Single plugin install
+    try:
+        exit_code = install_plugin(atk_home, plugin)  # type: ignore[arg-type]
+        if exit_code == 0:
+            console.print(f"[green]✓[/green] Installed plugin '{plugin}'")
+        else:
+            console.print(f"[red]✗[/red] Install failed for plugin '{plugin}' (exit code {exit_code})")
+        raise typer.Exit(exit_code)
+    except PluginNotFoundError:
+        console.print(f"[red]✗[/red] Plugin '{plugin}' not found in manifest")
+        raise typer.Exit(exit_codes.PLUGIN_NOT_FOUND)
 
 
 @app.command()
