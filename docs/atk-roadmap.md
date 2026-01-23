@@ -33,20 +33,20 @@
   - [x] Exit code 1 if path exists but is invalid
 - [x] Tests with temporary directory fixture (12 tests)
 
-### 1.3 `atk add` (Current)
+### 1.3 `atk add` ✅
 - [x] Implement plugin directory name sanitization
   - [x] Regex validation: `^[a-z][a-z0-9]*(-[a-z0-9]+)*$`
   - [x] Generate from display name (lowercase, replace spaces/underscores with hyphens)
   - [x] Strip special characters and injection attempts
-- [ ] Implement `atk add <source>` command
-  - [ ] Detect source type (directory vs single file)
-  - [ ] Validate source contains valid plugin.yaml
-  - [ ] Copy files to plugins/<directory>/
-  - [ ] Update manifest.yaml with new plugin entry
-  - [ ] Run install lifecycle event (if defined)
-  - [ ] Git commit (if auto_commit: true)
-  - [ ] Overwrite if directory exists (recovery scenario)
-- [ ] Tests for both source types
+- [x] Implement `atk add <source>` command
+  - [x] Detect source type (directory vs single file)
+  - [x] Validate source contains valid plugin.yaml
+  - [x] Copy files to plugins/<directory>/
+  - [x] Update manifest.yaml with new plugin entry
+  - [ ] Run install lifecycle event (if defined) — deferred to Phase 2
+  - [ ] Git commit (if auto_commit: true) — deferred to 1.6
+  - [x] Overwrite if directory exists (recovery scenario)
+- [x] Tests for both source types (18 tests)
 
 ### 1.4 `atk remove`
 - [ ] Implement `atk remove <plugin>` command

@@ -7,7 +7,8 @@ import typer
 from rich.console import Console
 
 from atk import __version__, exit_codes
-from atk.home import get_atk_home
+from atk.add import add_plugin
+from atk.home import get_atk_home, validate_atk_home
 from atk.init import init_atk_home
 
 app = typer.Typer(
@@ -129,6 +130,43 @@ def init(
         for error in result.errors:
             console.print(f"  [dim]•[/dim] {error}")
         raise typer.Exit(exit_codes.GENERAL_ERROR)
+
+
+@app.command()
+def add(
+    source: Annotated[
+        Path,
+        typer.Argument(
+            help="Path to plugin directory or single plugin.yaml file.",
+        ),
+    ],
+) -> None:
+    """Add a plugin to ATK Home.
+
+    Copies plugin files to ATK Home and updates the manifest.
+    If the plugin directory already exists, it will be overwritten.
+    """
+    atk_home = get_atk_home()
+
+    # Validate ATK Home is initialized
+    validation = validate_atk_home(atk_home)
+    if not validation.is_valid:
+        console.print(f"[red]✗[/red] ATK Home not initialized at {atk_home}")
+        console.print("  Run [bold]atk init[/bold] first.")
+        raise typer.Exit(exit_codes.HOME_NOT_INITIALIZED)
+
+    # Validate source exists
+    if not source.exists():
+        console.print(f"[red]✗[/red] Source path does not exist: {source}")
+        raise typer.Exit(exit_codes.PLUGIN_INVALID)
+
+    try:
+        directory = add_plugin(source, atk_home)
+        console.print(f"[green]✓[/green] Added plugin to {atk_home}/plugins/{directory}")
+        raise typer.Exit(exit_codes.SUCCESS)
+    except ValueError as e:
+        console.print(f"[red]✗[/red] Failed to add plugin: {e}")
+        raise typer.Exit(exit_codes.PLUGIN_INVALID) from e
 
 
 @app.command()
