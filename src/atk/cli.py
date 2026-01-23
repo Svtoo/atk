@@ -4,12 +4,15 @@ from pathlib import Path
 from typing import Annotated
 
 import typer
+import yaml
 from rich.console import Console
 
 from atk import __version__, exit_codes
 from atk.add import add_plugin
+from atk.git import is_git_available
 from atk.home import get_atk_home, validate_atk_home
 from atk.init import init_atk_home
+from atk.manifest_schema import ManifestSchema
 from atk.remove import remove_plugin
 
 app = typer.Typer(
@@ -41,6 +44,45 @@ def require_initialized_home() -> Path:
     return atk_home
 
 
+def require_git() -> None:
+    """Verify git is available on the system.
+
+    Raises:
+        typer.Exit: With GIT_ERROR if git is not available.
+    """
+    if not is_git_available():
+        console.print("[red]✗[/red] Git is not available")
+        console.print("  [dim]•[/dim] ATK requires git for repository management")
+        raise typer.Exit(exit_codes.GIT_ERROR)
+
+
+def require_ready_home() -> Path:
+    """Get ATK Home, verify initialized, and check git if auto_commit enabled.
+
+    This is the standard precondition check for most ATK commands.
+    Combines require_initialized_home() with git availability check
+    when auto_commit is enabled in the manifest.
+
+    Returns:
+        Path to the initialized ATK Home directory.
+
+    Raises:
+        typer.Exit: With HOME_NOT_INITIALIZED if not initialized.
+        typer.Exit: With GIT_ERROR if auto_commit enabled but git unavailable.
+    """
+    atk_home = require_initialized_home()
+
+    # Check if git is needed (auto_commit enabled)
+    manifest_path = atk_home / "manifest.yaml"
+    manifest_data = yaml.safe_load(manifest_path.read_text())
+    manifest = ManifestSchema.model_validate(manifest_data)
+
+    if manifest.config.auto_commit:
+        require_git()
+
+    return atk_home
+
+
 def print_banner() -> None:
     """Print the ATK ASCII art banner."""
     from rich.text import Text
@@ -67,6 +109,7 @@ def print_banner() -> None:
         "   / /## /      \\ ##\\ \\",
         "   ==      _     _   ==",
         ]
+
 
     # Lowercase "atk" text - spaced out for readability
     text_art = [
@@ -138,6 +181,9 @@ def init(
     Creates the directory structure, initializes git repository, and creates
     initial commit. If already initialized, this is a no-op.
     """
+    # Verify git is available before creating any directories
+    require_git()
+
     # Resolve target directory
     target = directory if directory else get_atk_home()
 
@@ -167,7 +213,7 @@ def add(
     Copies plugin files to ATK Home and updates the manifest.
     If the plugin directory already exists, it will be overwritten.
     """
-    atk_home = require_initialized_home()
+    atk_home = require_ready_home()
 
     # Validate source exists
     if not source.exists():
@@ -198,7 +244,7 @@ def remove(
     Accepts either the plugin name or directory name.
     If the plugin is not found, this is a no-op.
     """
-    atk_home = require_initialized_home()
+    atk_home = require_ready_home()
 
     try:
         removed = remove_plugin(plugin, atk_home)

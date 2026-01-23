@@ -1,6 +1,7 @@
 """Tests for error formatting utilities."""
 
 from pathlib import Path
+from unittest.mock import patch
 
 import pytest
 import yaml
@@ -9,7 +10,7 @@ from pydantic import ValidationError
 from typer.testing import CliRunner
 
 from atk import exit_codes
-from atk.cli import app, require_initialized_home
+from atk.cli import app, require_git, require_initialized_home, require_ready_home
 from atk.errors import format_validation_errors
 from atk.init import init_atk_home
 from atk.plugin_schema import PluginSchema
@@ -168,3 +169,95 @@ class TestRequireInitializedHome:
             require_initialized_home()
 
         assert exc_info.value.exit_code == exit_codes.HOME_NOT_INITIALIZED
+
+
+class TestRequireGit:
+    """Tests for require_git helper."""
+
+    def test_passes_when_git_available(self) -> None:
+        """Verify require_git does not exit when git is available."""
+        # Given - git is available on the system (test environment assumption)
+
+        # When/Then - should not raise
+        require_git()  # No exception = pass
+
+    def test_exits_when_git_not_available(self) -> None:
+        """Verify require_git exits with GIT_ERROR when git not found."""
+        # Given - mock git as unavailable
+        with patch("atk.cli.is_git_available", return_value=False):
+            # When/Then
+            with pytest.raises(Exit) as exc_info:
+                require_git()
+
+            assert exc_info.value.exit_code == exit_codes.GIT_ERROR
+
+
+class TestRequireReadyHome:
+    """Tests for require_ready_home helper."""
+
+    def test_returns_path_when_initialized_and_git_available(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Verify returns path when home initialized and git available."""
+        # Given - initialized home with auto_commit enabled
+        atk_home = tmp_path / "atk-home"
+        init_atk_home(atk_home)
+        monkeypatch.setenv("ATK_HOME", str(atk_home))
+
+        # When
+        result = require_ready_home()
+
+        # Then
+        assert result == atk_home
+
+    def test_exits_when_home_not_initialized(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Verify exits with HOME_NOT_INITIALIZED when not initialized."""
+        # Given
+        atk_home = tmp_path / "not-initialized"
+        monkeypatch.setenv("ATK_HOME", str(atk_home))
+
+        # When/Then
+        with pytest.raises(Exit) as exc_info:
+            require_ready_home()
+
+        assert exc_info.value.exit_code == exit_codes.HOME_NOT_INITIALIZED
+
+    def test_exits_when_git_not_available_and_auto_commit_enabled(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Verify exits with GIT_ERROR when auto_commit enabled but git unavailable."""
+        # Given - initialized home with auto_commit: true (default)
+        atk_home = tmp_path / "atk-home"
+        init_atk_home(atk_home)
+        monkeypatch.setenv("ATK_HOME", str(atk_home))
+
+        # When/Then - mock git as unavailable
+        with patch("atk.cli.is_git_available", return_value=False):
+            with pytest.raises(Exit) as exc_info:
+                require_ready_home()
+
+            assert exc_info.value.exit_code == exit_codes.GIT_ERROR
+
+    def test_passes_when_git_not_available_but_auto_commit_disabled(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Verify passes when auto_commit disabled even if git unavailable."""
+        # Given - initialized home with auto_commit: false
+        atk_home = tmp_path / "atk-home"
+        init_atk_home(atk_home)
+        monkeypatch.setenv("ATK_HOME", str(atk_home))
+
+        # Update manifest to disable auto_commit
+        manifest_path = atk_home / "manifest.yaml"
+        manifest_content = yaml.safe_load(manifest_path.read_text())
+        manifest_content["config"]["auto_commit"] = False
+        manifest_path.write_text(yaml.dump(manifest_content))
+
+        # When/Then - mock git as unavailable
+        with patch("atk.cli.is_git_available", return_value=False):
+            result = require_ready_home()
+
+            # Then - should succeed because auto_commit is disabled
+            assert result == atk_home

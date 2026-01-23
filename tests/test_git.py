@@ -2,10 +2,18 @@
 
 import subprocess
 from pathlib import Path
+from unittest.mock import patch
 
 import pytest
 
-from atk.git import git_add, git_commit, git_init, has_staged_changes, is_git_repo
+from atk.git import (
+    git_add,
+    git_commit,
+    git_init,
+    has_staged_changes,
+    is_git_available,
+    is_git_repo,
+)
 
 
 class TestGitInit:
@@ -200,3 +208,29 @@ class TestHasStagedChanges:
 
         # Then
         assert result is False
+
+
+class TestIsGitAvailable:
+    """Tests for is_git_available function."""
+
+    def test_returns_true_when_git_available(self) -> None:
+        """Verify is_git_available returns True when git command exists."""
+        # Given - git is available on the system (test environment assumption)
+
+        # When
+        result = is_git_available()
+
+        # Then
+        assert result is True
+
+    def test_returns_false_when_git_not_available(self) -> None:
+        """Verify is_git_available returns False when git command not found."""
+        # Given - mock subprocess to simulate git not found
+        with patch("atk.git.subprocess.run") as mock_run:
+            mock_run.side_effect = FileNotFoundError("git not found")
+
+            # When
+            result = is_git_available()
+
+            # Then
+            assert result is False

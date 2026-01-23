@@ -8,6 +8,23 @@ import subprocess
 from pathlib import Path
 
 
+def is_git_available() -> bool:
+    """Check if git command is available on the system.
+
+    Returns:
+        True if git is available, False otherwise.
+    """
+    try:
+        subprocess.run(
+            ["git", "--version"],
+            capture_output=True,
+            check=True,
+        )
+        return True
+    except FileNotFoundError:
+        return False
+
+
 def git_init(path: Path) -> None:
     """Initialize a git repository.
 
