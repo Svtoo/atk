@@ -1,9 +1,11 @@
-# ATK Future Ideas & Backlog
+# ATK Backlog
 
-> **Status**: Backlog — features and ideas for post-MVP consideration
+> **Status**: Backlog — deferred features and ideas
 > **Last Updated**: 2026-01-23
 
-This document collects ideas, deferred features, and future enhancements that are explicitly **not in MVP scope**. Items here may be promoted to the roadmap as priorities evolve.
+This document collects ideas, deferred features, and future enhancements. Items here may be promoted to `phases/` as priorities evolve.
+
+For the master plan, see `ROADMAP.md`.
 
 ---
 
@@ -59,53 +61,6 @@ Control output detail level via logging system:
 
 ---
 
-## Post-MVP Phases
-
-### Phase 3: Configuration
-- `.env` file management per plugin
-- Install wizard for required env vars
-- Port conflict detection
-- `atk mcp <plugin>` — Generate MCP config for IDE
-
-### Phase 4: Plugin Sources
-- Create `atk-registry` repo with initial plugins
-- Install from registry by name (`atk install openmemory`)
-- Version pinning in manifest
-
-### Phase 5: Polish
-- Interactive TUI (optional, on top of CLI)
-- Documentation and examples
-- Error messages and help text
-
-### Phase 6: Community
-- Publish to PyPI
-- Install from Git URL (`atk install github.com/org/repo`)
-- Contribution guide for registry
-- CI/CD for registry (validate plugin YAMLs)
-
-### Phase 7: AI Agent Integration
-- MCP server for AI agent control
-- Rules for user agents to create new plugins
-- Agent-friendly documentation
-- Structured output for AI agent consumption (JSON mode)
-
-### Phase 8: MCP Management for 3rd Party Tools
-- Automatically install managed MCP to:
-  - Claude Code
-  - Codex
-  - Gemini CLI
-  - ...
-
-### Phase 9: Data Backup
-- Backup and restore data that plugins produce (e.g., OpenMemory's .lmdb database, Langfuse's ClickHouse database)
-- TBD
-
-### Phase 10: Rules/Skills and Agent.md Management
-- Manage agent rules and skills via ATK
-- TBD
-
----
-
 ## Ideas & Considerations
 
 ### Hooks (Pre/Post Lifecycle)
@@ -127,7 +82,6 @@ Out of scope — too complex, limited value for MVP use cases.
 
 ## Notes
 
-- Items move from here to `atk-roadmap.md` when prioritized
+- Items move from here to `phases/` when prioritized
 - Keep this document updated as new ideas emerge
 - Cross-reference with GitHub issues when available
-

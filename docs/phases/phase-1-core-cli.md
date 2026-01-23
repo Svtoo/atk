@@ -1,18 +1,19 @@
-# ATK Roadmap
+# Phase 1: Core CLI ✅
 
-> High-level implementation plan from zero to working version.
->
-> **Note**: Deferred features and ideas are in `atk-future.md`.
+> **Status**: Complete
+> **Last Updated**: 2026-01-23
+
+Phase 0 (Foundation) and Phase 1 (Core CLI) implementation details.
 
 ## Phase 0: Foundation ✅
 
 - [x] Create new repo `atk` with clean structure
 - [x] Set up Python project (pyproject.toml, uv)
-- [x] Define plugin YAML schema (full spec in `plugin-schema.md`)
+- [x] Define plugin YAML schema (full spec in `specs/plugin-schema.md`)
 - [x] Implement schema validation (17 tests)
 - [x] CLI skeleton with version banner
 
-## Phase 1: Core CLI (Current)
+## Phase 1: Core CLI ✅
 
 ### 1.1 Infrastructure ✅
 - [x] Create `manifest_schema.py` — Pydantic models for manifest.yaml
@@ -74,26 +75,13 @@
 - [x] Create `exit_codes.py` with constants (0-7)
 - [x] Use exit codes consistently across all commands
 
-## Phase 2: Service Lifecycle
-
-See `atk-future.md` for details. Includes:
-- `atk start/stop/restart <plugin>`
-- `atk logs <plugin>`
-- `atk run <plugin> <script>`
-- Health checks and sensible defaults
-- `atk status` command (moved from Phase 1 — depends on lifecycle events)
-
-## Phases 3-10
-
-See `atk-future.md` for details.
-
 ---
 
-## Milestones
+## Deferred to Phase 2
 
-| Milestone             | Definition of Done                             |
-|-----------------------|------------------------------------------------|
-| **M1: Dogfood**       | Can manage 2+ plugins on local machine via CLI |
-| **M2: Multi-machine** | Can sync setup across machines via git         |
-| **M3: Public**        | Published to PyPI, registry has 5+ plugins     |
+The following items were deferred from Phase 1:
+- Run `install` lifecycle event on `atk add` (1.3)
+- Run `stop` lifecycle event on `atk remove` (1.4)
+- `atk status` command (depends on lifecycle events)
 
+See `phase-2-lifecycle.md` for Phase 2 details.
