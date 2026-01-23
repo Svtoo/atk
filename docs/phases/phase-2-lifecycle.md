@@ -3,7 +3,7 @@
 > **Status**: Planning
 > **Last Updated**: 2026-01-23
 
-Service lifecycle commands: start, stop, restart, status, logs, run.
+Service lifecycle commands: start, stop, restart, status, logs, run, install.
 
 ## Deferred from Phase 1
 
@@ -131,9 +131,22 @@ Phase 2 adds the ability to control plugin services. All lifecycle commands are 
 
 ## 2.8 Wire Up Deferred Items
 
+### Install Lifecycle on Add
+
+The `install` lifecycle command is called on `atk add`. By convention, **install is also update** — running `atk add` on an existing plugin re-copies files and re-runs install (idempotent).
+
 - [ ] Update `atk add` to run `install` lifecycle after copying files
+  - [ ] Skip silently if `install` not defined (optional lifecycle command)
+  - [ ] Report install output to user
+  - [ ] Fail `atk add` if install command fails (exit code 6)
+- [ ] Tests for install lifecycle (3+ tests)
+
+### Stop Lifecycle on Remove
+
 - [ ] Update `atk remove` to run `stop` lifecycle before removing files
-- [ ] Tests for lifecycle integration in add/remove (4+ tests)
+  - [ ] Skip silently if `stop` not defined
+  - [ ] Continue with removal even if stop fails (warn user)
+- [ ] Tests for stop lifecycle on remove (2+ tests)
 
 ---
 
