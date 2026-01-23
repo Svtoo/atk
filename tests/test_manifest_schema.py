@@ -1,8 +1,17 @@
 """Tests for manifest.yaml schema validation."""
 
-import pytest
+from pathlib import Path
 
-from atk.manifest_schema import ConfigSection, ManifestSchema, PluginEntry
+import pytest
+import yaml
+
+from atk.manifest_schema import (
+    ConfigSection,
+    ManifestSchema,
+    PluginEntry,
+    load_manifest,
+    save_manifest,
+)
 
 
 class TestPluginEntry:
@@ -175,3 +184,157 @@ class TestManifestSchema:
         with pytest.raises(ValueError, match="schema_version"):
             ManifestSchema()  # type: ignore[call-arg]
 
+
+class TestLoadManifest:
+    """Tests for load_manifest function."""
+
+    def test_loads_valid_manifest(self, tmp_path: Path) -> None:
+        """Verify load_manifest returns ManifestSchema for valid file."""
+        # Given - create a valid manifest
+        schema_version = "2026-01-23"
+        manifest_path = tmp_path / "manifest.yaml"
+        manifest_content = {
+            "schema_version": schema_version,
+            "config": {"auto_commit": True},
+            "plugins": [],
+        }
+        manifest_path.write_text(yaml.dump(manifest_content))
+
+        # When
+        result = load_manifest(tmp_path)
+
+        # Then
+        assert isinstance(result, ManifestSchema)
+        assert result.schema_version == schema_version
+        assert result.config.auto_commit is True
+        assert result.plugins == []
+
+    def test_loads_manifest_with_plugins(self, tmp_path: Path) -> None:
+        """Verify load_manifest loads plugins correctly."""
+        # Given
+        plugin_name = "OpenMemory"
+        plugin_directory = "openmemory"
+        manifest_path = tmp_path / "manifest.yaml"
+        manifest_content = {
+            "schema_version": "2026-01-23",
+            "config": {"auto_commit": False},
+            "plugins": [{"name": plugin_name, "directory": plugin_directory}],
+        }
+        manifest_path.write_text(yaml.dump(manifest_content))
+
+        # When
+        result = load_manifest(tmp_path)
+
+        # Then
+        assert len(result.plugins) == 1
+        assert result.plugins[0].name == plugin_name
+        assert result.plugins[0].directory == plugin_directory
+        assert result.config.auto_commit is False
+
+    def test_raises_when_manifest_not_found(self, tmp_path: Path) -> None:
+        """Verify load_manifest raises FileNotFoundError when file missing."""
+        # Given - no manifest.yaml exists
+
+        # When/Then
+        with pytest.raises(FileNotFoundError, match="manifest.yaml"):
+            load_manifest(tmp_path)
+
+    def test_raises_when_manifest_missing_required_field(self, tmp_path: Path) -> None:
+        """Verify load_manifest raises ValidationError when schema_version missing."""
+        # Given - manifest without required schema_version
+        manifest_path = tmp_path / "manifest.yaml"
+        invalid_content = {
+            "config": {"auto_commit": True},
+            "plugins": [],
+        }
+        manifest_path.write_text(yaml.dump(invalid_content))
+
+        # When/Then
+        from pydantic import ValidationError
+
+        with pytest.raises(ValidationError, match="schema_version"):
+            load_manifest(tmp_path)
+
+    def test_raises_when_manifest_has_invalid_plugin_directory(self, tmp_path: Path) -> None:
+        """Verify load_manifest raises ValidationError for invalid plugin directory."""
+        # Given - manifest with invalid plugin directory (starts with number)
+        manifest_path = tmp_path / "manifest.yaml"
+        invalid_directory = "123-invalid"
+        invalid_content = {
+            "schema_version": "2026-01-23",
+            "config": {"auto_commit": True},
+            "plugins": [{"name": "Test Plugin", "directory": invalid_directory}],
+        }
+        manifest_path.write_text(yaml.dump(invalid_content))
+
+        # When/Then
+        from pydantic import ValidationError
+
+        with pytest.raises(ValidationError, match="directory"):
+            load_manifest(tmp_path)
+
+
+class TestSaveManifest:
+    """Tests for save_manifest function."""
+
+    def test_saves_manifest_to_file(self, tmp_path: Path) -> None:
+        """Verify save_manifest writes ManifestSchema to YAML file."""
+        # Given
+        schema_version = "2026-01-23"
+        manifest = ManifestSchema(
+            schema_version=schema_version,
+            config=ConfigSection(auto_commit=True),
+            plugins=[],
+        )
+
+        # When
+        save_manifest(manifest, tmp_path)
+
+        # Then
+        manifest_path = tmp_path / "manifest.yaml"
+        assert manifest_path.exists()
+        saved_content = yaml.safe_load(manifest_path.read_text())
+        assert saved_content["schema_version"] == schema_version
+        assert saved_content["config"]["auto_commit"] is True
+        assert saved_content["plugins"] == []
+
+    def test_saves_manifest_with_plugins(self, tmp_path: Path) -> None:
+        """Verify save_manifest preserves plugin entries."""
+        # Given
+        plugin_name = "Langfuse"
+        plugin_directory = "langfuse"
+        manifest = ManifestSchema(
+            schema_version="2026-01-23",
+            config=ConfigSection(auto_commit=False),
+            plugins=[PluginEntry(name=plugin_name, directory=plugin_directory)],
+        )
+
+        # When
+        save_manifest(manifest, tmp_path)
+
+        # Then
+        manifest_path = tmp_path / "manifest.yaml"
+        saved_content = yaml.safe_load(manifest_path.read_text())
+        assert len(saved_content["plugins"]) == 1
+        assert saved_content["plugins"][0]["name"] == plugin_name
+        assert saved_content["plugins"][0]["directory"] == plugin_directory
+        assert saved_content["config"]["auto_commit"] is False
+
+    def test_overwrites_existing_manifest(self, tmp_path: Path) -> None:
+        """Verify save_manifest overwrites existing file."""
+        # Given - create initial manifest
+        manifest_path = tmp_path / "manifest.yaml"
+        manifest_path.write_text("old content")
+
+        new_manifest = ManifestSchema(
+            schema_version="2026-01-23",
+            config=ConfigSection(auto_commit=True),
+            plugins=[],
+        )
+
+        # When
+        save_manifest(new_manifest, tmp_path)
+
+        # Then
+        saved_content = yaml.safe_load(manifest_path.read_text())
+        assert saved_content["schema_version"] == "2026-01-23"

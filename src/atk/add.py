@@ -13,7 +13,7 @@ from pydantic import ValidationError
 from atk.errors import format_validation_errors
 from atk.git import git_add, git_commit
 from atk.home import validate_atk_home
-from atk.manifest_schema import ManifestSchema, PluginEntry
+from atk.manifest_schema import PluginEntry, load_manifest, save_manifest
 from atk.plugin_schema import PluginSchema
 from atk.sanitize import sanitize_directory_name
 
@@ -174,10 +174,7 @@ def _update_manifest(atk_home: Path, plugin_name: str, directory: str) -> bool:
     Returns:
         True if auto_commit is enabled in config, False otherwise.
     """
-    manifest_path = atk_home / "manifest.yaml"
-    content = manifest_path.read_text()
-    data = yaml.safe_load(content)
-    manifest = ManifestSchema.model_validate(data)
+    manifest = load_manifest(atk_home)
 
     # Remove existing entry with same directory (if any)
     manifest.plugins = [p for p in manifest.plugins if p.directory != directory]
@@ -186,8 +183,6 @@ def _update_manifest(atk_home: Path, plugin_name: str, directory: str) -> bool:
     manifest.plugins.append(PluginEntry(name=plugin_name, directory=directory))
 
     # Write back
-    manifest_path.write_text(
-        yaml.dump(manifest.model_dump(), default_flow_style=False, sort_keys=False)
-    )
+    save_manifest(manifest, atk_home)
 
     return manifest.config.auto_commit

@@ -5,7 +5,9 @@ installed plugins in ATK Home.
 """
 
 import re
+from pathlib import Path
 
+import yaml
 from pydantic import BaseModel, Field, field_validator
 
 # Schema version - update when manifest schema changes
@@ -61,3 +63,37 @@ class ManifestSchema(BaseModel):
         description="List of installed plugins",
     )
 
+
+def load_manifest(atk_home: Path) -> "ManifestSchema":
+    """Load and validate manifest.yaml from ATK Home.
+
+    Args:
+        atk_home: Path to ATK Home directory.
+
+    Returns:
+        Validated ManifestSchema instance.
+
+    Raises:
+        FileNotFoundError: If manifest.yaml does not exist.
+    """
+    manifest_path = atk_home / "manifest.yaml"
+    if not manifest_path.exists():
+        msg = f"manifest.yaml not found at {manifest_path}"
+        raise FileNotFoundError(msg)
+
+    content = manifest_path.read_text()
+    data = yaml.safe_load(content)
+    return ManifestSchema.model_validate(data)
+
+
+def save_manifest(manifest: "ManifestSchema", atk_home: Path) -> None:
+    """Save ManifestSchema to manifest.yaml in ATK Home.
+
+    Args:
+        manifest: ManifestSchema instance to save.
+        atk_home: Path to ATK Home directory.
+    """
+    manifest_path = atk_home / "manifest.yaml"
+    manifest_path.write_text(
+        yaml.dump(manifest.model_dump(), default_flow_style=False, sort_keys=False)
+    )

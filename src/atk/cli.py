@@ -4,7 +4,6 @@ from pathlib import Path
 from typing import Annotated
 
 import typer
-import yaml
 from rich.console import Console
 
 from atk import __version__, exit_codes
@@ -12,7 +11,7 @@ from atk.add import add_plugin
 from atk.git import is_git_available
 from atk.home import get_atk_home, validate_atk_home
 from atk.init import init_atk_home
-from atk.manifest_schema import ManifestSchema
+from atk.manifest_schema import load_manifest
 from atk.remove import remove_plugin
 
 app = typer.Typer(
@@ -73,10 +72,7 @@ def require_ready_home() -> Path:
     atk_home = require_initialized_home()
 
     # Check if git is needed (auto_commit enabled)
-    manifest_path = atk_home / "manifest.yaml"
-    manifest_data = yaml.safe_load(manifest_path.read_text())
-    manifest = ManifestSchema.model_validate(manifest_data)
-
+    manifest = load_manifest(atk_home)
     if manifest.config.auto_commit:
         require_git()
 

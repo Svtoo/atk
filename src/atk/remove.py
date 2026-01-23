@@ -6,11 +6,9 @@ Handles removing plugins from ATK Home.
 import shutil
 from pathlib import Path
 
-import yaml
-
 from atk.git import git_add, git_commit
 from atk.home import validate_atk_home
-from atk.manifest_schema import ManifestSchema
+from atk.manifest_schema import load_manifest, save_manifest
 
 
 def remove_plugin(identifier: str, atk_home: Path) -> bool:
@@ -33,9 +31,7 @@ def remove_plugin(identifier: str, atk_home: Path) -> bool:
         raise ValueError(msg)
 
     # Check if plugin exists in manifest
-    manifest_path = atk_home / "manifest.yaml"
-    manifest_data = yaml.safe_load(manifest_path.read_text())
-    manifest = ManifestSchema.model_validate(manifest_data)
+    manifest = load_manifest(atk_home)
 
     # Find plugin in manifest by directory OR name
     plugin_entry = next(
@@ -60,9 +56,7 @@ def remove_plugin(identifier: str, atk_home: Path) -> bool:
     manifest.plugins = [p for p in manifest.plugins if p.directory != plugin_entry.directory]
 
     # Write updated manifest
-    manifest_path.write_text(
-        yaml.dump(manifest.model_dump(), default_flow_style=False, sort_keys=False)
-    )
+    save_manifest(manifest, atk_home)
 
     # Commit changes if auto_commit is enabled
     if auto_commit:
