@@ -5,7 +5,8 @@
 
 ## Overview
 
-**ATK Home** is the local git-backed repository that stores the manifest and all installed plugins. Every mutation is committed to git, enabling rollback, sync across machines, and full audit trail.
+**ATK Home** is the local git-backed repository that stores the manifest and all installed plugins. Every mutation is
+committed to git, enabling rollback, sync across machines, and full audit trail.
 
 ## Directory Structure
 
@@ -55,14 +56,14 @@ plugins:
 
 Plugin **directory names** must match: `^[a-z][a-z0-9-]*[a-z0-9]$`
 
-| Rule | Example Valid | Example Invalid |
-|------|---------------|-----------------|
-| Lowercase only | `langfuse` | `LangFuse` |
-| Alphanumeric + hyphens | `open-memory` | `open_memory` |
-| Must start with letter | `my-plugin` | `1plugin` |
-| Must end with alphanumeric | `plugin-v2` | `plugin-` |
-| No consecutive hyphens | `my-plugin` | `my--plugin` |
-| Minimum 2 characters | `ab` | `a` |
+| Rule                       | Example Valid | Example Invalid |
+|----------------------------|---------------|-----------------|
+| Lowercase only             | `langfuse`    | `LangFuse`      |
+| Alphanumeric + hyphens     | `open-memory` | `open_memory`   |
+| Must start with letter     | `my-plugin`   | `1plugin`       |
+| Must end with alphanumeric | `plugin-v2`   | `plugin-`       |
+| No consecutive hyphens     | `my-plugin`   | `my--plugin`    |
+| Minimum 2 characters       | `ab`          | `a`             |
 
 Display names (`name` field) have no restrictions—they are for human readability only.
 
@@ -70,21 +71,22 @@ Display names (`name` field) have no restrictions—they are for human readabili
 
 **Only mutations commit**. Read-only operations do not create commits.
 
-| Command | Commits? | Reason |
-|---------|----------|--------|
-| `atk init` | Yes | Creates manifest and .gitignore |
-| `atk add <plugin>` | Yes | Adds plugin to manifest, copies files |
-| `atk remove <plugin>` | Yes | Removes plugin from manifest, deletes files |
-| `atk start/stop/restart` | No | Service control, no file changes |
-| `atk status` | No | Read-only |
-| `atk logs` | No | Read-only |
-| `atk run <plugin> <script>` | No | Executes script, no file changes |
+| Command                     | Commits? | Reason                                        |
+|-----------------------------|----------|-----------------------------------------------|
+| `atk init`                  | Yes      | Creates manifest and .gitignore               |
+| `atk add <plugin>`          | Yes      | Adds plugin to manifest, copies files         |
+| `atk remove <plugin>`       | Yes      | Removes plugin from manifest, deletes files   |
+| `atk start/stop/restart`    | No       | Service control, no file changes              |
+| `atk install`               | No       | Install and/or updates the underlying service |
+| `atk status`                | No       | Read-only                                     |
+| `atk logs`                  | No       | Read-only                                     |
+| `atk run <plugin> <script>` | No       | Executes script, no file changes              |
 
 If `auto_commit: false`, user must manually commit changes.
 
 ## User Scripts
 
-Users can add scripts to plugins for maintenance tasks.
+Users can add scripts to plugins.
 
 ### Location
 
@@ -106,7 +108,7 @@ atk run <plugin> <script>
 
 1. **Maintenance tasks**: Cache cleanup, database maintenance, log rotation
 2. **MCP integration**: AI agents can list and execute scripts programmatically
-3. **Custom workflows**: Tasks specific to user's environment
+3. **Custom workflows**: Tasks specific to user's environment or the plugin
 
 Scripts are tracked in git and sync across machines.
 
@@ -130,15 +132,16 @@ services:
 
 ## Lifecycle Commands (MVP)
 
-| Command | Purpose | Default Implementation |
-|---------|---------|----------------------|
-| `atk start <plugin>` | Start service | `docker compose up -d` |
-| `atk stop <plugin>` | Stop service | `docker compose down` |
-| `atk restart <plugin>` | Restart service | `docker compose restart` |
-| `atk status [plugin]` | Show status | Check container state |
-| `atk logs <plugin>` | View logs | `docker compose logs` |
+| Command                | Purpose         | Default Implementation             |
+|------------------------|-----------------|------------------------------------|
+| `atk start <plugin>`   | Start service   | `docker compose up -d`             |
+| `atk stop <plugin>`    | Stop service    | `docker compose down`              |
+| `atk restart <plugin>` | Restart service | `docker compose restart`           |
+| `atk status [plugin]`  | Show status     | Check container state              |
+| `atk logs <plugin>`    | View logs       | `docker compose logs`              |
+| `atk install <plugin>` | Install/Update  | install lyfecycle from plugin.yaml |
 
-All lifecycle commands are plugin-agnostic—they execute whatever the plugin defines.
+All lifecycle commands are plugin-agnostic,they execute whatever the plugin defines.
 
 ## Plugin Sources (MVP)
 
@@ -161,12 +164,12 @@ atk add ./my-plugin.yaml
 
 ## What's NOT Included
 
-| Feature | Status | Reason |
-|---------|--------|--------|
-| Hooks (pre/post lifecycle) | Deferred | Too much lifecycle complication |
-| Git URL source in manifest | Never | Avoid data duplication with git |
-| Plugin overrides in manifest | Never | Config lives in plugin dirs |
-| Registry support | Post-MVP | Focus on core functionality first |
+| Feature                      | Status   | Reason                            |
+|------------------------------|----------|-----------------------------------|
+| Hooks (pre/post lifecycle)   | Deferred | Too much lifecycle complication   |
+| Git URL source in manifest   | Never    | Avoid data duplication with git   |
+| Plugin overrides in manifest | Never    | Config lives in plugin dirs       |
+| Registry support             | Post-MVP | Focus on core functionality first |
 
 ## Security Considerations
 
@@ -186,11 +189,11 @@ atk add ./my-plugin.yaml
 
 All commands are idempotent:
 
-| Command | Second Run Behavior |
-|---------|---------------------|
-| `atk init` | No-op if already initialized |
-| `atk add foo` | Overwrites if directory exists (recovery scenario) |
-| `atk remove foo` | No-op if foo not installed |
-| `atk start foo` | No-op if foo already running |
-| `atk stop foo` | No-op if foo already stopped |
+| Command          | Second Run Behavior                                |
+|------------------|----------------------------------------------------|
+| `atk init`       | No-op if already initialized                       |
+| `atk add foo`    | Overwrites if directory exists (recovery scenario) |
+| `atk remove foo` | No-op if foo not installed                         |
+| `atk start foo`  | No-op if foo already running                       |
+| `atk stop foo`   | No-op if foo already stopped                       |
 
