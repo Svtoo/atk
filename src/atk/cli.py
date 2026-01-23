@@ -1,9 +1,14 @@
 """ATK CLI entry point."""
 
+from pathlib import Path
+from typing import Annotated
+
 import typer
 from rich.console import Console
 
-from atk import __version__
+from atk import __version__, exit_codes
+from atk.home import get_atk_home
+from atk.init import init_atk_home
 
 app = typer.Typer(
     name="atk",
@@ -95,6 +100,35 @@ def main(
     ),
 ) -> None:
     """Agent Toolkit - Manage AI development tools through a git-backed, declarative manifest."""
+
+
+@app.command()
+def init(
+    directory: Annotated[
+        Path | None,
+        typer.Argument(
+            help="Target directory to initialize. Defaults to ATK_HOME or ~/.atk/",
+        ),
+    ] = None,
+) -> None:
+    """Initialize ATK Home directory.
+
+    Creates the directory structure, initializes git repository, and creates
+    initial commit. If already initialized, this is a no-op.
+    """
+    # Resolve target directory
+    target = directory if directory else get_atk_home()
+
+    result = init_atk_home(target)
+
+    if result.is_valid:
+        console.print(f"[green]✓[/green] ATK Home initialized at {target}")
+        raise typer.Exit(exit_codes.SUCCESS)
+    else:
+        console.print(f"[red]✗[/red] Failed to initialize ATK Home at {target}")
+        for error in result.errors:
+            console.print(f"  [dim]•[/dim] {error}")
+        raise typer.Exit(exit_codes.GENERAL_ERROR)
 
 
 @app.command()
