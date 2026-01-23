@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="assets/logo.png" alt="ATK Logo" width="300px">
+</p>
+
 # atk
 
 **A**I **T**ool**K**it (read as "Attic") — Manage AI development tools through a git-backed, declarative manifest.
