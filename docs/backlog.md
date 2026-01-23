@@ -39,6 +39,25 @@ View or edit manifest configuration (e.g., `auto_commit` flag).
 
 ## Deferred Features
 
+### Sensible Lifecycle Defaults by Service Type
+
+Automatically derive lifecycle commands based on `service.type` when not explicitly defined in plugin.yaml.
+
+| Type | start | stop | restart | logs | status |
+|------|-------|------|---------|------|--------|
+| `docker-compose` | `docker compose up -d` | `docker compose down` | `docker compose restart` | `docker compose logs -f` | `docker compose ps --format json` |
+| `docker` | `docker start {container_name}` | `docker stop {container_name}` | `docker restart {container_name}` | `docker logs -f {container_name}` | `docker inspect {container_name}` |
+| `systemd` | `systemctl start {unit_name}` | `systemctl stop {unit_name}` | `systemctl restart {unit_name}` | `journalctl -u {unit_name} -f` | `systemctl is-active {unit_name}` |
+| `script` | (no default) | (no default) | (no default) | (no default) | (no default) |
+
+**Rationale**: Start simple — require explicit commands. Add defaults later when patterns emerge from real usage.
+
+### Restart Fallback to Stop + Start
+
+If `restart` lifecycle command is not defined, automatically run `stop` then `start`.
+
+**Rationale**: Keep Phase 2 simple. Users can define `restart` explicitly if needed.
+
 ### `--json` Output Flag
 
 All commands could support `--json` for machine-readable output.

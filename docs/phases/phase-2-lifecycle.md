@@ -17,9 +17,10 @@ Phase 2 adds the ability to control plugin services. All lifecycle commands are 
 
 **Key Design Decisions:**
 - Lifecycle commands come from `plugin.yaml` `lifecycle` section
-- Sensible defaults based on `service.type` (docker-compose, docker, systemd, script)
+- **No sensible defaults** — plugin must define commands explicitly (deferred to backlog)
 - Commands run in plugin directory as working directory
 - Exit codes passed through from underlying commands
+- Error if lifecycle command not defined in plugin.yaml
 
 ---
 
@@ -35,16 +36,12 @@ Phase 2 adds the ability to control plugin services. All lifecycle commands are 
 ### 2.1.2 Lifecycle Executor
 - [ ] Create `lifecycle.py` module
   - [ ] `run_lifecycle_command(plugin, command_name)` — execute lifecycle command
-  - [ ] Resolve command: custom → default for service type → error
+  - [ ] Get command from `plugin.lifecycle.<command_name>`
+  - [ ] Error if command not defined (exit code 5: PLUGIN_INVALID)
   - [ ] Run in plugin directory as cwd
   - [ ] Stream stdout/stderr to terminal
   - [ ] Return exit code from command
-- [ ] Default commands by service type:
-  - [ ] `docker-compose`: `docker compose up -d`, `docker compose down`, etc.
-  - [ ] `docker`: `docker start/stop {container_name}`
-  - [ ] `systemd`: `systemctl start/stop {unit_name}`
-  - [ ] `script`: must define in plugin.yaml (no default)
-- [ ] Tests for lifecycle execution (8+ tests)
+- [ ] Tests for lifecycle execution (6+ tests)
 
 ---
 
@@ -80,7 +77,8 @@ Phase 2 adds the ability to control plugin services. All lifecycle commands are 
 
 - [ ] Implement `atk restart <plugin>` command
   - [ ] Find plugin by name or directory
-  - [ ] Run `restart` lifecycle command (or stop + start if not defined)
+  - [ ] Run `restart` lifecycle command
+  - [ ] Error if `restart` not defined (no automatic stop+start fallback)
   - [ ] Report success/failure
 - [ ] Implement `atk restart --all`
   - [ ] Stop all (reverse order), then start all (manifest order)
