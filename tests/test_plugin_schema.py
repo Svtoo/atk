@@ -2,7 +2,7 @@
 
 import pytest
 
-from atk.schema import (
+from atk.plugin_schema import (
     EnvVarConfig,
     LifecycleConfig,
     McpConfig,

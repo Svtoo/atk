@@ -2,7 +2,7 @@
 
 import pytest
 
-from atk.manifest import ConfigSection, ManifestSchema, PluginEntry
+from atk.manifest_schema import ConfigSection, ManifestSchema, PluginEntry
 
 
 class TestPluginEntry:

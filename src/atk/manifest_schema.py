@@ -8,6 +8,9 @@ import re
 
 from pydantic import BaseModel, Field, field_validator
 
+# Schema version - update when manifest schema changes
+MANIFEST_SCHEMA_VERSION = "2026-01-23"
+
 # Directory name validation regex per atk-home-spec.md
 # Rules: lowercase, alphanumeric + hyphens, starts with letter,
 # ends with alphanumeric, no consecutive hyphens, minimum 2 chars

@@ -1,13 +1,16 @@
 """Tests for atk init command."""
 
+import subprocess
 from pathlib import Path
 
 import pytest
+import yaml
 from typer.testing import CliRunner
 
 from atk import exit_codes
 from atk.cli import app
 from atk.init import init_atk_home
+from atk.manifest_schema import ManifestSchema
 
 
 class TestInitAtkHome:
@@ -37,11 +40,14 @@ class TestInitAtkHome:
         # When
         init_atk_home(target)
 
-        # Then
+        # Then - deserialize and validate as Pydantic model
         manifest_content = (target / "manifest.yaml").read_text()
-        assert "schema_version:" in manifest_content
-        assert "plugins:" in manifest_content
-        assert "auto_commit: true" in manifest_content
+        manifest_data = yaml.safe_load(manifest_content)
+        manifest = ManifestSchema(**manifest_data)
+
+        assert manifest.schema_version is not None
+        assert manifest.config.auto_commit is True
+        assert manifest.plugins == []
 
     def test_gitignore_excludes_env_files(self, tmp_path: Path) -> None:
         """Verify .gitignore contains *.env pattern."""
@@ -64,8 +70,6 @@ class TestInitAtkHome:
         init_atk_home(target)
 
         # Then - check git log has initial commit
-        import subprocess
-
         result = subprocess.run(
             ["git", "log", "--oneline", "-1"],
             cwd=target,

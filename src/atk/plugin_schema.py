@@ -9,6 +9,9 @@ from typing import Literal
 
 from pydantic import BaseModel, Field
 
+# Schema version - update when plugin schema changes
+PLUGIN_SCHEMA_VERSION = "2026-01-23"
+
 
 class ServiceType(str, Enum):
     """Supported service types for running plugins."""

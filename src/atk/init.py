@@ -6,22 +6,30 @@ with the required structure, git repository, and initial commit.
 
 import os
 import subprocess
-from datetime import UTC, datetime
 from pathlib import Path
 
+import yaml
+
 from atk.home import validate_atk_home
+from atk.manifest_schema import (
+    MANIFEST_SCHEMA_VERSION,
+    ConfigSection,
+    ManifestSchema,
+)
 from atk.validation import ValidationResult
 
-# Schema version for new manifest files
-SCHEMA_VERSION = datetime.now(UTC).strftime("%Y-%m-%d")
 
-# Initial manifest content
-MANIFEST_TEMPLATE = """\
-schema_version: "{schema_version}"
-config:
-  auto_commit: true
-plugins: []
-"""
+def _create_initial_manifest() -> str:
+    """Create initial manifest content from Pydantic model.
+
+    This ensures the manifest is always valid according to schema.
+    """
+    manifest = ManifestSchema(
+        schema_version=MANIFEST_SCHEMA_VERSION,
+        config=ConfigSection(auto_commit=True),
+        plugins=[],
+    )
+    return yaml.dump(manifest.model_dump(), default_flow_style=False, sort_keys=False)
 
 # Gitignore content
 GITIGNORE_CONTENT = """\
@@ -79,7 +87,7 @@ def init_atk_home(path: Path) -> ValidationResult:
         (path / "plugins").mkdir(exist_ok=True)
 
         # Write manifest.yaml
-        manifest_content = MANIFEST_TEMPLATE.format(schema_version=SCHEMA_VERSION)
+        manifest_content = _create_initial_manifest()
         (path / "manifest.yaml").write_text(manifest_content)
 
         # Write .gitignore
