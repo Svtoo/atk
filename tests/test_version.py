@@ -31,19 +31,22 @@ class TestVersion:
         assert app is not None
         assert app.info.name == "atk"
 
-    def test_version_flag_shows_version(self) -> None:
-        """Verify that --version flag outputs the version."""
+    def test_version_flag_shows_banner(self) -> None:
+        """Verify that --version flag outputs the banner with version."""
         # Given
         from atk.cli import app
 
-        expected_output = f"atk {self.expected_version}\n"
+        version = self.expected_version
 
         # When
         result = self.runner.invoke(app, ["--version"])
 
         # Then
         assert result.exit_code == 0
-        assert result.output == expected_output
+        # Banner contains version info
+        assert f"v{version}" in result.output
+        assert "atk" in result.output
+        assert "AI Toolkit" in result.output
 
     def test_status_command_exists(self) -> None:
         """Verify that status command is available."""
