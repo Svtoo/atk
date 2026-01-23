@@ -14,27 +14,30 @@
 
 ## Phase 1: Core CLI (Current)
 
-### 1.1 Infrastructure
-- [ ] Create `manifest.py` — Pydantic models for manifest.yaml
-- [ ] Create `home.py` — ATK Home resolution and validation
-  - [ ] `get_atk_home()` — resolve ATK_HOME env var or default ~/.atk/
-  - [ ] `is_valid_atk_home(path)` — check if directory is valid ATK Home
-  - [ ] `ATKHomeNotInitializedError` exception
+### 1.1 Infrastructure ✅
+- [x] Create `manifest_schema.py` — Pydantic models for manifest.yaml
+- [x] Create `home.py` — ATK Home resolution and validation
+  - [x] `get_atk_home()` — resolve ATK_HOME env var or default ~/.atk/
+  - [x] `validate_atk_home(path)` — returns ValidationResult with errors
+  - [x] `ATKHomeNotInitializedError` exception
+- [x] Create `exit_codes.py` with constants (0-7)
+- [x] Create `validation.py` with ValidationResult dataclass
 
-### 1.2 `atk init`
-- [ ] Implement `atk init [directory]` command
-  - [ ] Resolve target directory (argument > ATK_HOME > ~/.atk/)
-  - [ ] Create directory structure (manifest.yaml, plugins/, .gitignore)
-  - [ ] Initialize git repository
-  - [ ] Create initial commit
-  - [ ] No-op if already initialized (idempotent)
-  - [ ] Exit code 1 if path exists but is invalid
-- [ ] Tests with temporary directory fixture
+### 1.2 `atk init` ✅
+- [x] Implement `atk init [directory]` command
+  - [x] Resolve target directory (argument > ATK_HOME > ~/.atk/)
+  - [x] Create directory structure (manifest.yaml, plugins/, .gitignore)
+  - [x] Initialize git repository
+  - [x] Create initial commit
+  - [x] No-op if already initialized (idempotent)
+  - [x] Exit code 1 if path exists but is invalid
+- [x] Tests with temporary directory fixture (12 tests)
 
-### 1.3 `atk add`
-- [ ] Implement plugin directory name sanitization
-  - [ ] Regex validation: `^[a-z][a-z0-9-]*[a-z0-9]$`
-  - [ ] Generate from display name (lowercase, replace spaces/underscores with hyphens)
+### 1.3 `atk add` (Current)
+- [x] Implement plugin directory name sanitization
+  - [x] Regex validation: `^[a-z][a-z0-9]*(-[a-z0-9]+)*$`
+  - [x] Generate from display name (lowercase, replace spaces/underscores with hyphens)
+  - [x] Strip special characters and injection attempts
 - [ ] Implement `atk add <source>` command
   - [ ] Detect source type (directory vs single file)
   - [ ] Validate source contains valid plugin.yaml
@@ -64,23 +67,15 @@
 - [ ] Tests
 
 ### 1.6 Git Integration
-- [ ] Create `git.py` — Git operations via subprocess
+- [ ] Extract git operations to `git.py` module (currently inline in init.py)
   - [ ] `git_init(path)` — initialize git repo
   - [ ] `git_add(path, files)` — stage files
   - [ ] `git_commit(path, message)` — commit with message
   - [ ] `is_git_repo(path)` — check if directory is git repo
 - [ ] Tests for git operations
 
-### 1.7 Exit Codes
-- [ ] Create `exit_codes.py` with constants:
-  - [ ] SUCCESS = 0
-  - [ ] GENERAL_ERROR = 1
-  - [ ] INVALID_ARGS = 2
-  - [ ] HOME_NOT_INITIALIZED = 3
-  - [ ] PLUGIN_NOT_FOUND = 4
-  - [ ] PLUGIN_INVALID = 5
-  - [ ] DOCKER_ERROR = 6
-  - [ ] GIT_ERROR = 7
+### 1.7 Exit Codes ✅
+- [x] Create `exit_codes.py` with constants (0-7)
 - [ ] Use exit codes consistently across all commands
 
 ## Phase 2: Service Lifecycle
