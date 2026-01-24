@@ -31,6 +31,7 @@ lifecycle:
   start: ./start.sh
   stop: ./stop.sh
   status: ./status.sh
+  logs: git log --oneline | cat
 
 mcp:
   transport: stdio
