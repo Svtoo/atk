@@ -70,31 +70,35 @@ Run the install lifecycle command for plugin(s). Used for:
 
 ---
 
-## 2.3 `atk start`
+## 2.3 `atk start` ✅
 
-- [ ] Implement `atk start <plugin>` command
-  - [ ] Find plugin by name or directory
-  - [ ] Run `start` lifecycle command
-  - [ ] Report success/failure
-- [ ] Implement `atk start --all`
-  - [ ] Start all plugins in manifest order
-  - [ ] Continue on failure, report summary
-- [ ] CLI integration with proper exit codes
-- [ ] Tests (6+ tests: unit + CLI)
+- [x] Implement `atk start <plugin>` command
+  - [x] Find plugin by name or directory
+  - [x] Run `start` lifecycle command
+  - [x] Show warning if `start` not defined (fail loudly)
+  - [x] Report success/failure
+- [x] Implement `atk start --all`
+  - [x] Start all plugins in manifest order
+  - [x] Continue on failure, report summary
+  - [x] Track skipped plugins (no start defined)
+- [x] CLI integration with proper exit codes
+- [x] Tests (11 tests: unit + CLI)
 
 ---
 
-## 2.4 `atk stop`
+## 2.4 `atk stop` ✅
 
-- [ ] Implement `atk stop <plugin>` command
-  - [ ] Find plugin by name or directory
-  - [ ] Run `stop` lifecycle command
-  - [ ] Report success/failure
-- [ ] Implement `atk stop --all`
-  - [ ] Stop all plugins in **reverse** manifest order
-  - [ ] Continue on failure, report summary
-- [ ] CLI integration with proper exit codes
-- [ ] Tests (6+ tests: unit + CLI)
+- [x] Implement `atk stop <plugin>` command
+  - [x] Find plugin by name or directory
+  - [x] Run `stop` lifecycle command
+  - [x] Show warning if `stop` not defined (fail loudly)
+  - [x] Report success/failure
+- [x] Implement `atk stop --all`
+  - [x] Stop all plugins in **reverse** manifest order
+  - [x] Continue on failure, report summary
+  - [x] Track skipped plugins (no stop defined)
+- [x] CLI integration with proper exit codes
+- [x] Tests (8 tests: unit + CLI)
 
 ---
 
