@@ -5,6 +5,7 @@ Handles running lifecycle commands defined in plugin.yaml.
 
 import subprocess
 from dataclasses import dataclass
+from enum import Enum
 from pathlib import Path
 from typing import Literal
 
@@ -14,6 +15,40 @@ from atk.plugin_schema import PluginSchema
 
 # Valid lifecycle command names matching LifecycleConfig fields
 LifecycleCommand = Literal["install", "start", "stop", "restart", "logs", "status"]
+
+
+class PluginStatus(str, Enum):
+    """Plugin status states."""
+
+    RUNNING = "running"
+    STOPPED = "stopped"
+    UNKNOWN = "unknown"
+
+
+@dataclass
+class PortStatus:
+    """Status of a single port."""
+
+    port: int
+    listening: bool | None  # None = not checked (plugin not running)
+
+
+def is_port_listening(port: int) -> bool:
+    """Check if a port is listening on localhost.
+
+    Uses netcat (nc) to check if the port is open.
+
+    Args:
+        port: Port number to check.
+
+    Returns:
+        True if something is listening on the port, False otherwise.
+    """
+    result = subprocess.run(
+        ["nc", "-z", "-w", "1", "localhost", str(port)],
+        capture_output=True,
+    )
+    return result.returncode == 0
 
 
 class LifecycleCommandNotDefinedError(Exception):
@@ -225,3 +260,76 @@ def restart_all_plugins(atk_home: Path) -> RestartAllResult:
 
     return RestartAllResult(stop_result=stop_result, start_result=start_result)
 
+
+@dataclass
+class PluginStatusResult:
+    """Result of checking a plugin's status."""
+
+    name: str
+    status: PluginStatus
+    ports: list[PortStatus]
+
+
+def get_plugin_status(atk_home: Path, identifier: str) -> PluginStatusResult:
+    """Get the status of a single plugin.
+
+    Args:
+        atk_home: Path to ATK Home directory.
+        identifier: Plugin name or directory.
+
+    Returns:
+        PluginStatusResult with status and ports.
+
+    Raises:
+        PluginNotFoundError: If plugin is not in the manifest.
+    """
+    plugin, plugin_dir = load_plugin(atk_home, identifier)
+
+    raw_ports = [p.port for p in plugin.ports]
+
+    if plugin.lifecycle is None or plugin.lifecycle.status is None:
+        ports = [PortStatus(port=p, listening=None) for p in raw_ports]
+        return PluginStatusResult(
+            name=plugin.name,
+            status=PluginStatus.UNKNOWN,
+            ports=ports,
+        )
+
+    result = subprocess.run(
+        plugin.lifecycle.status,
+        shell=True,
+        cwd=plugin_dir,
+        capture_output=True,
+    )
+
+    status = PluginStatus.RUNNING if result.returncode == 0 else PluginStatus.STOPPED
+
+    if status == PluginStatus.RUNNING:
+        ports = [PortStatus(port=p, listening=is_port_listening(p)) for p in raw_ports]
+    else:
+        ports = [PortStatus(port=p, listening=None) for p in raw_ports]
+
+    return PluginStatusResult(
+        name=plugin.name,
+        status=status,
+        ports=ports,
+    )
+
+
+def get_all_plugins_status(atk_home: Path) -> list[PluginStatusResult]:
+    """Get the status of all plugins.
+
+    Args:
+        atk_home: Path to ATK Home directory.
+
+    Returns:
+        List of PluginStatusResult for each plugin in manifest order.
+    """
+    manifest = load_manifest(atk_home)
+    results: list[PluginStatusResult] = []
+
+    for plugin_entry in manifest.plugins:
+        result = get_plugin_status(atk_home, plugin_entry.directory)
+        results.append(result)
+
+    return results

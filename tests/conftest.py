@@ -31,7 +31,7 @@ def atk_home(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
 
 
 # Type alias for the plugin factory function
-PluginFactory = Callable[[str, str, dict[str, str] | None], Path]
+PluginFactory = Callable[..., Path]
 
 
 @pytest.fixture
@@ -40,17 +40,19 @@ def create_plugin(atk_home: Path) -> PluginFactory:
 
     The fixture itself takes no arguments beyond the atk_home dependency.
     It returns a factory function with signature:
-        (name: str, directory: str, lifecycle: dict | None) -> Path
+        (name: str, directory: str, lifecycle: dict | None, ports: list | None) -> Path
 
     Usage:
         def test_something(create_plugin):
             plugin_dir = create_plugin("MyPlugin", "my-plugin", {"start": "echo hi"})
+            plugin_with_ports = create_plugin("Other", "other", None, ports=[{"port": 8080}])
     """
 
     def _create(
         name: str,
         directory: str,
         lifecycle: dict[str, str] | None = None,
+        ports: list[dict] | None = None,
     ) -> Path:
         plugin_dir = atk_home / "plugins" / directory
         plugin_dir.mkdir(parents=True, exist_ok=True)
@@ -62,6 +64,8 @@ def create_plugin(atk_home: Path) -> PluginFactory:
         }
         if lifecycle:
             plugin_yaml["lifecycle"] = lifecycle
+        if ports:
+            plugin_yaml["ports"] = ports
 
         (plugin_dir / "plugin.yaml").write_text(yaml.dump(plugin_yaml))
 

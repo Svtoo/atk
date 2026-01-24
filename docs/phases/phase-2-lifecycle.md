@@ -117,21 +117,21 @@ Run the install lifecycle command for plugin(s). Used for:
 
 ---
 
-## 2.6 `atk status`
+## 2.6 `atk status` ✅
 
-- [ ] Implement `atk status [plugin]` command
-  - [ ] If plugin specified: show status for that plugin
-  - [ ] If no plugin: show status for all plugins
-- [ ] Status display format:
+- [x] Implement `atk status [plugin]` command
+  - [x] If plugin specified: show status for that plugin
+  - [x] If no plugin: show status for all plugins
+- [x] Status display format:
   ```
   NAME              STATUS    PORTS
   OpenMemory        running   8787
   Langfuse          stopped   -
   ```
-- [ ] Run `status` lifecycle command to get state
-- [ ] Parse output to determine: running, stopped, error, unknown
-- [ ] CLI integration with proper exit codes
-- [ ] Tests (6+ tests)
+- [x] Run `status` lifecycle command to get state
+- [x] Parse output to determine: running, stopped, unknown
+- [x] CLI integration with proper exit codes
+- [x] Tests (14 tests: 5 unit + 2 get_all + 7 CLI)
 
 ---
 

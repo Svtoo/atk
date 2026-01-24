@@ -385,3 +385,263 @@ class TestRestartCli:
         assert result.exit_code == exit_codes.GENERAL_ERROR
         assert "stop phase had failures" in result.output
         assert "Started plugin" not in result.output
+
+
+# =============================================================================
+# Status Command Tests
+# =============================================================================
+
+
+class TestGetPluginStatus:
+    """Tests for get_plugin_status function."""
+
+    def test_returns_running_when_exit_code_zero(
+        self, atk_home: Path, create_plugin: PluginFactory
+    ) -> None:
+        """Verify status is RUNNING when status command exits 0."""
+        from atk.lifecycle import PluginStatus, get_plugin_status
+
+        create_plugin("TestPlugin", "test-plugin", {"status": "exit 0"})
+
+        result = get_plugin_status(atk_home, "test-plugin")
+
+        assert result.status == PluginStatus.RUNNING
+
+    def test_returns_stopped_when_exit_code_nonzero(
+        self, atk_home: Path, create_plugin: PluginFactory
+    ) -> None:
+        """Verify status is STOPPED when status command exits non-zero."""
+        from atk.lifecycle import PluginStatus, get_plugin_status
+
+        create_plugin("TestPlugin", "test-plugin", {"status": "exit 1"})
+
+        result = get_plugin_status(atk_home, "test-plugin")
+
+        assert result.status == PluginStatus.STOPPED
+
+    def test_returns_unknown_when_status_not_defined(
+        self, atk_home: Path, create_plugin: PluginFactory
+    ) -> None:
+        """Verify status is UNKNOWN when no status command defined."""
+        from atk.lifecycle import PluginStatus, get_plugin_status
+
+        create_plugin("TestPlugin", "test-plugin", {"start": "echo start"})
+
+        result = get_plugin_status(atk_home, "test-plugin")
+
+        assert result.status == PluginStatus.UNKNOWN
+
+    def test_includes_plugin_name(
+        self, atk_home: Path, create_plugin: PluginFactory
+    ) -> None:
+        """Verify result includes plugin name."""
+        from atk.lifecycle import get_plugin_status
+
+        plugin_name = "TestPlugin"
+        create_plugin(plugin_name, "test-plugin", {"status": "exit 0"})
+
+        result = get_plugin_status(atk_home, "test-plugin")
+
+        assert result.name == plugin_name
+
+    def test_includes_ports_from_plugin(
+        self, atk_home: Path
+    ) -> None:
+        """Verify result includes ports from plugin.yaml."""
+        from atk.lifecycle import PortStatus, get_plugin_status
+        from atk.manifest_schema import PluginEntry, load_manifest, save_manifest
+
+        plugin_dir = atk_home / "plugins" / "test-plugin"
+        plugin_dir.mkdir(parents=True)
+
+        port_8080 = 8080
+        port_443 = 443
+        plugin_yaml = {
+            "schema_version": PLUGIN_SCHEMA_VERSION,
+            "name": "TestPlugin",
+            "description": "Test",
+            "lifecycle": {"status": "exit 0"},
+            "ports": [
+                {"port": port_8080, "name": "http"},
+                {"port": port_443, "protocol": "https"},
+            ],
+        }
+        (plugin_dir / "plugin.yaml").write_text(yaml.dump(plugin_yaml))
+
+        manifest = load_manifest(atk_home)
+        manifest.plugins.append(PluginEntry(name="TestPlugin", directory="test-plugin"))
+        save_manifest(manifest, atk_home)
+
+        result = get_plugin_status(atk_home, "test-plugin")
+
+        assert len(result.ports) == 2
+        assert result.ports[0].port == port_8080
+        assert result.ports[1].port == port_443
+        assert all(isinstance(p, PortStatus) for p in result.ports)
+
+    def test_port_listening_checked_when_running(
+        self, atk_home: Path, create_plugin: PluginFactory
+    ) -> None:
+        """Verify port listening is checked when status is RUNNING."""
+        from atk.lifecycle import PluginStatus, get_plugin_status
+
+        create_plugin(
+            "TestPlugin",
+            "test-plugin",
+            {"status": "exit 0"},
+            ports=[{"port": 59999, "name": "test"}],
+        )
+
+        result = get_plugin_status(atk_home, "test-plugin")
+
+        assert result.status == PluginStatus.RUNNING
+        assert len(result.ports) == 1
+        assert result.ports[0].port == 59999
+        assert result.ports[0].listening is not None
+
+    def test_port_listening_not_checked_when_stopped(
+        self, atk_home: Path, create_plugin: PluginFactory
+    ) -> None:
+        """Verify port listening is NOT checked when status is STOPPED."""
+        from atk.lifecycle import PluginStatus, get_plugin_status
+
+        create_plugin(
+            "TestPlugin",
+            "test-plugin",
+            {"status": "exit 1"},
+            ports=[{"port": 59999, "name": "test"}],
+        )
+
+        result = get_plugin_status(atk_home, "test-plugin")
+
+        assert result.status == PluginStatus.STOPPED
+        assert len(result.ports) == 1
+        assert result.ports[0].port == 59999
+        assert result.ports[0].listening is None
+
+
+class TestGetAllPluginsStatus:
+    """Tests for get_all_plugins_status function."""
+
+    def test_returns_status_for_all_plugins(
+        self, atk_home: Path, create_plugin: PluginFactory
+    ) -> None:
+        """Verify returns status for each plugin in manifest."""
+        from atk.lifecycle import PluginStatus, get_all_plugins_status
+
+        create_plugin("Plugin1", "plugin1", {"status": "exit 0"})
+        create_plugin("Plugin2", "plugin2", {"status": "exit 1"})
+
+        results = get_all_plugins_status(atk_home)
+
+        assert len(results) == 2
+        assert results[0].name == "Plugin1"
+        assert results[0].status == PluginStatus.RUNNING
+        assert results[1].name == "Plugin2"
+        assert results[1].status == PluginStatus.STOPPED
+
+    def test_returns_empty_list_when_no_plugins(
+        self, atk_home: Path
+    ) -> None:
+        """Verify returns empty list when manifest has no plugins."""
+        from atk.lifecycle import get_all_plugins_status
+
+        results = get_all_plugins_status(atk_home)
+
+        assert results == []
+
+
+@pytest.mark.usefixtures("atk_home")
+class TestStatusCli:
+    """Tests for atk status CLI command."""
+
+    def test_cli_status_shows_table(
+        self, create_plugin: PluginFactory, cli_runner
+    ) -> None:
+        """Verify CLI status shows plugin status in table format."""
+        create_plugin("TestPlugin", "test-plugin", {"status": "exit 0"})
+
+        result = cli_runner.invoke(app, ["status"])
+
+        assert result.exit_code == exit_codes.SUCCESS
+        assert "TestPlugin" in result.output
+        assert "running" in result.output.lower()
+
+    def test_cli_status_shows_stopped(
+        self, create_plugin: PluginFactory, cli_runner
+    ) -> None:
+        """Verify CLI status shows stopped plugins."""
+        create_plugin("TestPlugin", "test-plugin", {"status": "exit 1"})
+
+        result = cli_runner.invoke(app, ["status"])
+
+        assert result.exit_code == exit_codes.SUCCESS
+        assert "stopped" in result.output.lower()
+
+    def test_cli_status_shows_unknown_when_no_status_command(
+        self, create_plugin: PluginFactory, cli_runner
+    ) -> None:
+        """Verify CLI shows unknown for plugins without status command."""
+        create_plugin("TestPlugin", "test-plugin", {"start": "echo start"})
+
+        result = cli_runner.invoke(app, ["status"])
+
+        assert result.exit_code == exit_codes.SUCCESS
+        assert "unknown" in result.output.lower()
+
+    def test_cli_status_shows_ports(
+        self, atk_home: Path, cli_runner
+    ) -> None:
+        """Verify CLI status shows ports column."""
+        from atk.manifest_schema import PluginEntry, load_manifest, save_manifest
+
+        plugin_dir = atk_home / "plugins" / "test-plugin"
+        plugin_dir.mkdir(parents=True)
+        plugin_yaml = {
+            "schema_version": PLUGIN_SCHEMA_VERSION,
+            "name": "TestPlugin",
+            "description": "Test",
+            "lifecycle": {"status": "exit 0"},
+            "ports": [{"port": 8787}],
+        }
+        (plugin_dir / "plugin.yaml").write_text(yaml.dump(plugin_yaml))
+        manifest = load_manifest(atk_home)
+        manifest.plugins.append(PluginEntry(name="TestPlugin", directory="test-plugin"))
+        save_manifest(manifest, atk_home)
+
+        result = cli_runner.invoke(app, ["status"])
+
+        assert result.exit_code == exit_codes.SUCCESS
+        assert "8787" in result.output
+
+    def test_cli_status_single_plugin(
+        self, create_plugin: PluginFactory, cli_runner
+    ) -> None:
+        """Verify CLI status for a specific plugin."""
+        create_plugin("TestPlugin", "test-plugin", {"status": "exit 0"})
+        create_plugin("OtherPlugin", "other-plugin", {"status": "exit 1"})
+
+        result = cli_runner.invoke(app, ["status", "test-plugin"])
+
+        assert result.exit_code == exit_codes.SUCCESS
+        assert "TestPlugin" in result.output
+        # Should only show the requested plugin
+        assert "OtherPlugin" not in result.output
+
+    def test_cli_status_plugin_not_found(
+        self, cli_runner
+    ) -> None:
+        """Verify CLI returns error when plugin not found."""
+        result = cli_runner.invoke(app, ["status", "nonexistent"])
+
+        assert result.exit_code == exit_codes.PLUGIN_NOT_FOUND
+        assert "not found" in result.output.lower()
+
+    def test_cli_status_no_plugins_message(
+        self, cli_runner
+    ) -> None:
+        """Verify CLI shows message when no plugins installed."""
+        result = cli_runner.invoke(app, ["status"])
+
+        assert result.exit_code == exit_codes.SUCCESS
+        assert "no plugins" in result.output.lower()

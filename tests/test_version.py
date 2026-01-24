@@ -48,15 +48,16 @@ class TestVersion:
         assert "atk" in result.output
         assert "AI Toolkit" in result.output
 
-    def test_status_command_exists(self) -> None:
+    def test_status_command_exists(self, tmp_path, monkeypatch) -> None:
         """Verify that status command is available."""
-        # Given
         from atk.cli import app
+        from atk.init import init_atk_home
 
-        # When
+        monkeypatch.setenv("ATK_HOME", str(tmp_path))
+        init_atk_home(tmp_path)
+
         result = self.runner.invoke(app, ["status"])
 
-        # Then
         assert result.exit_code == 0
         assert "No plugins installed" in result.output
 

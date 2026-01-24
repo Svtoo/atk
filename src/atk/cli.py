@@ -5,6 +5,7 @@ from typing import Annotated
 
 import typer
 from rich.console import Console
+from rich.table import Table
 
 from atk import exit_codes
 from atk.add import add_plugin
@@ -15,6 +16,11 @@ from atk.init import init_atk_home
 from atk.lifecycle import (
     LifecycleCommand,
     LifecycleCommandNotDefinedError,
+    PluginStatus,
+    PluginStatusResult,
+    PortStatus,
+    get_all_plugins_status,
+    get_plugin_status,
     restart_all_plugins,
     run_all_plugins_lifecycle,
     run_plugin_lifecycle,
@@ -417,9 +423,87 @@ def restart(
 
 
 @app.command()
-def status() -> None:
-    """Show status of all installed plugins."""
-    typer.echo("No plugins installed yet.")
+def status(
+    plugin: Annotated[
+        str | None,
+        typer.Argument(
+            help="Plugin name or directory to check status for.",
+        ),
+    ] = None,
+) -> None:
+    """Show status of installed plugins.
+
+    If a plugin is specified, shows status for that plugin only.
+    Otherwise, shows status for all plugins in a table format.
+    """
+    atk_home = require_initialized_home()
+
+    # Single plugin status
+    if plugin:
+        try:
+            result = get_plugin_status(atk_home, plugin)
+            _print_status_table([result])
+            raise typer.Exit(exit_codes.SUCCESS)
+        except PluginNotFoundError:
+            console.print(f"[red]✗[/red] Plugin '{plugin}' not found in manifest")
+            raise typer.Exit(exit_codes.PLUGIN_NOT_FOUND) from None
+
+    # All plugins status
+    results = get_all_plugins_status(atk_home)
+
+    if not results:
+        console.print("[dim]No plugins installed.[/dim]")
+        raise typer.Exit(exit_codes.SUCCESS)
+
+    _print_status_table(results)
+    raise typer.Exit(exit_codes.SUCCESS)
+
+
+def _format_port(port_status: PortStatus) -> str:
+    """Format a port with listening status indicator."""
+    if not isinstance(port_status, PortStatus):
+        return str(port_status)
+
+    if port_status.listening is None:
+        return str(port_status.port)
+    elif port_status.listening:
+        return f"[green]{port_status.port} ✓[/green]"
+    else:
+        return f"[red]{port_status.port} ✗[/red]"
+
+
+def _print_status_table(results: list[PluginStatusResult]) -> None:
+    """Print a status table for the given plugin status results."""
+
+    table = Table(show_header=True, header_style="bold")
+    table.add_column("NAME", style="cyan")
+    table.add_column("STATUS")
+    table.add_column("PORTS")
+
+    for result in results:
+        if not isinstance(result, PluginStatusResult):
+            continue
+
+        if result.status == PluginStatus.RUNNING:
+            status_str = "[green]running[/green]"
+        elif result.status == PluginStatus.STOPPED:
+            status_str = "[red]stopped[/red]"
+        else:
+            status_str = "[yellow]unknown[/yellow]"
+
+        ports_str = ", ".join(_format_port(p) for p in result.ports) if result.ports else "-"
+
+        table.add_row(result.name, status_str, ports_str)
+
+    console.print(table)
+
+    has_port_checks = any(
+        p.listening is not None for r in results for p in r.ports
+    )
+    if has_port_checks:
+        console.print()
+        console.print("[dim]Legend: ✓ port listening, ✗ port not listening[/dim]")
+        console.print("[dim]Note: Port checks verify if something is listening, not that it's the plugin.[/dim]")
 
 
 if __name__ == "__main__":
