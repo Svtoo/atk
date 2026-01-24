@@ -7,7 +7,6 @@ import yaml
 
 from atk.init import init_atk_home
 from atk.manifest_schema import (
-    ManifestSchema,
     PluginEntry,
     load_manifest,
     save_manifest,

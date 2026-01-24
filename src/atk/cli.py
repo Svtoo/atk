@@ -151,12 +151,12 @@ def _run_lifecycle_cli(
         raise typer.Exit(exit_code)
     except PluginNotFoundError:
         console.print(f"[red]✗[/red] Plugin '{plugin}' not found in manifest")
-        raise typer.Exit(exit_codes.PLUGIN_NOT_FOUND)
+        raise typer.Exit(exit_codes.PLUGIN_NOT_FOUND) from None
     except LifecycleCommandNotDefinedError:
         console.print(
             f"[yellow]![/yellow] Plugin '{plugin}' has no {command_name} command defined"
         )
-        raise typer.Exit(exit_codes.SUCCESS)
+        raise typer.Exit(exit_codes.SUCCESS) from None
 
 
 def print_banner() -> None:
@@ -407,6 +407,77 @@ def stop(
     (opposite of start order) to handle dependencies correctly.
     """
     _run_lifecycle_cli("stop", plugin, all_plugins, reverse=True)
+
+
+@app.command()
+def restart(
+    plugin: Annotated[
+        str | None,
+        typer.Argument(
+            help="Plugin name or directory to restart.",
+        ),
+    ] = None,
+    all_plugins: Annotated[
+        bool,
+        typer.Option(
+            "--all",
+            help="Restart all plugins (stop all, then start all).",
+        ),
+    ] = False,
+) -> None:
+    """Run the restart lifecycle command for a plugin.
+
+    For a single plugin: Executes the restart command defined in plugin.yaml.
+    Shows a warning if no restart command is defined.
+
+    For --all: Stops all plugins in reverse order, then starts all in
+    manifest order. If the stop phase has failures, the start phase is skipped.
+    """
+    # Single plugin case - use standard lifecycle handler
+    if plugin and not all_plugins:
+        _run_lifecycle_cli("restart", plugin, all_plugins)
+        return
+
+    # --all case - custom two-phase handling
+    if all_plugins and plugin:
+        console.print("[red]✗[/red] Cannot specify both plugin and --all")
+        raise typer.Exit(exit_codes.INVALID_ARGS)
+
+    if not all_plugins and not plugin:
+        console.print("[red]✗[/red] Must specify plugin or --all")
+        raise typer.Exit(exit_codes.INVALID_ARGS)
+
+    # Import here to avoid circular dependency
+    from atk.restart import restart_all_plugins
+
+    atk_home = require_ready_home()
+    result = restart_all_plugins(atk_home)
+
+    # Report stop phase results
+    for name in result.stop_succeeded:
+        console.print(f"[green]✓[/green] Stopped plugin '{name}'")
+    for name in result.stop_skipped:
+        console.print(f"[yellow]![/yellow] Plugin '{name}' has no stop command defined")
+    for name, code in result.stop_failed:
+        console.print(f"[red]✗[/red] Stop failed for plugin '{name}' (exit code {code})")
+
+    # If stop phase failed, report and exit
+    if not result.stop_result.all_succeeded:
+        console.print("[red]✗[/red] Restart aborted: stop phase had failures")
+        raise typer.Exit(exit_codes.GENERAL_ERROR)
+
+    # Report start phase results
+    for name in result.start_succeeded:
+        console.print(f"[green]✓[/green] Started plugin '{name}'")
+    for name in result.start_skipped:
+        console.print(f"[yellow]![/yellow] Plugin '{name}' has no start command defined")
+    for name, code in result.start_failed:
+        console.print(f"[red]✗[/red] Start failed for plugin '{name}' (exit code {code})")
+
+    if result.all_succeeded:
+        raise typer.Exit(exit_codes.SUCCESS)
+    else:
+        raise typer.Exit(exit_codes.GENERAL_ERROR)
 
 
 @app.command()

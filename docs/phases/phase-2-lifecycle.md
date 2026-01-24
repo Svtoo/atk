@@ -102,17 +102,18 @@ Run the install lifecycle command for plugin(s). Used for:
 
 ---
 
-## 2.5 `atk restart`
+## 2.5 `atk restart` ✅
 
-- [ ] Implement `atk restart <plugin>` command
-  - [ ] Find plugin by name or directory
-  - [ ] Run `restart` lifecycle command
-  - [ ] Error if `restart` not defined (no automatic stop+start fallback)
-  - [ ] Report success/failure
-- [ ] Implement `atk restart --all`
-  - [ ] Stop all (reverse order), then start all (manifest order)
-- [ ] CLI integration with proper exit codes
-- [ ] Tests (4+ tests)
+- [x] Implement `atk restart <plugin>` command
+  - [x] Find plugin by name or directory
+  - [x] Run `restart` lifecycle command
+  - [x] Error if `restart` not defined (no automatic stop+start fallback)
+  - [x] Report success/failure
+- [x] Implement `atk restart --all`
+  - [x] Stop all (reverse order), then start all (manifest order)
+  - [x] Aborts start phase if stop phase has failures
+- [x] CLI integration with proper exit codes
+- [x] Tests (12 tests: unit + CLI)
 
 ---
 
