@@ -7,14 +7,10 @@ import shutil
 from enum import Enum
 from pathlib import Path
 
-import yaml
-from pydantic import ValidationError
-
-from atk.errors import format_validation_errors
 from atk.git import git_add, git_commit
 from atk.home import validate_atk_home
 from atk.manifest_schema import PluginEntry, load_manifest, save_manifest
-from atk.plugin_schema import PluginSchema
+from atk.plugin import load_plugin_schema
 from atk.sanitize import sanitize_directory_name
 
 
@@ -58,55 +54,6 @@ def detect_source_type(source: Path) -> SourceType:
         raise ValueError(msg)
 
     return SourceType.FILE
-
-
-def load_plugin_schema(source: Path) -> PluginSchema:
-    """Load and validate plugin.yaml from source.
-
-    Args:
-        source: Path to plugin directory or single plugin.yaml file.
-
-    Returns:
-        Validated PluginSchema instance.
-
-    Raises:
-        FileNotFoundError: If source or plugin.yaml does not exist.
-        ValueError: If YAML is invalid or schema validation fails.
-    """
-    if not source.exists():
-        msg = f"Source path '{source}' does not exist"
-        raise FileNotFoundError(msg)
-
-    # Determine the actual plugin.yaml path
-    if source.is_dir():
-        plugin_yaml = source / "plugin.yaml"
-        if not plugin_yaml.exists():
-            plugin_yaml = source / "plugin.yml"
-        if not plugin_yaml.exists():
-            msg = f"Directory '{source}' does not contain plugin.yaml or plugin.yml"
-            raise FileNotFoundError(msg)
-    else:
-        plugin_yaml = source
-
-    # Parse YAML
-    try:
-        content = plugin_yaml.read_text()
-        data = yaml.safe_load(content)
-    except yaml.YAMLError as e:
-        msg = f"Invalid YAML in '{plugin_yaml}': {e}"
-        raise ValueError(msg) from e
-
-    if data is None:
-        msg = f"Invalid YAML in '{plugin_yaml}': empty file"
-        raise ValueError(msg)
-
-    # Validate against schema
-    try:
-        return PluginSchema.model_validate(data)
-    except ValidationError as e:
-        clean_errors = format_validation_errors(e)
-        msg = f"Invalid plugin '{plugin_yaml}': {clean_errors}"
-        raise ValueError(msg) from e
 
 
 def add_plugin(source: Path, atk_home: Path) -> str:
