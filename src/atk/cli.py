@@ -26,7 +26,7 @@ from atk.lifecycle import (
     run_plugin_lifecycle,
 )
 from atk.manifest_schema import load_manifest
-from atk.plugin import PluginNotFoundError
+from atk.plugin import PluginNotFoundError, load_plugin
 from atk.remove import remove_plugin
 
 app = typer.Typer(
@@ -486,6 +486,52 @@ def logs(
             f"[yellow]![/yellow] Plugin '{plugin}' has no logs command defined"
         )
         raise typer.Exit(exit_codes.SUCCESS) from None
+
+
+@app.command()
+def run(
+    plugin: Annotated[
+        str,
+        typer.Argument(
+            help="Plugin name or directory.",
+        ),
+    ],
+    script: Annotated[
+        str,
+        typer.Argument(
+            help="Script name to run (with or without .sh extension).",
+        ),
+    ],
+) -> None:
+    """Run a script from a plugin directory.
+
+    Looks for the script in the plugin's root directory.
+    If the script name doesn't have an extension, tries adding .sh.
+    """
+    import subprocess
+
+    atk_home = require_initialized_home()
+
+    try:
+        _, plugin_dir = load_plugin(atk_home, plugin)
+    except PluginNotFoundError:
+        console.print(f"[red]✗[/red] Plugin '{plugin}' not found in manifest")
+        raise typer.Exit(exit_codes.PLUGIN_NOT_FOUND) from None
+
+    script_path = plugin_dir / script
+    if not script_path.exists():
+        script_path_with_ext = plugin_dir / f"{script}.sh"
+        if script_path_with_ext.exists():
+            script_path = script_path_with_ext
+        else:
+            console.print(f"[red]✗[/red] Script '{script}' not found in plugin directory")
+            raise typer.Exit(exit_codes.GENERAL_ERROR)
+
+    result = subprocess.run(
+        [str(script_path)],
+        cwd=plugin_dir,
+    )
+    raise typer.Exit(result.returncode)
 
 
 def _format_port(port_status: PortStatus) -> str:

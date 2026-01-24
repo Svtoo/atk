@@ -691,3 +691,79 @@ class TestLogsCli:
         result = cli_runner.invoke(app, ["logs"])
 
         assert result.exit_code != exit_codes.SUCCESS
+
+
+@pytest.mark.usefixtures("atk_home")
+class TestRunCli:
+    """Tests for atk run CLI command."""
+
+    def test_cli_run_executes_script(
+        self, create_plugin: PluginFactory, cli_runner
+    ) -> None:
+        """Verify CLI run executes a script in the plugin directory."""
+        plugin_dir = create_plugin("TestPlugin", "test-plugin", None)
+        script_path = plugin_dir / "my-script.sh"
+        script_path.write_text("#!/bin/bash\ntouch script_ran.txt")
+        script_path.chmod(0o755)
+
+        result = cli_runner.invoke(app, ["run", "test-plugin", "my-script.sh"])
+
+        assert result.exit_code == exit_codes.SUCCESS
+        assert (plugin_dir / "script_ran.txt").exists()
+
+    def test_cli_run_discovers_script_without_extension(
+        self, create_plugin: PluginFactory, cli_runner
+    ) -> None:
+        """Verify CLI run finds script.sh when script name given without extension."""
+        plugin_dir = create_plugin("TestPlugin", "test-plugin", None)
+        script_path = plugin_dir / "my-script.sh"
+        script_path.write_text("#!/bin/bash\ntouch discovered.txt")
+        script_path.chmod(0o755)
+
+        result = cli_runner.invoke(app, ["run", "test-plugin", "my-script"])
+
+        assert result.exit_code == exit_codes.SUCCESS
+        assert (plugin_dir / "discovered.txt").exists()
+
+    def test_cli_run_passes_through_exit_code(
+        self, create_plugin: PluginFactory, cli_runner
+    ) -> None:
+        """Verify CLI run passes through script exit code."""
+        plugin_dir = create_plugin("TestPlugin", "test-plugin", None)
+        script_path = plugin_dir / "failing-script.sh"
+        script_path.write_text("#!/bin/bash\nexit 42")
+        script_path.chmod(0o755)
+
+        result = cli_runner.invoke(app, ["run", "test-plugin", "failing-script.sh"])
+
+        assert result.exit_code == 42
+
+    def test_cli_run_plugin_not_found(
+        self, cli_runner
+    ) -> None:
+        """Verify CLI returns error when plugin not found."""
+        result = cli_runner.invoke(app, ["run", "nonexistent", "script.sh"])
+
+        assert result.exit_code == exit_codes.PLUGIN_NOT_FOUND
+        assert "not found" in result.output.lower()
+
+    def test_cli_run_script_not_found(
+        self, create_plugin: PluginFactory, cli_runner
+    ) -> None:
+        """Verify CLI returns error when script not found."""
+        create_plugin("TestPlugin", "test-plugin", None)
+
+        result = cli_runner.invoke(app, ["run", "test-plugin", "nonexistent.sh"])
+
+        assert result.exit_code == exit_codes.GENERAL_ERROR
+        assert "not found" in result.output.lower()
+
+    def test_cli_run_requires_both_arguments(
+        self, cli_runner
+    ) -> None:
+        """Verify CLI requires both plugin and script arguments."""
+        result = cli_runner.invoke(app, ["run"])
+        assert result.exit_code != exit_codes.SUCCESS
+
+        result = cli_runner.invoke(app, ["run", "test-plugin"])
+        assert result.exit_code != exit_codes.SUCCESS

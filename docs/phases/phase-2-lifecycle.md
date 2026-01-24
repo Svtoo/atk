@@ -147,15 +147,15 @@ Run the install lifecycle command for plugin(s). Used for:
 
 ---
 
-## 2.8 `atk run`
+## 2.8 `atk run` ✅
 
-- [ ] Implement `atk run <plugin> <script>` command
-  - [ ] Find plugin by name or directory
-  - [ ] Look for script in plugin root directory
-  - [ ] Execute script, pass through exit code
-- [ ] Script discovery: `<plugin_dir>/<script>` or `<plugin_dir>/<script>.sh`
-- [ ] CLI integration with proper exit codes
-- [ ] Tests
+- [x] Implement `atk run <plugin> <script>` command
+  - [x] Find plugin by name or directory
+  - [x] Look for script in plugin root directory
+  - [x] Execute script, pass through exit code
+- [x] Script discovery: `<plugin_dir>/<script>` or `<plugin_dir>/<script>.sh`
+- [x] CLI integration with proper exit codes
+- [x] Tests (6 tests)
 
 ---
 
