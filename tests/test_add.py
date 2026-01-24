@@ -439,3 +439,114 @@ class TestAddAutoCommit:
         )
         final_count = int(final_result.stdout.strip())
         assert final_count == initial_count
+
+
+class TestAddInstallLifecycle:
+    """Tests for install lifecycle integration in add command."""
+
+    @pytest.fixture(autouse=True)
+    def setup_method(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+        """Set up ATK_HOME for each test."""
+        self.tmp_path = tmp_path
+        self.atk_home = tmp_path / "atk-home"
+        monkeypatch.setenv("ATK_HOME", str(self.atk_home))
+
+    def test_add_runs_install_lifecycle_when_defined(self) -> None:
+        """Verify add runs install lifecycle command after copying files."""
+        # Given - initialized ATK home
+        init_atk_home(self.atk_home)
+
+        # And - a plugin with install lifecycle that creates a marker file
+        plugin_dir = self.tmp_path / "marker-plugin"
+        plugin_dir.mkdir()
+        marker_file = self.tmp_path / "install-ran.marker"
+        plugin_yaml = plugin_dir / "plugin.yaml"
+        plugin_yaml.write_text(f"""
+schema_version: "2026-01-23"
+name: Marker Plugin
+description: A plugin that creates a marker file on install
+lifecycle:
+  install: touch {marker_file}
+""")
+
+        # When
+        result = runner.invoke(app, ["add", str(plugin_dir)])
+
+        # Then - command succeeds
+        assert result.exit_code == SUCCESS
+
+        # And - install lifecycle was run (marker file exists)
+        assert marker_file.exists(), "Install lifecycle should have created marker file"
+
+    def test_add_skips_install_silently_when_not_defined(self) -> None:
+        """Verify add skips install silently when plugin has no install command."""
+        # Given - initialized ATK home
+        init_atk_home(self.atk_home)
+
+        # And - a plugin without install lifecycle
+        source = Path("tests/fixtures/plugins/minimal-plugin")
+
+        # When
+        result = runner.invoke(app, ["add", str(source)])
+
+        # Then - command succeeds without warning about missing install
+        assert result.exit_code == SUCCESS
+        assert "Added plugin" in result.output
+        # Should NOT warn about missing install (unlike standalone atk install)
+        assert "not defined" not in result.output.lower()
+
+    def test_add_fails_when_install_lifecycle_fails(self) -> None:
+        """Verify add fails with exit code 6 when install lifecycle fails."""
+        from atk.exit_codes import DOCKER_ERROR
+
+        # Given - initialized ATK home
+        init_atk_home(self.atk_home)
+
+        # And - a plugin with failing install lifecycle
+        plugin_dir = self.tmp_path / "failing-plugin"
+        plugin_dir.mkdir()
+        plugin_yaml = plugin_dir / "plugin.yaml"
+        plugin_yaml.write_text("""
+schema_version: "2026-01-23"
+name: Failing Plugin
+description: A plugin with failing install
+lifecycle:
+  install: exit 1
+""")
+
+        # When
+        result = runner.invoke(app, ["add", str(plugin_dir)])
+
+        # Then - command fails with DOCKER_ERROR (exit code 6)
+        assert result.exit_code == DOCKER_ERROR
+        assert "install" in result.output.lower() or "failed" in result.output.lower()
+
+    def test_add_cleans_up_on_install_failure(self) -> None:
+        """Verify add removes plugin directory if install fails."""
+        # Given - initialized ATK home
+        init_atk_home(self.atk_home)
+
+        # And - a plugin with failing install lifecycle
+        plugin_dir = self.tmp_path / "failing-plugin"
+        plugin_dir.mkdir()
+        plugin_yaml = plugin_dir / "plugin.yaml"
+        plugin_yaml.write_text("""
+schema_version: "2026-01-23"
+name: Cleanup Test Plugin
+description: A plugin with failing install
+lifecycle:
+  install: exit 1
+""")
+
+        # When
+        runner.invoke(app, ["add", str(plugin_dir)])
+
+        # Then - plugin directory should NOT exist (cleaned up)
+        expected_dir = self.atk_home / "plugins" / "cleanup-test-plugin"
+        assert not expected_dir.exists()
+
+        # And - manifest should NOT contain the plugin
+        manifest_path = self.atk_home / "manifest.yaml"
+        manifest_data = yaml.safe_load(manifest_path.read_text())
+        manifest = ManifestSchema.model_validate(manifest_data)
+        assert len(manifest.plugins) == 0

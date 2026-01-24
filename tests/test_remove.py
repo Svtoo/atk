@@ -137,7 +137,7 @@ class TestRemovePlugin:
         result = remove_plugin(plugin_name, atk_home)
 
         # Then - plugin is removed
-        assert result is True
+        assert result.removed is True
         assert not plugin_dir.exists()
 
         # Then - manifest no longer contains plugin
@@ -324,3 +324,116 @@ class TestRemoveAutoCommit:
         )
         final_count = int(final_result.stdout.strip())
         assert final_count == initial_count
+
+
+class TestRemoveStopLifecycle:
+    """Tests for stop lifecycle integration in remove command."""
+
+    @pytest.fixture(autouse=True)
+    def setup_method(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+        """Set up ATK_HOME for each test."""
+        self.tmp_path = tmp_path
+        self.atk_home = tmp_path / "atk-home"
+        monkeypatch.setenv("ATK_HOME", str(self.atk_home))
+
+    def test_remove_runs_stop_lifecycle_when_defined(self) -> None:
+        """Verify remove runs stop lifecycle command before removing files."""
+        # Given - initialized ATK home
+        init_atk_home(self.atk_home)
+
+        # And - a plugin with stop lifecycle that creates a marker file
+        marker_file = self.tmp_path / "stop-ran.marker"
+        plugin_dir = self.atk_home / "plugins" / "marker-plugin"
+        plugin_dir.mkdir(parents=True)
+        plugin_yaml = plugin_dir / "plugin.yaml"
+        plugin_yaml.write_text(f"""
+schema_version: "2026-01-23"
+name: Marker Plugin
+description: A plugin that creates a marker file on stop
+lifecycle:
+  stop: touch {marker_file}
+""")
+
+        # And - plugin is in manifest
+        manifest_path = self.atk_home / "manifest.yaml"
+        manifest_data = yaml.safe_load(manifest_path.read_text())
+        manifest = ManifestSchema.model_validate(manifest_data)
+        manifest.plugins.append(
+            ManifestSchema.model_fields["plugins"].annotation.__args__[0](
+                name="Marker Plugin", directory="marker-plugin"
+            )
+        )
+        manifest_path.write_text(
+            yaml.dump(manifest.model_dump(), default_flow_style=False, sort_keys=False)
+        )
+
+        # When
+        result = runner.invoke(app, ["remove", "marker-plugin"])
+
+        # Then - command succeeds
+        assert result.exit_code == exit_codes.SUCCESS
+
+        # And - stop lifecycle was run (marker file exists)
+        assert marker_file.exists(), "Stop lifecycle should have created marker file"
+
+        # And - plugin was removed
+        assert not plugin_dir.exists()
+
+    def test_remove_skips_stop_silently_when_not_defined(self) -> None:
+        """Verify remove skips stop silently when plugin has no stop command."""
+        # Given - initialized ATK home
+        init_atk_home(self.atk_home)
+
+        # And - a plugin without stop lifecycle
+        _add_plugin_to_home(self.atk_home, "No Stop Plugin", "no-stop-plugin")
+
+        # When
+        result = runner.invoke(app, ["remove", "no-stop-plugin"])
+
+        # Then - command succeeds without warning about missing stop
+        assert result.exit_code == exit_codes.SUCCESS
+        assert "Removed plugin" in result.stdout
+        # Should NOT warn about missing stop
+        assert "not defined" not in result.stdout.lower()
+
+    def test_remove_continues_when_stop_lifecycle_fails(self) -> None:
+        """Verify remove continues with removal even if stop lifecycle fails."""
+        # Given - initialized ATK home
+        init_atk_home(self.atk_home)
+
+        # And - a plugin with failing stop lifecycle
+        plugin_dir = self.atk_home / "plugins" / "failing-stop-plugin"
+        plugin_dir.mkdir(parents=True)
+        plugin_yaml = plugin_dir / "plugin.yaml"
+        plugin_yaml.write_text("""
+schema_version: "2026-01-23"
+name: Failing Stop Plugin
+description: A plugin with failing stop
+lifecycle:
+  stop: exit 1
+""")
+
+        # And - plugin is in manifest
+        manifest_path = self.atk_home / "manifest.yaml"
+        manifest_data = yaml.safe_load(manifest_path.read_text())
+        manifest = ManifestSchema.model_validate(manifest_data)
+        manifest.plugins.append(
+            ManifestSchema.model_fields["plugins"].annotation.__args__[0](
+                name="Failing Stop Plugin", directory="failing-stop-plugin"
+            )
+        )
+        manifest_path.write_text(
+            yaml.dump(manifest.model_dump(), default_flow_style=False, sort_keys=False)
+        )
+
+        # When
+        result = runner.invoke(app, ["remove", "failing-stop-plugin"])
+
+        # Then - command still succeeds (removal continues despite stop failure)
+        assert result.exit_code == exit_codes.SUCCESS
+
+        # And - plugin was still removed
+        assert not plugin_dir.exists()
+
+        # And - user was warned about stop failure
+        assert "warning" in result.stdout.lower() or "failed" in result.stdout.lower()

@@ -9,9 +9,22 @@ from pathlib import Path
 
 from atk.git import git_add, git_commit
 from atk.home import validate_atk_home
+from atk.lifecycle import LifecycleCommandNotDefinedError, run_lifecycle_command
 from atk.manifest_schema import PluginEntry, load_manifest, save_manifest
 from atk.plugin import load_plugin_schema
 from atk.sanitize import sanitize_directory_name
+
+
+class InstallFailedError(Exception):
+    """Raised when the install lifecycle command fails."""
+
+    def __init__(self, plugin_name: str, exit_code: int) -> None:
+        """Initialize with the plugin name and exit code."""
+        self.plugin_name = plugin_name
+        self.exit_code = exit_code
+        super().__init__(
+            f"Install lifecycle command failed for plugin '{plugin_name}' with exit code {exit_code}"
+        )
 
 
 class SourceType(str, Enum):
@@ -69,6 +82,7 @@ def add_plugin(source: Path, atk_home: Path) -> str:
     Raises:
         ValueError: If ATK Home is not initialized or source is invalid.
         FileNotFoundError: If source does not exist.
+        InstallFailedError: If the install lifecycle command fails.
     """
     # Validate ATK Home is initialized
     validation = validate_atk_home(atk_home)
@@ -99,6 +113,18 @@ def add_plugin(source: Path, atk_home: Path) -> str:
         target_dir.mkdir(parents=True)
         shutil.copy2(source, target_dir / "plugin.yaml")
 
+    # Run install lifecycle command if defined
+    # Skip silently if not defined (unlike standalone atk install which warns)
+    try:
+        exit_code = run_lifecycle_command(schema, target_dir, "install")
+        if exit_code != 0:
+            # Clean up on failure
+            _cleanup_failed_add(atk_home, target_dir, directory)
+            raise InstallFailedError(schema.name, exit_code)
+    except LifecycleCommandNotDefinedError:
+        # Skip silently - install is optional
+        pass
+
     # Update manifest and get auto_commit setting
     auto_commit = _update_manifest(atk_home, schema.name, directory)
 
@@ -108,6 +134,30 @@ def add_plugin(source: Path, atk_home: Path) -> str:
         git_commit(atk_home, f"Add plugin '{schema.name}'")
 
     return directory
+
+
+def _cleanup_failed_add(atk_home: Path, target_dir: Path, directory: str) -> None:
+    """Clean up after a failed add operation.
+
+    Removes the plugin directory and any manifest entry.
+
+    Args:
+        atk_home: Path to ATK Home directory.
+        target_dir: Path to the plugin directory to remove.
+        directory: Sanitized directory name.
+    """
+    # Remove plugin directory
+    if target_dir.exists():
+        shutil.rmtree(target_dir)
+
+    # Remove from manifest if it was added
+    try:
+        manifest = load_manifest(atk_home)
+        manifest.plugins = [p for p in manifest.plugins if p.directory != directory]
+        save_manifest(manifest, atk_home)
+    except Exception:
+        # Best effort cleanup - don't fail if manifest update fails
+        pass
 
 
 def _update_manifest(atk_home: Path, plugin_name: str, directory: str) -> bool:

@@ -8,7 +8,7 @@ from rich.console import Console
 from rich.table import Table
 
 from atk import exit_codes
-from atk.add import add_plugin
+from atk.add import InstallFailedError, add_plugin
 from atk.banner import print_banner
 from atk.git import is_git_available
 from atk.home import get_atk_home, validate_atk_home
@@ -245,6 +245,9 @@ def add(
         directory = add_plugin(source, atk_home)
         console.print(f"[green]✓[/green] Added plugin to {atk_home}/plugins/{directory}")
         raise typer.Exit(exit_codes.SUCCESS)
+    except InstallFailedError as e:
+        console.print(f"[red]✗[/red] Install failed for plugin '{e.plugin_name}' (exit code {e.exit_code})")
+        raise typer.Exit(exit_codes.DOCKER_ERROR) from e
     except ValueError as e:
         console.print(f"[red]✗[/red] Failed to add plugin: {e}")
         raise typer.Exit(exit_codes.PLUGIN_INVALID) from e
@@ -262,14 +265,20 @@ def remove(
     """Remove a plugin from ATK Home.
 
     Removes the plugin directory and updates the manifest.
+    Runs the stop lifecycle command before removal (if defined).
     Accepts either the plugin name or directory name.
     If the plugin is not found, this is a no-op.
     """
     atk_home = require_ready_home()
 
     try:
-        removed = remove_plugin(plugin, atk_home)
-        if removed:
+        result = remove_plugin(plugin, atk_home)
+        if result.removed:
+            if result.stop_failed:
+                console.print(
+                    f"[yellow]![/yellow] Warning: stop failed for '{plugin}' "
+                    f"(exit code {result.stop_exit_code})"
+                )
             console.print(f"[green]✓[/green] Removed plugin '{plugin}'")
         else:
             console.print(f"[yellow]![/yellow] Plugin '{plugin}' not found (no-op)")
