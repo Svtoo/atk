@@ -12,6 +12,7 @@ from atk.git import is_git_available
 from atk.home import get_atk_home, validate_atk_home
 from atk.init import init_atk_home
 from atk.install import install_all_plugins, install_plugin
+from atk.lifecycle import LifecycleCommandNotDefinedError
 from atk.manifest_schema import load_manifest
 from atk.plugin import PluginNotFoundError
 from atk.remove import remove_plugin
@@ -275,7 +276,7 @@ def install(
     """Run the install lifecycle command for a plugin.
 
     Executes the install command defined in the plugin's plugin.yaml.
-    If no install command is defined, this is a no-op.
+    Shows a warning if no install command is defined.
     """
     atk_home = require_ready_home()
 
@@ -292,6 +293,8 @@ def install(
         result = install_all_plugins(atk_home)
         for name in result.succeeded:
             console.print(f"[green]✓[/green] Installed plugin '{name}'")
+        for name in result.skipped:
+            console.print(f"[yellow]![/yellow] Plugin '{name}' has no install command defined")
         for name, code in result.failed:
             console.print(f"[red]✗[/red] Install failed for plugin '{name}' (exit code {code})")
 
@@ -311,6 +314,9 @@ def install(
     except PluginNotFoundError:
         console.print(f"[red]✗[/red] Plugin '{plugin}' not found in manifest")
         raise typer.Exit(exit_codes.PLUGIN_NOT_FOUND)
+    except LifecycleCommandNotDefinedError:
+        console.print(f"[yellow]![/yellow] Plugin '{plugin}' has no install command defined")
+        raise typer.Exit(exit_codes.SUCCESS)
 
 
 @app.command()

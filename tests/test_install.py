@@ -10,6 +10,7 @@ from atk import exit_codes
 from atk.cli import app
 from atk.init import init_atk_home
 from atk.install import install_plugin
+from atk.lifecycle import LifecycleCommandNotDefinedError
 from atk.manifest_schema import PluginEntry, load_manifest, save_manifest
 from atk.plugin_schema import PLUGIN_SCHEMA_VERSION
 
@@ -67,29 +68,31 @@ class TestInstallPlugin:
         assert exit_code == 0
         assert (plugin_dir / "installed.txt").exists()
 
-    def test_skips_silently_when_install_not_defined(self, tmp_path: Path) -> None:
-        """Verify install_plugin returns 0 when install command not defined."""
+    def test_raises_when_install_not_defined(self, tmp_path: Path) -> None:
+        """Verify install_plugin raises when install command not defined."""
         # Given - plugin without install command
         init_atk_home(tmp_path)
         self._create_plugin_with_lifecycle(tmp_path, {"start": "echo start"})
 
-        # When
-        exit_code = install_plugin(tmp_path, self.plugin_directory)
+        # When/Then - should raise exception
+        with pytest.raises(
+            LifecycleCommandNotDefinedError,
+            match="Lifecycle command 'install' not defined",
+        ):
+            install_plugin(tmp_path, self.plugin_directory)
 
-        # Then - should succeed silently (no-op)
-        assert exit_code == 0
-
-    def test_skips_silently_when_no_lifecycle_section(self, tmp_path: Path) -> None:
-        """Verify install_plugin returns 0 when no lifecycle section."""
+    def test_raises_when_no_lifecycle_section(self, tmp_path: Path) -> None:
+        """Verify install_plugin raises when no lifecycle section."""
         # Given - plugin without lifecycle section
         init_atk_home(tmp_path)
         self._create_plugin_with_lifecycle(tmp_path, None)
 
-        # When
-        exit_code = install_plugin(tmp_path, self.plugin_directory)
-
-        # Then - should succeed silently (no-op)
-        assert exit_code == 0
+        # When/Then - should raise exception
+        with pytest.raises(
+            LifecycleCommandNotDefinedError,
+            match="Lifecycle command 'install' not defined",
+        ):
+            install_plugin(tmp_path, self.plugin_directory)
 
     def test_returns_command_exit_code(self, tmp_path: Path) -> None:
         """Verify install_plugin returns the command's exit code."""
