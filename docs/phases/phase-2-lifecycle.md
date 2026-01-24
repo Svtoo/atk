@@ -135,15 +135,15 @@ Run the install lifecycle command for plugin(s). Used for:
 
 ---
 
-## 2.7 `atk logs`
+## 2.7 `atk logs` ✅
 
-- [ ] Implement `atk logs <plugin>` command
-  - [ ] Find plugin by name or directory
-  - [ ] Run `logs` lifecycle command
-  - [ ] Stream output to terminal
+- [x] Implement `atk logs <plugin>` command
+  - [x] Find plugin by name or directory
+  - [x] Run `logs` lifecycle command
+  - [x] Stream output to terminal
 - [ ] Future: `--follow`, `--tail` flags (defer to backlog)
-- [ ] CLI integration with proper exit codes
-- [ ] Tests (4+ tests)
+- [x] CLI integration with proper exit codes
+- [x] Tests (4 tests)
 
 ---
 
@@ -155,7 +155,7 @@ Run the install lifecycle command for plugin(s). Used for:
   - [ ] Execute script, pass through exit code
 - [ ] Script discovery: `<plugin_dir>/<script>` or `<plugin_dir>/<script>.sh`
 - [ ] CLI integration with proper exit codes
-- [ ] Tests (4+ tests)
+- [ ] Tests
 
 ---
 

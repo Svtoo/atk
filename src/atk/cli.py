@@ -459,6 +459,35 @@ def status(
     raise typer.Exit(exit_codes.SUCCESS)
 
 
+@app.command()
+def logs(
+    plugin: Annotated[
+        str,
+        typer.Argument(
+            help="Plugin name or directory to view logs for.",
+        ),
+    ],
+) -> None:
+    """View logs for a plugin.
+
+    Runs the logs lifecycle command defined in the plugin's plugin.yaml.
+    Shows a warning if no logs command is defined.
+    """
+    atk_home = require_initialized_home()
+
+    try:
+        exit_code = run_plugin_lifecycle(atk_home, plugin, "logs")
+        raise typer.Exit(exit_code)
+    except PluginNotFoundError:
+        console.print(f"[red]✗[/red] Plugin '{plugin}' not found in manifest")
+        raise typer.Exit(exit_codes.PLUGIN_NOT_FOUND) from None
+    except LifecycleCommandNotDefinedError:
+        console.print(
+            f"[yellow]![/yellow] Plugin '{plugin}' has no logs command defined"
+        )
+        raise typer.Exit(exit_codes.SUCCESS) from None
+
+
 def _format_port(port_status: PortStatus) -> str:
     """Format a port with listening status indicator."""
     if not isinstance(port_status, PortStatus):

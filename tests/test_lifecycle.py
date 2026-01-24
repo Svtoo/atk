@@ -645,3 +645,49 @@ class TestStatusCli:
 
         assert result.exit_code == exit_codes.SUCCESS
         assert "no plugins" in result.output.lower()
+
+
+@pytest.mark.usefixtures("atk_home")
+class TestLogsCli:
+    """Tests for atk logs CLI command."""
+
+    def test_cli_logs_runs_logs_command(
+        self, create_plugin: PluginFactory, cli_runner
+    ) -> None:
+        """Verify CLI logs runs the logs lifecycle command."""
+        plugin_dir = create_plugin(
+            "TestPlugin", "test-plugin", {"logs": "touch logs_ran.txt"}
+        )
+
+        result = cli_runner.invoke(app, ["logs", "test-plugin"])
+
+        assert result.exit_code == exit_codes.SUCCESS
+        assert (plugin_dir / "logs_ran.txt").exists()
+
+    def test_cli_logs_plugin_not_found(
+        self, cli_runner
+    ) -> None:
+        """Verify CLI returns error when plugin not found."""
+        result = cli_runner.invoke(app, ["logs", "nonexistent"])
+
+        assert result.exit_code == exit_codes.PLUGIN_NOT_FOUND
+        assert "not found" in result.output.lower()
+
+    def test_cli_logs_command_not_defined(
+        self, create_plugin: PluginFactory, cli_runner
+    ) -> None:
+        """Verify CLI shows warning when logs command not defined."""
+        create_plugin("TestPlugin", "test-plugin", {"start": "echo start"})
+
+        result = cli_runner.invoke(app, ["logs", "test-plugin"])
+
+        assert result.exit_code == exit_codes.SUCCESS
+        assert "no logs command" in result.output.lower()
+
+    def test_cli_logs_requires_plugin_argument(
+        self, cli_runner
+    ) -> None:
+        """Verify CLI requires plugin argument."""
+        result = cli_runner.invoke(app, ["logs"])
+
+        assert result.exit_code != exit_codes.SUCCESS
