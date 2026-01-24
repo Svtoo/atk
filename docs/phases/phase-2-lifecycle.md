@@ -1,7 +1,7 @@
 # Phase 2: Service Lifecycle
 
-> **Status**: Planning
-> **Last Updated**: 2026-01-23
+> **Status**: In Progress
+> **Last Updated**: 2026-01-24
 
 Service lifecycle commands: start, stop, restart, status, logs, run, install.
 
@@ -20,47 +20,49 @@ Phase 2 adds the ability to control plugin services. All lifecycle commands are 
 - **No sensible defaults** — plugin must define commands explicitly (deferred to backlog)
 - Commands run in plugin directory as working directory
 - Exit codes passed through from underlying commands
-- Error if lifecycle command not defined in plugin.yaml
+- Warning if lifecycle command not defined (fail loudly, not silently)
 
 ---
 
-## 2.1 Lifecycle Infrastructure
+## 2.1 Lifecycle Infrastructure ✅
 
-### 2.1.1 Plugin Loader
-- [ ] Create `plugin.py` module
-  - [ ] `load_plugin(atk_home, identifier)` — load plugin by name or directory
-  - [ ] Returns `PluginSchema` with resolved paths
-  - [ ] Error if plugin not found (exit code 4)
-- [ ] Tests for plugin loading (5+ tests)
+### 2.1.1 Plugin Loader ✅
+- [x] Create `plugin.py` module
+  - [x] `load_plugin(atk_home, identifier)` — load plugin by name or directory
+  - [x] Returns `(PluginSchema, plugin_dir)` tuple
+  - [x] Error if plugin not found (exit code 4)
+- [x] Tests for plugin loading (6 tests)
 
-### 2.1.2 Lifecycle Executor
-- [ ] Create `lifecycle.py` module
-  - [ ] `run_lifecycle_command(plugin, command_name)` — execute lifecycle command
-  - [ ] Get command from `plugin.lifecycle.<command_name>`
-  - [ ] Error if command not defined (exit code 5: PLUGIN_INVALID)
-  - [ ] Run in plugin directory as cwd
-  - [ ] Stream stdout/stderr to terminal
-  - [ ] Return exit code from command
-- [ ] Tests for lifecycle execution (6+ tests)
+### 2.1.2 Lifecycle Executor ✅
+- [x] Create `lifecycle.py` module
+  - [x] `run_lifecycle_command(plugin, plugin_dir, command_name)` — execute lifecycle command
+  - [x] `LifecycleCommand = Literal["install", "start", "stop", "restart", "logs", "status"]`
+  - [x] Get command from `plugin.lifecycle.<command_name>`
+  - [x] Raise `LifecycleCommandNotDefinedError` if command not defined
+  - [x] Run in plugin directory as cwd
+  - [x] Stream stdout/stderr to terminal
+  - [x] Return exit code from command
+- [x] Tests for lifecycle execution (6 tests)
 
 ---
 
-## 2.2 `atk install`
+## 2.2 `atk install` ✅
 
 Run the install lifecycle command for plugin(s). Used for:
 1. **Update**: Re-run install after plugin files changed
 2. **Bootstrap**: Install all plugins on new machine after `git clone`
 
-- [ ] Implement `atk install <plugin>` command
-  - [ ] Find plugin by name or directory
-  - [ ] Run `install` lifecycle command
-  - [ ] Skip silently if `install` not defined (no-op)
-  - [ ] Report output to user
-- [ ] Implement `atk install --all`
-  - [ ] Install all plugins in manifest order
-  - [ ] Continue on failure, report summary
-- [ ] CLI integration with proper exit codes
-- [ ] Tests (5+ tests: unit + CLI)
+- [x] Implement `atk install <plugin>` command
+  - [x] Find plugin by name or directory
+  - [x] Run `install` lifecycle command
+  - [x] Show warning if `install` not defined (fail loudly)
+  - [x] Report output to user
+- [x] Implement `atk install --all`
+  - [x] Install all plugins in manifest order
+  - [x] Continue on failure, report summary
+  - [x] Track skipped plugins (no install defined)
+- [x] CLI integration with proper exit codes
+- [x] Tests (9 tests: unit + CLI)
 
 **Workflow:**
 - `atk add` = copy files + run install (adding new plugins)
