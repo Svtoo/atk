@@ -1,7 +1,7 @@
 """Tests for lifecycle command execution."""
 
+from collections.abc import Callable
 from pathlib import Path
-from typing import Callable
 
 import pytest
 import yaml
@@ -118,11 +118,12 @@ class TestRunLifecycleCommand:
 # =============================================================================
 
 
+@pytest.mark.usefixtures("atk_home")
 class TestStartCli:
     """Tests for atk start CLI command."""
 
     def test_cli_start_single_plugin(
-        self, atk_home: Path, create_plugin: PluginFactory, cli_runner
+        self, create_plugin: PluginFactory, cli_runner
     ) -> None:
         """Verify CLI starts a single plugin."""
         plugin_dir = create_plugin("TestPlugin", "test-plugin", {"start": "touch started.txt"})
@@ -133,7 +134,7 @@ class TestStartCli:
         assert "Started plugin" in result.output
         assert (plugin_dir / "started.txt").exists()
 
-    def test_cli_start_plugin_not_found(self, atk_home: Path, cli_runner) -> None:
+    def test_cli_start_plugin_not_found(self, cli_runner) -> None:
         """Verify CLI reports error when plugin not found."""
         result = cli_runner.invoke(app, ["start", "nonexistent"])
 
@@ -141,7 +142,7 @@ class TestStartCli:
         assert "not found" in result.output
 
     def test_cli_start_shows_warning_when_not_defined(
-        self, atk_home: Path, create_plugin: PluginFactory, cli_runner
+        self, create_plugin: PluginFactory, cli_runner
     ) -> None:
         """Verify CLI shows warning when start command not defined."""
         create_plugin("TestPlugin", "test-plugin", {"install": "echo install"})
@@ -152,11 +153,12 @@ class TestStartCli:
         assert "no start command defined" in result.output
 
 
+@pytest.mark.usefixtures("atk_home")
 class TestStopCli:
     """Tests for atk stop CLI command."""
 
     def test_cli_stop_single_plugin(
-        self, atk_home: Path, create_plugin: PluginFactory, cli_runner
+        self, create_plugin: PluginFactory, cli_runner
     ) -> None:
         """Verify CLI stops a single plugin."""
         plugin_dir = create_plugin("TestPlugin", "test-plugin", {"stop": "touch stopped.txt"})
@@ -167,7 +169,7 @@ class TestStopCli:
         assert "Stopped plugin" in result.output
         assert (plugin_dir / "stopped.txt").exists()
 
-    def test_cli_stop_plugin_not_found(self, atk_home: Path, cli_runner) -> None:
+    def test_cli_stop_plugin_not_found(self, cli_runner) -> None:
         """Verify CLI reports error when plugin not found."""
         result = cli_runner.invoke(app, ["stop", "nonexistent"])
 
@@ -175,7 +177,7 @@ class TestStopCli:
         assert "not found" in result.output
 
     def test_cli_stop_shows_warning_when_not_defined(
-        self, atk_home: Path, create_plugin: PluginFactory, cli_runner
+        self, create_plugin: PluginFactory, cli_runner
     ) -> None:
         """Verify CLI shows warning when stop command not defined."""
         create_plugin("TestPlugin", "test-plugin", {"install": "echo install"})
@@ -186,11 +188,12 @@ class TestStopCli:
         assert "no stop command defined" in result.output
 
 
+@pytest.mark.usefixtures("atk_home")
 class TestInstallCli:
     """Tests for atk install CLI command."""
 
     def test_cli_install_single_plugin(
-        self, atk_home: Path, create_plugin: PluginFactory, cli_runner
+        self, create_plugin: PluginFactory, cli_runner
     ) -> None:
         """Verify CLI installs a single plugin."""
         plugin_dir = create_plugin("TestPlugin", "test-plugin", {"install": "touch installed.txt"})
@@ -200,7 +203,7 @@ class TestInstallCli:
         assert result.exit_code == exit_codes.SUCCESS
         assert (plugin_dir / "installed.txt").exists()
 
-    def test_cli_install_plugin_not_found(self, atk_home: Path, cli_runner) -> None:
+    def test_cli_install_plugin_not_found(self, cli_runner) -> None:
         """Verify CLI returns PLUGIN_NOT_FOUND for unknown plugin."""
         result = cli_runner.invoke(app, ["install", "nonexistent"])
 
@@ -208,7 +211,7 @@ class TestInstallCli:
         assert "not found" in result.output.lower()
 
     def test_install_all_runs_all_plugins(
-        self, atk_home: Path, create_plugin: PluginFactory, cli_runner
+        self, create_plugin: PluginFactory, cli_runner
     ) -> None:
         """Verify --all installs all plugins in manifest order."""
         plugin1_dir = create_plugin("Plugin1", "plugin-1", {"install": "touch installed1.txt"})
@@ -221,7 +224,7 @@ class TestInstallCli:
         assert (plugin2_dir / "installed2.txt").exists()
 
     def test_install_all_continues_on_failure(
-        self, atk_home: Path, create_plugin: PluginFactory, cli_runner
+        self, create_plugin: PluginFactory, cli_runner
     ) -> None:
         """Verify --all continues installing after a plugin fails."""
         create_plugin("Plugin1", "plugin-1", {"install": "exit 1"})
@@ -315,11 +318,12 @@ class TestRestartAll:
         assert len(result.stop_failed) == 1
 
 
+@pytest.mark.usefixtures("atk_home")
 class TestRestartCli:
     """Tests for atk restart CLI command."""
 
     def test_cli_restart_single_plugin(
-        self, atk_home: Path, create_plugin: PluginFactory, cli_runner
+        self, create_plugin: PluginFactory, cli_runner
     ) -> None:
         """Verify CLI restarts a single plugin."""
         plugin_dir = create_plugin("TestPlugin", "test-plugin", {"restart": "touch restarted.txt"})
@@ -330,7 +334,7 @@ class TestRestartCli:
         assert "Restarted plugin" in result.output
         assert (plugin_dir / "restarted.txt").exists()
 
-    def test_cli_restart_plugin_not_found(self, atk_home: Path, cli_runner) -> None:
+    def test_cli_restart_plugin_not_found(self, cli_runner) -> None:
         """Verify CLI reports error when plugin not found."""
         result = cli_runner.invoke(app, ["restart", "nonexistent"])
 
@@ -338,7 +342,7 @@ class TestRestartCli:
         assert "not found" in result.output
 
     def test_cli_restart_shows_warning_when_not_defined(
-        self, atk_home: Path, create_plugin: PluginFactory, cli_runner
+        self, create_plugin: PluginFactory, cli_runner
     ) -> None:
         """Verify CLI shows warning when restart command not defined."""
         create_plugin("TestPlugin", "test-plugin", {"start": "echo start"})
@@ -371,7 +375,7 @@ class TestRestartCli:
         assert "Started plugin" in result.output
 
     def test_cli_restart_all_aborts_on_stop_failure(
-        self, atk_home: Path, create_plugin: PluginFactory, cli_runner
+        self, create_plugin: PluginFactory, cli_runner
     ) -> None:
         """Verify CLI restart --all aborts start phase if stop fails."""
         create_plugin("Plugin1", "plugin1", {"stop": "exit 1", "start": "touch started.txt"})
