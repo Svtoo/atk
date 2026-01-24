@@ -8,9 +8,14 @@ import yaml
 
 from atk import exit_codes
 from atk.cli import app
-from atk.lifecycle import LifecycleCommandNotDefinedError, run_lifecycle_command
+from atk.lifecycle import (
+    LifecycleCommandNotDefinedError,
+    restart_all_plugins,
+    run_lifecycle_command,
+    run_plugin_lifecycle,
+)
 from atk.manifest_schema import PluginEntry, load_manifest, save_manifest
-from atk.plugin import load_plugin
+from atk.plugin import PluginNotFoundError, load_plugin
 from atk.plugin_schema import PLUGIN_SCHEMA_VERSION
 
 # Type alias for the plugin factory fixture
@@ -227,3 +232,152 @@ class TestInstallCli:
         assert result.exit_code == exit_codes.GENERAL_ERROR
         assert (plugin2_dir / "installed2.txt").exists()
         assert "failed" in result.output.lower()
+
+
+
+class TestRestartPlugin:
+    """Tests for run_plugin_lifecycle with restart command."""
+
+    def test_runs_restart_command(self, atk_home: Path, create_plugin: PluginFactory) -> None:
+        """Verify run_plugin_lifecycle runs the restart command from plugin.yaml."""
+        plugin_dir = create_plugin("TestPlugin", "test-plugin", {"restart": "touch restarted.txt"})
+
+        exit_code = run_plugin_lifecycle(atk_home, "test-plugin", "restart")
+
+        assert exit_code == 0
+        assert (plugin_dir / "restarted.txt").exists()
+
+    def test_raises_when_restart_not_defined(self, atk_home: Path, create_plugin: PluginFactory) -> None:
+        """Verify run_plugin_lifecycle raises when restart command not defined."""
+        create_plugin("TestPlugin", "test-plugin", {"start": "echo start", "stop": "echo stop"})
+
+        with pytest.raises(LifecycleCommandNotDefinedError, match="restart.*not defined"):
+            run_plugin_lifecycle(atk_home, "test-plugin", "restart")
+
+    def test_raises_when_plugin_not_found(self, atk_home: Path) -> None:
+        """Verify run_plugin_lifecycle raises when plugin not in manifest."""
+        with pytest.raises(PluginNotFoundError):
+            run_plugin_lifecycle(atk_home, "nonexistent", "restart")
+
+    def test_returns_command_exit_code(self, atk_home: Path, create_plugin: PluginFactory) -> None:
+        """Verify run_plugin_lifecycle returns the command's exit code."""
+        expected_exit_code = 42
+        create_plugin("TestPlugin", "test-plugin", {"restart": f"exit {expected_exit_code}"})
+
+        exit_code = run_plugin_lifecycle(atk_home, "test-plugin", "restart")
+
+        assert exit_code == expected_exit_code
+
+
+class TestRestartAll:
+    """Tests for restart_all_plugins function."""
+
+    def test_restart_all_stops_then_starts(self, atk_home: Path, create_plugin: PluginFactory) -> None:
+        """Verify restart_all_plugins stops all (reverse), then starts all (forward)."""
+        order_file = atk_home / "order.txt"
+        create_plugin("Plugin1", "plugin1", {
+            "stop": f"echo stop1 >> {order_file}",
+            "start": f"echo start1 >> {order_file}",
+        })
+        create_plugin("Plugin2", "plugin2", {
+            "stop": f"echo stop2 >> {order_file}",
+            "start": f"echo start2 >> {order_file}",
+        })
+
+        result = restart_all_plugins(atk_home)
+
+        order = order_file.read_text().strip().split("\n")
+        assert order == ["stop2", "stop1", "start1", "start2"]
+        assert result.all_succeeded is True
+
+    def test_restart_all_stops_even_when_start_missing(self, atk_home: Path, create_plugin: PluginFactory) -> None:
+        """Verify restart_all stops plugins even if they have no start command."""
+        order_file = atk_home / "order.txt"
+        create_plugin("Plugin1", "plugin1", {
+            "stop": f"echo stop1 >> {order_file}",
+            "start": f"echo start1 >> {order_file}",
+        })
+        create_plugin("Plugin2", "plugin2", {"stop": f"echo stop2 >> {order_file}"})
+
+        result = restart_all_plugins(atk_home)
+
+        order = order_file.read_text().strip().split("\n")
+        assert order == ["stop2", "stop1", "start1"]
+        assert "Plugin2" in result.start_skipped
+
+    def test_restart_all_aborts_start_phase_on_stop_failure(self, atk_home: Path, create_plugin: PluginFactory) -> None:
+        """Verify restart_all aborts start phase if stop phase has failures."""
+        create_plugin("Plugin1", "plugin1", {"stop": "exit 1", "start": "touch started.txt"})
+
+        result = restart_all_plugins(atk_home)
+
+        assert result.all_succeeded is False
+        assert len(result.stop_failed) == 1
+
+
+class TestRestartCli:
+    """Tests for atk restart CLI command."""
+
+    def test_cli_restart_single_plugin(
+        self, atk_home: Path, create_plugin: PluginFactory, cli_runner
+    ) -> None:
+        """Verify CLI restarts a single plugin."""
+        plugin_dir = create_plugin("TestPlugin", "test-plugin", {"restart": "touch restarted.txt"})
+
+        result = cli_runner.invoke(app, ["restart", "test-plugin"])
+
+        assert result.exit_code == exit_codes.SUCCESS
+        assert "Restarted plugin" in result.output
+        assert (plugin_dir / "restarted.txt").exists()
+
+    def test_cli_restart_plugin_not_found(self, atk_home: Path, cli_runner) -> None:
+        """Verify CLI reports error when plugin not found."""
+        result = cli_runner.invoke(app, ["restart", "nonexistent"])
+
+        assert result.exit_code == exit_codes.PLUGIN_NOT_FOUND
+        assert "not found" in result.output
+
+    def test_cli_restart_shows_warning_when_not_defined(
+        self, atk_home: Path, create_plugin: PluginFactory, cli_runner
+    ) -> None:
+        """Verify CLI shows warning when restart command not defined."""
+        create_plugin("TestPlugin", "test-plugin", {"start": "echo start"})
+
+        result = cli_runner.invoke(app, ["restart", "test-plugin"])
+
+        assert result.exit_code == exit_codes.SUCCESS
+        assert "no restart command defined" in result.output
+
+    def test_cli_restart_all_stops_then_starts(
+        self, atk_home: Path, create_plugin: PluginFactory, cli_runner
+    ) -> None:
+        """Verify CLI restart --all stops all then starts all."""
+        order_file = atk_home / "order.txt"
+        create_plugin("Plugin1", "plugin1", {
+            "stop": f"echo stop1 >> {order_file}",
+            "start": f"echo start1 >> {order_file}",
+        })
+        create_plugin("Plugin2", "plugin2", {
+            "stop": f"echo stop2 >> {order_file}",
+            "start": f"echo start2 >> {order_file}",
+        })
+
+        result = cli_runner.invoke(app, ["restart", "--all"])
+
+        assert result.exit_code == exit_codes.SUCCESS
+        order = order_file.read_text().strip().split("\n")
+        assert order == ["stop2", "stop1", "start1", "start2"]
+        assert "Stopped plugin" in result.output
+        assert "Started plugin" in result.output
+
+    def test_cli_restart_all_aborts_on_stop_failure(
+        self, atk_home: Path, create_plugin: PluginFactory, cli_runner
+    ) -> None:
+        """Verify CLI restart --all aborts start phase if stop fails."""
+        create_plugin("Plugin1", "plugin1", {"stop": "exit 1", "start": "touch started.txt"})
+
+        result = cli_runner.invoke(app, ["restart", "--all"])
+
+        assert result.exit_code == exit_codes.GENERAL_ERROR
+        assert "stop phase had failures" in result.output
+        assert "Started plugin" not in result.output

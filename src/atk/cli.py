@@ -14,6 +14,7 @@ from atk.init import init_atk_home
 from atk.lifecycle import (
     LifecycleCommand,
     LifecycleCommandNotDefinedError,
+    restart_all_plugins,
     run_all_plugins_lifecycle,
     run_plugin_lifecycle,
 )
@@ -446,9 +447,6 @@ def restart(
     if not all_plugins and not plugin:
         console.print("[red]✗[/red] Must specify plugin or --all")
         raise typer.Exit(exit_codes.INVALID_ARGS)
-
-    # Import here to avoid circular dependency
-    from atk.restart import restart_all_plugins
 
     atk_home = require_ready_home()
     result = restart_all_plugins(atk_home)
