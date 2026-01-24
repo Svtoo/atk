@@ -383,6 +383,33 @@ def start(
 
 
 @app.command()
+def stop(
+    plugin: Annotated[
+        str | None,
+        typer.Argument(
+            help="Plugin name or directory to stop.",
+        ),
+    ] = None,
+    all_plugins: Annotated[
+        bool,
+        typer.Option(
+            "--all",
+            help="Stop all plugins in reverse manifest order.",
+        ),
+    ] = False,
+) -> None:
+    """Run the stop lifecycle command for a plugin.
+
+    Executes the stop command defined in the plugin's plugin.yaml.
+    Shows a warning if no stop command is defined.
+
+    When using --all, plugins are stopped in REVERSE manifest order
+    (opposite of start order) to handle dependencies correctly.
+    """
+    _run_lifecycle_cli("stop", plugin, all_plugins, reverse=True)
+
+
+@app.command()
 def status() -> None:
     """Show status of all installed plugins."""
     typer.echo("No plugins installed yet.")
