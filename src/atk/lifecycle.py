@@ -3,12 +3,14 @@
 Handles running lifecycle commands defined in plugin.yaml.
 """
 
+import os
 import subprocess
 from dataclasses import dataclass
 from enum import Enum
 from pathlib import Path
 from typing import Literal
 
+from atk.env import load_env_file
 from atk.manifest_schema import load_manifest
 from atk.plugin import load_plugin
 from atk.plugin_schema import PluginSchema
@@ -92,21 +94,23 @@ def run_lifecycle_command(
     Raises:
         LifecycleCommandNotDefinedError: If the command is not defined in the plugin.
     """
-    # Check if lifecycle section exists
     if plugin.lifecycle is None:
         raise LifecycleCommandNotDefinedError(command_name, plugin.name)
 
-    # Get the command from lifecycle config
     command = getattr(plugin.lifecycle, command_name, None)
 
     if command is None:
         raise LifecycleCommandNotDefinedError(command_name, plugin.name)
 
-    # Run the command in the plugin directory
+    env_file = plugin_dir / ".env"
+    env_from_file = load_env_file(env_file)
+    merged_env = {**os.environ, **env_from_file}
+
     result = subprocess.run(
         command,
         shell=True,
         cwd=plugin_dir,
+        env=merged_env,
     )
 
     return result.returncode

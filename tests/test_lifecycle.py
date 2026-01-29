@@ -111,6 +111,79 @@ class TestRunLifecycleCommand:
         assert exit_code == 0
         assert (plugin_dir / "started.txt").exists()
 
+    def test_injects_env_vars_from_env_file(
+        self, atk_home: Path, create_plugin: PluginFactory
+    ) -> None:
+        """Verify run_lifecycle_command injects env vars from .env file."""
+        # Given
+        env_var_name = "MY_TEST_VAR"
+        env_var_value = "test_value_123"
+        plugin_dir = create_plugin(
+            "TestPlugin",
+            "test-plugin",
+            {"start": f"echo ${env_var_name} > env_output.txt"},
+        )
+        env_file = plugin_dir / ".env"
+        env_file.write_text(f"{env_var_name}={env_var_value}\n")
+        plugin, _ = load_plugin(atk_home, "test-plugin")
+
+        # When
+        exit_code = run_lifecycle_command(plugin, plugin_dir, "start")
+
+        # Then
+        assert exit_code == 0
+        output_file = plugin_dir / "env_output.txt"
+        assert output_file.exists()
+        assert output_file.read_text().strip() == env_var_value
+
+    def test_env_file_vars_override_system_env(
+        self, atk_home: Path, create_plugin: PluginFactory, monkeypatch
+    ) -> None:
+        """Verify .env file vars take precedence over system environment."""
+        # Given
+        env_var_name = "OVERRIDE_TEST_VAR"
+        system_value = "from_system"
+        file_value = "from_file"
+        monkeypatch.setenv(env_var_name, system_value)
+        plugin_dir = create_plugin(
+            "TestPlugin",
+            "test-plugin",
+            {"start": f"echo ${env_var_name} > env_output.txt"},
+        )
+        env_file = plugin_dir / ".env"
+        env_file.write_text(f"{env_var_name}={file_value}\n")
+        plugin, _ = load_plugin(atk_home, "test-plugin")
+
+        # When
+        exit_code = run_lifecycle_command(plugin, plugin_dir, "start")
+
+        # Then
+        assert exit_code == 0
+        output_file = plugin_dir / "env_output.txt"
+        assert output_file.read_text().strip() == file_value
+
+    def test_system_env_available_when_no_env_file(
+        self, atk_home: Path, create_plugin: PluginFactory, monkeypatch
+    ) -> None:
+        """Verify system environment is available when no .env file exists."""
+        # Given
+        env_var_name = "SYSTEM_ONLY_VAR"
+        env_var_value = "system_value"
+        monkeypatch.setenv(env_var_name, env_var_value)
+        plugin_dir = create_plugin(
+            "TestPlugin",
+            "test-plugin",
+            {"start": f"echo ${env_var_name} > env_output.txt"},
+        )
+        plugin, _ = load_plugin(atk_home, "test-plugin")
+
+        # When
+        exit_code = run_lifecycle_command(plugin, plugin_dir, "start")
+
+        # Then
+        assert exit_code == 0
+        output_file = plugin_dir / "env_output.txt"
+        assert output_file.read_text().strip() == env_var_value
 
 
 # =============================================================================
