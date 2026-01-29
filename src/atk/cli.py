@@ -16,6 +16,7 @@ from atk.init import init_atk_home
 from atk.lifecycle import (
     AllPluginsMissingEnvVars,
     AllPluginsPartialFailure,
+    AllPluginsPortConflict,
     AllPluginsSuccess,
     LifecycleCommand,
     LifecycleCommandFailed,
@@ -23,6 +24,7 @@ from atk.lifecycle import (
     LifecycleCommandSkipped,
     LifecycleMissingEnvVars,
     LifecyclePluginNotFound,
+    LifecyclePortConflict,
     LifecycleSuccess,
     PluginStatus,
     PluginStatusResult,
@@ -173,6 +175,21 @@ def _run_single_plugin_lifecycle_cli(
             _format_missing_env_vars(name, missing)
             raise typer.Exit(exit_codes.ENV_NOT_CONFIGURED)
 
+        case LifecyclePortConflict(plugin_name=name, conflicts=conflicts):
+            _format_port_conflicts(name, conflicts)
+            raise typer.Exit(exit_codes.PORT_CONFLICT)
+
+
+def _format_port_conflicts(plugin_name: str, conflicts: list) -> None:
+    """Format port conflict error messages."""
+    for conflict in conflicts:
+        cli_logger.error(f"Port {conflict.port} is already in use")
+        if conflict.description:
+            cli_logger.error(f"  {plugin_name} requires this port for: {conflict.description}")
+    cli_logger.info(
+        "Stop the conflicting service or use 'atk restart' if the plugin is already running."
+    )
+
 
 def _run_all_plugins_lifecycle_cli(
     atk_home: Path, command_name: LifecycleCommand, verb: str, *, reverse: bool
@@ -202,6 +219,10 @@ def _run_all_plugins_lifecycle_cli(
         case AllPluginsMissingEnvVars(plugin_name=name, missing_vars=missing):
             _format_missing_env_vars(name, missing)
             raise typer.Exit(exit_codes.ENV_NOT_CONFIGURED)
+
+        case AllPluginsPortConflict(plugin_name=name, conflicts=conflicts):
+            _format_port_conflicts(name, conflicts)
+            raise typer.Exit(exit_codes.PORT_CONFLICT)
 
 
 def version_callback(value: bool) -> None:

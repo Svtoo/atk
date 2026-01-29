@@ -59,12 +59,29 @@ class LifecycleMissingEnvVars:
     missing_vars: list[str]
 
 
+@dataclass
+class PortConflict:
+    """A single port conflict."""
+
+    port: int
+    description: str | None
+
+
+@dataclass
+class LifecyclePortConflict:
+    """One or more declared ports are already in use."""
+
+    plugin_name: str
+    conflicts: list[PortConflict]
+
+
 SinglePluginResult = (
     LifecycleSuccess
     | LifecycleCommandFailed
     | LifecycleCommandSkipped
     | LifecyclePluginNotFound
     | LifecycleMissingEnvVars
+    | LifecyclePortConflict
 )
 
 
@@ -96,7 +113,20 @@ class AllPluginsMissingEnvVars:
     missing_vars: list[str]
 
 
-AllPluginsResult = AllPluginsSuccess | AllPluginsPartialFailure | AllPluginsMissingEnvVars
+@dataclass
+class AllPluginsPortConflict:
+    """Pre-flight check failed: port conflict detected."""
+
+    plugin_name: str
+    conflicts: list[PortConflict]
+
+
+AllPluginsResult = (
+    AllPluginsSuccess
+    | AllPluginsPartialFailure
+    | AllPluginsMissingEnvVars
+    | AllPluginsPortConflict
+)
 
 
 class PluginStatus(str, Enum):
@@ -131,6 +161,25 @@ def is_port_listening(port: int) -> bool:
         capture_output=True,
     )
     return result.returncode == 0
+
+
+def check_port_conflicts(plugin: PluginSchema) -> list[PortConflict]:
+    """Check if any declared ports are already in use.
+
+    Args:
+        plugin: The plugin schema containing port declarations.
+
+    Returns:
+        List of PortConflict for each port that is already in use.
+        Empty list if no conflicts.
+    """
+    conflicts: list[PortConflict] = []
+    for port_config in plugin.ports:
+        if is_port_listening(port_config.port):
+            conflicts.append(
+                PortConflict(port=port_config.port, description=port_config.description)
+            )
+    return conflicts
 
 
 class LifecycleCommandNotDefinedError(Exception):
@@ -247,6 +296,11 @@ def execute_lifecycle(
         if missing:
             return LifecycleMissingEnvVars(plugin_name=plugin.name, missing_vars=missing)
 
+    if command_name == "start":
+        conflicts = check_port_conflicts(plugin)
+        if conflicts:
+            return LifecyclePortConflict(plugin_name=plugin.name, conflicts=conflicts)
+
     try:
         exit_code = run_lifecycle_command(plugin, plugin_dir, command_name)
     except LifecycleCommandNotDefinedError:
@@ -326,6 +380,15 @@ def execute_all_lifecycle(
             if missing:
                 return AllPluginsMissingEnvVars(
                     plugin_name=plugin.name, missing_vars=missing
+                )
+
+    if command_name == "start":
+        for plugin_entry in plugins:
+            plugin, _ = load_plugin(atk_home, plugin_entry.directory)
+            conflicts = check_port_conflicts(plugin)
+            if conflicts:
+                return AllPluginsPortConflict(
+                    plugin_name=plugin.name, conflicts=conflicts
                 )
 
     succeeded: list[str] = []

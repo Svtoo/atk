@@ -306,6 +306,72 @@ class TestStartCli:
         assert result.exit_code == exit_codes.SUCCESS
         assert "Started plugin" in result.output
 
+    def test_cli_start_fails_with_port_conflict(
+        self, atk_home: Path, cli_runner
+    ) -> None:
+        """Verify CLI fails with exit code 9 when a declared port is already in use."""
+        import socket
+
+        plugin_name = "TestPlugin"
+        plugin_dir_name = "test-plugin"
+        conflict_port = 19876
+        port_description = "Web UI"
+
+        sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        sock.bind(("127.0.0.1", conflict_port))
+        sock.listen(1)
+
+        try:
+            plugin_dir = atk_home / "plugins" / plugin_dir_name
+            plugin_dir.mkdir(parents=True, exist_ok=True)
+            plugin_yaml = {
+                "schema_version": PLUGIN_SCHEMA_VERSION,
+                "name": plugin_name,
+                "description": "Test plugin",
+                "lifecycle": {"start": "echo starting"},
+                "ports": [{"port": conflict_port, "description": port_description}],
+            }
+            (plugin_dir / "plugin.yaml").write_text(yaml.dump(plugin_yaml))
+            manifest = load_manifest(atk_home)
+            manifest.plugins.append(PluginEntry(name=plugin_name, directory=plugin_dir_name))
+            save_manifest(manifest, atk_home)
+
+            result = cli_runner.invoke(app, ["start", plugin_dir_name])
+
+            assert result.exit_code == exit_codes.PORT_CONFLICT
+            assert str(conflict_port) in result.output
+            assert "already in use" in result.output.lower()
+        finally:
+            sock.close()
+
+    def test_cli_start_succeeds_when_port_is_free(
+        self, atk_home: Path, cli_runner
+    ) -> None:
+        """Verify CLI succeeds when declared port is not in use."""
+        plugin_name = "TestPlugin"
+        plugin_dir_name = "test-plugin"
+        free_port = 19877
+
+        plugin_dir = atk_home / "plugins" / plugin_dir_name
+        plugin_dir.mkdir(parents=True, exist_ok=True)
+        plugin_yaml = {
+            "schema_version": PLUGIN_SCHEMA_VERSION,
+            "name": plugin_name,
+            "description": "Test plugin",
+            "lifecycle": {"start": "echo starting"},
+            "ports": [{"port": free_port, "description": "API"}],
+        }
+        (plugin_dir / "plugin.yaml").write_text(yaml.dump(plugin_yaml))
+        manifest = load_manifest(atk_home)
+        manifest.plugins.append(PluginEntry(name=plugin_name, directory=plugin_dir_name))
+        save_manifest(manifest, atk_home)
+
+        result = cli_runner.invoke(app, ["start", plugin_dir_name])
+
+        assert result.exit_code == exit_codes.SUCCESS
+        assert "Started plugin" in result.output
+
 
 @pytest.mark.usefixtures("atk_home")
 class TestStopCli:
