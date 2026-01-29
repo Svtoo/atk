@@ -37,6 +37,7 @@ from atk.lifecycle import (
     run_plugin_lifecycle,
 )
 from atk.manifest_schema import load_manifest
+from atk.mcp import generate_mcp_config
 from atk.plugin import PluginNotFoundError, load_plugin
 from atk.remove import remove_plugin
 from atk.setup import run_setup
@@ -404,6 +405,44 @@ def setup(
         result = run_setup(plugin_schema, plugin_dir, prompt_func)
         cli_logger.success(f"Configured {len(result.configured_vars)} variable(s)")
 
+    raise typer.Exit(exit_codes.SUCCESS)
+
+
+@app.command()
+def mcp(
+    plugin: Annotated[
+        str,
+        typer.Argument(
+            help="Plugin name or directory to get MCP config for.",
+        ),
+    ],
+) -> None:
+    """Output MCP configuration JSON for a plugin.
+
+    Reads the MCP config from plugin.yaml and resolves environment variables
+    from the plugin's .env file. Output can be copied into IDE/tool configurations.
+    """
+    import json
+
+    atk_home = require_ready_home()
+
+    try:
+        plugin_schema, plugin_dir = load_plugin(atk_home, plugin)
+    except PluginNotFoundError:
+        cli_logger.error(f"Plugin '{plugin}' not found in manifest")
+        raise typer.Exit(exit_codes.PLUGIN_NOT_FOUND) from None
+
+    if plugin_schema.mcp is None:
+        cli_logger.error(f"Plugin '{plugin_schema.name}' has no MCP configuration")
+        raise typer.Exit(exit_codes.PLUGIN_INVALID)
+
+    result = generate_mcp_config(plugin_schema, plugin_dir, plugin)
+
+    if result.missing_vars:
+        for var in result.missing_vars:
+            cli_logger.warning(f"Environment variable '{var}' is not set")
+
+    print(json.dumps(result.config, indent=2))
     raise typer.Exit(exit_codes.SUCCESS)
 
 
