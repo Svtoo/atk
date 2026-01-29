@@ -225,6 +225,87 @@ class TestStartCli:
         assert result.exit_code == exit_codes.SUCCESS
         assert "no start command defined" in result.output
 
+    def test_cli_start_fails_with_missing_required_env_vars(
+        self, atk_home: Path, cli_runner
+    ) -> None:
+        """Verify CLI fails with exit code 8 when required env vars are missing."""
+        plugin_name = "TestPlugin"
+        plugin_dir_name = "test-plugin"
+        required_var = "REQUIRED_API_KEY"
+        plugin_dir = atk_home / "plugins" / plugin_dir_name
+        plugin_dir.mkdir(parents=True, exist_ok=True)
+        plugin_yaml = {
+            "schema_version": PLUGIN_SCHEMA_VERSION,
+            "name": plugin_name,
+            "description": "Test plugin",
+            "lifecycle": {"start": "echo starting"},
+            "env_vars": [{"name": required_var, "required": True}],
+        }
+        (plugin_dir / "plugin.yaml").write_text(yaml.dump(plugin_yaml))
+        manifest = load_manifest(atk_home)
+        manifest.plugins.append(PluginEntry(name=plugin_name, directory=plugin_dir_name))
+        save_manifest(manifest, atk_home)
+
+        result = cli_runner.invoke(app, ["start", plugin_dir_name])
+
+        assert result.exit_code == exit_codes.ENV_NOT_CONFIGURED
+        assert required_var in result.output
+        assert "Missing required" in result.output
+
+    def test_cli_start_succeeds_when_required_env_var_in_env_file(
+        self, atk_home: Path, cli_runner
+    ) -> None:
+        """Verify CLI succeeds when required env var is set in .env file."""
+        plugin_name = "TestPlugin"
+        plugin_dir_name = "test-plugin"
+        required_var = "REQUIRED_API_KEY"
+        plugin_dir = atk_home / "plugins" / plugin_dir_name
+        plugin_dir.mkdir(parents=True, exist_ok=True)
+        plugin_yaml = {
+            "schema_version": PLUGIN_SCHEMA_VERSION,
+            "name": plugin_name,
+            "description": "Test plugin",
+            "lifecycle": {"start": "echo starting"},
+            "env_vars": [{"name": required_var, "required": True}],
+        }
+        (plugin_dir / "plugin.yaml").write_text(yaml.dump(plugin_yaml))
+        (plugin_dir / ".env").write_text(f"{required_var}=secret_value\n")
+        manifest = load_manifest(atk_home)
+        manifest.plugins.append(PluginEntry(name=plugin_name, directory=plugin_dir_name))
+        save_manifest(manifest, atk_home)
+
+        result = cli_runner.invoke(app, ["start", plugin_dir_name])
+
+        assert result.exit_code == exit_codes.SUCCESS
+        assert "Started plugin" in result.output
+
+    def test_cli_start_succeeds_when_required_env_var_in_system_env(
+        self, atk_home: Path, cli_runner, monkeypatch
+    ) -> None:
+        """Verify CLI succeeds when required env var is set in system environment."""
+        plugin_name = "TestPlugin"
+        plugin_dir_name = "test-plugin"
+        required_var = "REQUIRED_API_KEY"
+        monkeypatch.setenv(required_var, "system_value")
+        plugin_dir = atk_home / "plugins" / plugin_dir_name
+        plugin_dir.mkdir(parents=True, exist_ok=True)
+        plugin_yaml = {
+            "schema_version": PLUGIN_SCHEMA_VERSION,
+            "name": plugin_name,
+            "description": "Test plugin",
+            "lifecycle": {"start": "echo starting"},
+            "env_vars": [{"name": required_var, "required": True}],
+        }
+        (plugin_dir / "plugin.yaml").write_text(yaml.dump(plugin_yaml))
+        manifest = load_manifest(atk_home)
+        manifest.plugins.append(PluginEntry(name=plugin_name, directory=plugin_dir_name))
+        save_manifest(manifest, atk_home)
+
+        result = cli_runner.invoke(app, ["start", plugin_dir_name])
+
+        assert result.exit_code == exit_codes.SUCCESS
+        assert "Started plugin" in result.output
+
 
 @pytest.mark.usefixtures("atk_home")
 class TestStopCli:
@@ -308,6 +389,33 @@ class TestInstallCli:
         assert result.exit_code == exit_codes.GENERAL_ERROR
         assert (plugin2_dir / "installed2.txt").exists()
         assert "failed" in result.output.lower()
+
+    def test_cli_install_fails_with_missing_required_env_vars(
+        self, atk_home: Path, cli_runner
+    ) -> None:
+        """Verify CLI fails with exit code 8 when required env vars are missing."""
+        plugin_name = "TestPlugin"
+        plugin_dir_name = "test-plugin"
+        required_var = "REQUIRED_API_KEY"
+        plugin_dir = atk_home / "plugins" / plugin_dir_name
+        plugin_dir.mkdir(parents=True, exist_ok=True)
+        plugin_yaml = {
+            "schema_version": PLUGIN_SCHEMA_VERSION,
+            "name": plugin_name,
+            "description": "Test plugin",
+            "lifecycle": {"install": "echo installing"},
+            "env_vars": [{"name": required_var, "required": True}],
+        }
+        (plugin_dir / "plugin.yaml").write_text(yaml.dump(plugin_yaml))
+        manifest = load_manifest(atk_home)
+        manifest.plugins.append(PluginEntry(name=plugin_name, directory=plugin_dir_name))
+        save_manifest(manifest, atk_home)
+
+        result = cli_runner.invoke(app, ["install", plugin_dir_name])
+
+        assert result.exit_code == exit_codes.ENV_NOT_CONFIGURED
+        assert required_var in result.output
+        assert "Missing required" in result.output
 
 
 class TestRestartAll:

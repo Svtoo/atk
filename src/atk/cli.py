@@ -14,15 +14,24 @@ from atk.git import is_git_available
 from atk.home import get_atk_home, validate_atk_home
 from atk.init import init_atk_home
 from atk.lifecycle import (
+    AllPluginsMissingEnvVars,
+    AllPluginsPartialFailure,
+    AllPluginsSuccess,
     LifecycleCommand,
+    LifecycleCommandFailed,
     LifecycleCommandNotDefinedError,
+    LifecycleCommandSkipped,
+    LifecycleMissingEnvVars,
+    LifecyclePluginNotFound,
+    LifecycleSuccess,
     PluginStatus,
     PluginStatusResult,
     PortStatus,
+    execute_all_lifecycle,
+    execute_lifecycle,
     get_all_plugins_status,
     get_plugin_status,
     restart_all_plugins,
-    run_all_plugins_lifecycle,
     run_plugin_lifecycle,
 )
 from atk.manifest_schema import load_manifest
@@ -94,6 +103,22 @@ def require_ready_home() -> Path:
     return atk_home
 
 
+PAST_TENSE = {
+    "install": "Installed",
+    "start": "Started",
+    "stop": "Stopped",
+    "restart": "Restarted",
+}
+
+
+def _format_missing_env_vars(plugin_name: str, missing_vars: list[str]) -> None:
+    """Output error message for missing required env vars."""
+    cli_logger.error(f"Missing required environment variables for '{plugin_name}':")
+    for var in missing_vars:
+        cli_logger.error(f"  • {var}")
+    cli_logger.info(f"Run 'atk setup {plugin_name}' to configure.")
+
+
 def _run_lifecycle_cli(
     command_name: LifecycleCommand,
     plugin: str | None,
@@ -101,26 +126,10 @@ def _run_lifecycle_cli(
     *,
     reverse: bool = False,
 ) -> None:
-    """Run a lifecycle command from CLI with proper output and exit codes.
-
-    Args:
-        command_name: The lifecycle command to run (install, start, stop, etc.)
-        plugin: Plugin identifier (name or directory) or None for --all
-        all_plugins: Whether to run on all plugins
-        reverse: If True, process plugins in reverse order (for stop)
-    """
+    """Run a lifecycle command from CLI with proper output and exit codes."""
     atk_home = require_ready_home()
+    verb = PAST_TENSE.get(command_name, command_name.capitalize() + "ed")
 
-    # Past tense for success messages
-    past_tense = {
-        "install": "Installed",
-        "start": "Started",
-        "stop": "Stopped",
-        "restart": "Restarted",
-    }
-    verb = past_tense.get(command_name, command_name.capitalize() + "ed")
-
-    # Validate arguments
     if all_plugins and plugin:
         cli_logger.error("Cannot specify both plugin and --all")
         raise typer.Exit(exit_codes.INVALID_ARGS)
@@ -130,37 +139,69 @@ def _run_lifecycle_cli(
         raise typer.Exit(exit_codes.INVALID_ARGS)
 
     if all_plugins:
-        result = run_all_plugins_lifecycle(atk_home, command_name, reverse=reverse)
-        for name in result.succeeded:
+        _run_all_plugins_lifecycle_cli(atk_home, command_name, verb, reverse=reverse)
+    else:
+        _run_single_plugin_lifecycle_cli(atk_home, plugin, command_name, verb)
+
+
+def _run_single_plugin_lifecycle_cli(
+    atk_home: Path, identifier: str, command_name: LifecycleCommand, verb: str
+) -> None:
+    """Run lifecycle command for a single plugin and format output."""
+    result = execute_lifecycle(atk_home, identifier, command_name)
+
+    match result:
+        case LifecycleSuccess(plugin_name=name):
             cli_logger.success(f"{verb} plugin '{name}'")
-        for name in result.skipped:
-            cli_logger.warning(f"Plugin '{name}' has no {command_name} command defined")
-        for name, code in result.failed:
+            raise typer.Exit(exit_codes.SUCCESS)
+
+        case LifecycleCommandFailed(plugin_name=name, exit_code=code):
             cli_logger.error(
                 f"{command_name.capitalize()} failed for plugin '{name}' (exit code {code})"
             )
+            raise typer.Exit(code)
 
-        if result.all_succeeded:
+        case LifecycleCommandSkipped(plugin_name=name, command_name=cmd):
+            cli_logger.warning(f"Plugin '{name}' has no {cmd} command defined")
             raise typer.Exit(exit_codes.SUCCESS)
-        else:
+
+        case LifecyclePluginNotFound(identifier=ident):
+            cli_logger.error(f"Plugin '{ident}' not found in manifest")
+            raise typer.Exit(exit_codes.PLUGIN_NOT_FOUND)
+
+        case LifecycleMissingEnvVars(plugin_name=name, missing_vars=missing):
+            _format_missing_env_vars(name, missing)
+            raise typer.Exit(exit_codes.ENV_NOT_CONFIGURED)
+
+
+def _run_all_plugins_lifecycle_cli(
+    atk_home: Path, command_name: LifecycleCommand, verb: str, *, reverse: bool
+) -> None:
+    """Run lifecycle command for all plugins and format output."""
+    result = execute_all_lifecycle(atk_home, command_name, reverse=reverse)
+
+    match result:
+        case AllPluginsSuccess(succeeded=succeeded, skipped=skipped):
+            for name in succeeded:
+                cli_logger.success(f"{verb} plugin '{name}'")
+            for name in skipped:
+                cli_logger.warning(f"Plugin '{name}' has no {command_name} command defined")
+            raise typer.Exit(exit_codes.SUCCESS)
+
+        case AllPluginsPartialFailure(succeeded=succeeded, skipped=skipped, failed=failed):
+            for name in succeeded:
+                cli_logger.success(f"{verb} plugin '{name}'")
+            for name in skipped:
+                cli_logger.warning(f"Plugin '{name}' has no {command_name} command defined")
+            for name, code in failed:
+                cli_logger.error(
+                    f"{command_name.capitalize()} failed for plugin '{name}' (exit code {code})"
+                )
             raise typer.Exit(exit_codes.GENERAL_ERROR)
 
-    # Single plugin
-    try:
-        exit_code = run_plugin_lifecycle(atk_home, plugin, command_name)  # type: ignore[arg-type]
-        if exit_code == 0:
-            cli_logger.success(f"{verb} plugin '{plugin}'")
-        else:
-            cli_logger.error(
-                f"{command_name.capitalize()} failed for plugin '{plugin}' (exit code {exit_code})"
-            )
-        raise typer.Exit(exit_code)
-    except PluginNotFoundError:
-        cli_logger.error(f"Plugin '{plugin}' not found in manifest")
-        raise typer.Exit(exit_codes.PLUGIN_NOT_FOUND) from None
-    except LifecycleCommandNotDefinedError:
-        cli_logger.warning(f"Plugin '{plugin}' has no {command_name} command defined")
-        raise typer.Exit(exit_codes.SUCCESS) from None
+        case AllPluginsMissingEnvVars(plugin_name=name, missing_vars=missing):
+            _format_missing_env_vars(name, missing)
+            raise typer.Exit(exit_codes.ENV_NOT_CONFIGURED)
 
 
 def version_callback(value: bool) -> None:

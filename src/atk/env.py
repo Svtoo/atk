@@ -82,14 +82,12 @@ def get_env_status(plugin: PluginSchema, plugin_dir: Path) -> list[EnvVarStatus]
     if not plugin.env_vars:
         return []
 
-    # Load .env file
     env_file = plugin_dir / ".env"
     file_vars = load_env_file(env_file)
 
     result: list[EnvVarStatus] = []
 
     for env_var in plugin.env_vars:
-        # Check .env file first, then system environment
         if env_var.name in file_vars:
             value = file_vars[env_var.name]
             is_set = True
@@ -111,4 +109,18 @@ def get_env_status(plugin: PluginSchema, plugin_dir: Path) -> list[EnvVarStatus]
         )
 
     return result
+
+
+def check_required_env_vars(plugin: PluginSchema, plugin_dir: Path) -> list[str]:
+    """Check for missing required environment variables.
+
+    Args:
+        plugin: The plugin schema.
+        plugin_dir: Path to the plugin directory.
+
+    Returns:
+        List of missing required variable names. Empty list if all are set.
+    """
+    statuses = get_env_status(plugin, plugin_dir)
+    return [s.name for s in statuses if s.required and not s.is_set]
 

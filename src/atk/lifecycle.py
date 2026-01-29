@@ -5,17 +5,98 @@ Handles running lifecycle commands defined in plugin.yaml.
 
 import os
 import subprocess
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from enum import Enum
 from pathlib import Path
 from typing import Literal
 
-from atk.env import load_env_file
+from atk.env import check_required_env_vars, load_env_file
 from atk.manifest_schema import load_manifest
-from atk.plugin import load_plugin
+from atk.plugin import PluginNotFoundError, load_plugin
 from atk.plugin_schema import PluginSchema
 
 LifecycleCommand = Literal["install", "start", "stop", "logs", "status"]
+
+
+# --- Result types for single plugin execution ---
+
+
+@dataclass
+class LifecycleSuccess:
+    """Lifecycle command succeeded."""
+
+    plugin_name: str
+
+
+@dataclass
+class LifecycleCommandFailed:
+    """Lifecycle command ran but exited with non-zero code."""
+
+    plugin_name: str
+    exit_code: int
+
+
+@dataclass
+class LifecycleCommandSkipped:
+    """Lifecycle command not defined in plugin."""
+
+    plugin_name: str
+    command_name: LifecycleCommand
+
+
+@dataclass
+class LifecyclePluginNotFound:
+    """Plugin identifier not found in manifest."""
+
+    identifier: str
+
+
+@dataclass
+class LifecycleMissingEnvVars:
+    """Required environment variables are not set."""
+
+    plugin_name: str
+    missing_vars: list[str]
+
+
+SinglePluginResult = (
+    LifecycleSuccess
+    | LifecycleCommandFailed
+    | LifecycleCommandSkipped
+    | LifecyclePluginNotFound
+    | LifecycleMissingEnvVars
+)
+
+
+# --- Result types for all plugins execution ---
+
+
+@dataclass
+class AllPluginsSuccess:
+    """All plugins executed successfully (skipped is OK)."""
+
+    succeeded: list[str] = field(default_factory=list)
+    skipped: list[str] = field(default_factory=list)
+
+
+@dataclass
+class AllPluginsPartialFailure:
+    """Some plugins failed during execution."""
+
+    succeeded: list[str] = field(default_factory=list)
+    skipped: list[str] = field(default_factory=list)
+    failed: list[tuple[str, int]] = field(default_factory=list)
+
+
+@dataclass
+class AllPluginsMissingEnvVars:
+    """Pre-flight check failed: required env vars missing."""
+
+    plugin_name: str
+    missing_vars: list[str]
+
+
+AllPluginsResult = AllPluginsSuccess | AllPluginsPartialFailure | AllPluginsMissingEnvVars
 
 
 class PluginStatus(str, Enum):
@@ -137,6 +218,46 @@ def run_plugin_lifecycle(
     return run_lifecycle_command(plugin, plugin_dir, command_name)
 
 
+def execute_lifecycle(
+    atk_home: Path, identifier: str, command_name: LifecycleCommand
+) -> SinglePluginResult:
+    """Execute a lifecycle command for a single plugin with pre-flight checks.
+
+    This is the main entry point for running lifecycle commands. It handles:
+    - Loading the plugin
+    - Checking required env vars (for start/install)
+    - Running the command
+    - Returning a typed result
+
+    Args:
+        atk_home: Path to ATK Home directory.
+        identifier: Plugin name or directory.
+        command_name: Lifecycle command to run.
+
+    Returns:
+        A SinglePluginResult indicating success or the specific failure reason.
+    """
+    try:
+        plugin, plugin_dir = load_plugin(atk_home, identifier)
+    except PluginNotFoundError:
+        return LifecyclePluginNotFound(identifier=identifier)
+
+    if command_name in ("start", "install"):
+        missing = check_required_env_vars(plugin, plugin_dir)
+        if missing:
+            return LifecycleMissingEnvVars(plugin_name=plugin.name, missing_vars=missing)
+
+    try:
+        exit_code = run_lifecycle_command(plugin, plugin_dir, command_name)
+    except LifecycleCommandNotDefinedError:
+        return LifecycleCommandSkipped(plugin_name=plugin.name, command_name=command_name)
+
+    if exit_code == 0:
+        return LifecycleSuccess(plugin_name=plugin.name)
+    else:
+        return LifecycleCommandFailed(plugin_name=plugin.name, exit_code=exit_code)
+
+
 def run_all_plugins_lifecycle(
     atk_home: Path, command_name: LifecycleCommand, *, reverse: bool = False
 ) -> LifecycleResult:
@@ -172,6 +293,63 @@ def run_all_plugins_lifecycle(
             skipped.append(plugin_entry.name)
 
     return LifecycleResult(succeeded=succeeded, failed=failed, skipped=skipped)
+
+
+def execute_all_lifecycle(
+    atk_home: Path, command_name: LifecycleCommand, *, reverse: bool = False
+) -> AllPluginsResult:
+    """Execute a lifecycle command for all plugins with pre-flight checks.
+
+    This is the main entry point for running lifecycle commands on all plugins.
+    It handles:
+    - Pre-flight env var checks for all plugins (fail fast on first missing)
+    - Running the command on each plugin
+    - Returning a typed result
+
+    Args:
+        atk_home: Path to ATK Home directory.
+        command_name: Lifecycle command to run.
+        reverse: If True, process plugins in reverse manifest order.
+
+    Returns:
+        An AllPluginsResult indicating success, partial failure, or pre-flight failure.
+    """
+    manifest = load_manifest(atk_home)
+    plugins = manifest.plugins
+    if reverse:
+        plugins = list(reversed(plugins))
+
+    if command_name in ("start", "install"):
+        for plugin_entry in plugins:
+            plugin, plugin_dir = load_plugin(atk_home, plugin_entry.directory)
+            missing = check_required_env_vars(plugin, plugin_dir)
+            if missing:
+                return AllPluginsMissingEnvVars(
+                    plugin_name=plugin.name, missing_vars=missing
+                )
+
+    succeeded: list[str] = []
+    skipped: list[str] = []
+    failed: list[tuple[str, int]] = []
+
+    for plugin_entry in plugins:
+        try:
+            exit_code = run_plugin_lifecycle(
+                atk_home, plugin_entry.directory, command_name
+            )
+            if exit_code == 0:
+                succeeded.append(plugin_entry.name)
+            else:
+                failed.append((plugin_entry.name, exit_code))
+        except LifecycleCommandNotDefinedError:
+            skipped.append(plugin_entry.name)
+
+    if failed:
+        return AllPluginsPartialFailure(
+            succeeded=succeeded, skipped=skipped, failed=failed
+        )
+    else:
+        return AllPluginsSuccess(succeeded=succeeded, skipped=skipped)
 
 
 @dataclass
