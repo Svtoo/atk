@@ -1,7 +1,7 @@
 # ATK Home Specification
 
 > **Status**: Approved
-> **Last Updated**: 2026-01-23
+> **Last Updated**: 2026-01-29
 
 ## Overview
 
@@ -16,6 +16,7 @@ ATK Home location is resolved in this order:
 2. **Default** — `~/.atk/`
 
 This allows:
+
 - Custom locations for users who prefer non-default paths
 - Easy testing without polluting `~/.atk/`
 - Multiple ATK installations on the same machine (advanced use case)
@@ -83,16 +84,16 @@ Display names (`name` field) have no restrictions—they are for human readabili
 
 **Only mutations commit**. Read-only operations do not create commits.
 
-| Command                     | Commits? | Reason                                        |
-|-----------------------------|----------|-----------------------------------------------|
-| `atk init`                  | Yes      | Creates manifest and .gitignore               |
-| `atk add <plugin>`          | Yes      | Adds plugin to manifest, copies files         |
-| `atk remove <plugin>`       | Yes      | Removes plugin from manifest, deletes files   |
-| `atk start/stop/restart`    | No       | Service control, no file changes              |
-| `atk install`               | No       | Install and/or updates the underlying service |
-| `atk status`                | No       | Read-only                                     |
-| `atk logs`                  | No       | Read-only                                     |
-| `atk run <plugin> <script>` | No       | Executes script, no file changes              |
+| Command                     | Commits? | Reason                                                    |
+|-----------------------------|----------|-----------------------------------------------------------|
+| `atk init`                  | Yes      | Creates manifest and .gitignore                           |
+| `atk add <plugin>`          | Yes      | Adds plugin to manifest, copies files                     |
+| `atk remove <plugin>`       | Yes      | Removes plugin from manifest, deletes files               |
+| `atk start/stop/restart`    | No       | Service control, no file changes (restart = stop + start) |
+| `atk install`               | No       | Install and/or updates the underlying service             |
+| `atk status`                | No       | Read-only                                                 |
+| `atk logs`                  | No       | Read-only                                                 |
+| `atk run <plugin> <script>` | No       | Executes script, no file changes                          |
 
 If `auto_commit: false`, user must manually commit changes.
 
@@ -142,18 +143,47 @@ services:
 - User customizations persist across updates
 - Standard Docker Compose override pattern
 
+## Environment Variables
+
+Plugins declare environment variables in `plugin.yaml`. ATK manages `.env` files per plugin.
+
+### Storage
+
+- `.env` files live in plugin directories: `plugins/<plugin>/.env`
+- `.env` files are gitignored (secrets should not be committed)
+- Format is standard dotenv: `KEY=value` per line
+
+### How Env Vars Flow to Services
+
+When ATK runs lifecycle commands (start, stop, install, etc.), it:
+
+1. Reads the plugin's `.env` file
+2. Injects those variables into the command's environment
+3. Executes the lifecycle command
+
+This means plugin developers can:
+
+- Use `${VAR}` substitution in docker-compose.yml files
+- Assume environment variables are set when lifecycle scripts run
+- Not worry about referencing `.env` files explicitly
+
+### Required Variables
+
+Lifecycle commands (start, install) fail fast if required env vars are not set. Users must run `atk setup` first.
+
 ## Lifecycle Commands (MVP)
 
 | Command                | Purpose         | Default Implementation             |
 |------------------------|-----------------|------------------------------------|
 | `atk start <plugin>`   | Start service   | `docker compose up -d`             |
 | `atk stop <plugin>`    | Stop service    | `docker compose down`              |
-| `atk restart <plugin>` | Restart service | `docker compose restart`           |
+| `atk restart <plugin>` | Restart service | stop + start                       |
 | `atk status [plugin]`  | Show status     | Check container state              |
 | `atk logs <plugin>`    | View logs       | `docker compose logs`              |
-| `atk install <plugin>` | Install/Update  | install lyfecycle from plugin.yaml |
+| `atk install <plugin>` | Install/Update  | install lifecycle from plugin.yaml |
+| `atk setup [plugin]`   | Configure vars  | Interactive prompts for env vars   |
 
-All lifecycle commands are plugin-agnostic,they execute whatever the plugin defines.
+All lifecycle commands are plugin-agnostic — they execute whatever the plugin defines.
 
 ## Plugin Sources (MVP)
 
@@ -164,10 +194,10 @@ atk add ./openmemory/        # Directory containing plugin.yaml
 atk add ./mcp-server.yaml    # Single plugin.yaml file
 ```
 
-| Source Type | Use Case |
-|-------------|----------|
-| Directory | Docker Compose plugins with multiple files (compose.yml, scripts) |
-| Single file | Simple MCP servers installed via command line |
+| Source Type | Use Case                                                          |
+|-------------|-------------------------------------------------------------------|
+| Directory   | Docker Compose plugins with multiple files (compose.yml, scripts) |
+| Single file | Simple MCP servers installed via command line                     |
 
 ### Explicitly NOT Supported (MVP)
 

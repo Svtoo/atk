@@ -87,7 +87,6 @@ classDiagram
     class LifecycleConfig {
         +start: str?
         +stop: str?
-        +restart: str?
         +install: str?
         +status: str?
         +logs: str?
@@ -194,11 +193,12 @@ Custom commands for lifecycle operations. These override defaults based on `serv
 |-------|------|----------|-------------|
 | `start` | string | ❌ | Command to start the service |
 | `stop` | string | ❌ | Command to stop the service |
-| `restart` | string | ❌ | Command to restart (default: stop + start) |
 | `install` | string | ❌ | One-time setup command |
 | `status` | string | ❌ | Command to check if running |
 | `logs` | string | ❌ | Command to view logs |
 | `health_endpoint` | string | ❌ | HTTP endpoint for health checks |
+
+**Note**: There is no `restart` field. The `atk restart` command always executes `stop` then `start` in sequence. 
 
 ### McpConfig
 
@@ -233,7 +233,6 @@ ATK applies sensible defaults to minimize configuration:
 lifecycle:
   start: "docker compose up -d"
   stop: "docker compose down"
-  restart: "docker compose restart"
   logs: "docker compose logs -f"
   status: "docker compose ps --format json"
 ```
@@ -252,7 +251,6 @@ lifecycle:
 lifecycle:
   start: "systemctl start {unit_name}"
   stop: "systemctl stop {unit_name}"
-  restart: "systemctl restart {unit_name}"
   logs: "journalctl -u {unit_name} -f"
   status: "systemctl is-active {unit_name}"
 ```

@@ -16,8 +16,8 @@
 |-------|----------------------|--------|---------------------------------------------|
 | 0     | Foundation           | ✅      | Project setup, plugin schema, CLI skeleton  |
 | 1     | Core CLI             | ✅      | init, add, remove, git integration          |
-| 2     | Service Lifecycle    | 🔄     | start, stop, restart, status, logs, run     |
-| 3     | Configuration        | ⏳      | .env management, port conflicts, MCP config |
+| 2     | Service Lifecycle    | ✅      | start, stop, restart, status, logs, run     |
+| 3     | Configuration        | 🔄     | .env management, port conflicts, MCP config |
 | 4     | Plugin Sources       | ⏳      | Registry, git URL sources, version pinning  |
 | 5     | Polish               | ⏳      | Error messages, help text, documentation    |
 | 6     | Community            | ⏳      | PyPI, contribution guide, CI/CD             |
@@ -38,7 +38,7 @@ version banner.
 `atk init`, `atk add`, `atk remove` commands. Git-backed manifest with auto-commit. Plugin directory sanitization. Exit
 codes.
 
-### Phase 2: Service Lifecycle ⏳
+### Phase 2: Service Lifecycle ✅
 
 `atk start/stop/restart <plugin>`, `atk status`, `atk logs`, `atk run <plugin> <script>`. Lifecycle events from
 plugin.yaml. Health checks.
@@ -46,7 +46,7 @@ plugin.yaml. Health checks.
 ### Phase 3: Configuration ⏳
 
 `.env` file management per plugin. Install wizard for required env vars. Port conflict detection. `atk mcp <plugin>` for
-IDE config.
+MCP client config generation.
 
 ### Phase 4: Plugin Sources ⏳
 

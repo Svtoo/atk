@@ -1,7 +1,7 @@
 # ATK Commands Specification
 
 > **Status**: Approved
-> **Last Updated**: 2026-01-23
+> **Last Updated**: 2026-01-29
 
 ## Overview
 
@@ -30,6 +30,8 @@ All commands use consistent exit codes:
 | 5 | PLUGIN_INVALID | Plugin file invalid (YAML parse error, schema violation) |
 | 6 | DOCKER_ERROR | Docker/container operation failed |
 | 7 | GIT_ERROR | Git operation failed |
+| 8 | ENV_NOT_CONFIGURED | Required environment variables not set (run `atk setup` first) |
+| 9 | PORT_CONFLICT | Declared port already in use (stop conflicting service first) |
 
 ## Command Flow
 
@@ -41,6 +43,7 @@ flowchart TB
 
     subgraph Manage["Plugin Management"]
         add[atk add]
+        setup[atk setup]
         install[atk install]
         remove[atk remove]
         list[atk list]
@@ -60,7 +63,9 @@ flowchart TB
     end
 
     init --> add
-    add --> start
+    add --> setup
+    setup --> install
+    install --> start
     start --> status
     status --> logs
     stop --> remove
@@ -200,12 +205,14 @@ atk install --all          # Install all plugins (bootstrap scenario)
 **Behavior:**
 1. Validate ATK Home is initialized (exit 3 if not)
 2. Find plugin(s) by name or directory
-3. Run `install` lifecycle command from plugin.yaml
-4. If `install` not defined → skip silently (no-op)
-5. Report output to user
+3. Check required environment variables are set (exit 8 if missing)
+4. Run `install` lifecycle command from plugin.yaml
+5. If `install` not defined → skip silently (no-op)
+6. Report output to user
 
 **Workflow Clarification:**
-- `atk add` = copy files + run install (for adding new plugins from source)
+- `atk add` = copy files + prompt for env vars + run install (for adding new plugins from source)
+- `atk setup` = prompt for env vars only (for configuring existing plugins)
 - `atk install` = run install only (for update or bootstrap after git pull)
 
 **Exit Codes:**
@@ -213,6 +220,50 @@ atk install --all          # Install all plugins (bootstrap scenario)
 - 3: ATK Home not initialized
 - 4: Plugin not found
 - 6: Install command failed
+- 8: Required environment variables not set (run `atk setup` first)
+
+---
+
+## `atk setup [plugin]`
+
+Configure environment variables for plugin(s) via interactive prompts.
+
+**Use Cases:**
+1. **New machine bootstrap**: After cloning ATK Home, set up all missing env vars
+2. **Reconfigure**: Change or update env vars for a plugin
+3. **First-time setup**: Called automatically during `atk add`
+
+**Arguments:**
+- `[plugin]`: Plugin name or directory (optional if `--all`)
+
+**Flags:**
+- `--all`: Set up all plugins that have env vars defined
+
+**Usage:**
+```bash
+atk setup langfuse        # Configure one plugin
+atk setup --all           # Configure all plugins (new machine scenario)
+```
+
+**Behavior:**
+1. Validate ATK Home is initialized (exit 3 if not)
+2. Find plugin(s) by name or directory
+3. For each env var declared in plugin.yaml:
+   - Show current value (masked for secrets) if already set
+   - Show default value if defined
+   - Prompt user for input (password input for secrets)
+   - User can press Enter to keep existing value or accept default
+4. Save values to plugin's `.env` file
+5. Report completion
+
+**Notes:**
+- Designed for human interaction (prompts for input)
+- Secrets are masked in prompts but stored in plain text in `.env`
+
+**Exit Codes:**
+- 0: Success
+- 3: ATK Home not initialized
+- 4: Plugin not found
 
 ---
 
@@ -227,22 +278,28 @@ Start a plugin's service.
 **Behavior:**
 1. Validate ATK Home exists
 2. Find plugin by name or directory
-3. Call plugin's `start` lifecycle event (script or container start)
-4. Report result
+3. Check required environment variables are set (exit 8 if missing)
+4. Check for port conflicts (exit 9 if any declared port is in use)
+5. Call plugin's `start` lifecycle event (script or container start)
+6. Report result
 
 **Lifecycle Event:**
 - Calls `start` script if present in plugin directory
 - Plugin-agnostic: implementation details depend on plugin type (Docker, native, etc.)
+- Environment variables from `.env` file are injected into the command environment
 
 **Notes:**
 - Order matters when using `--all` (respects manifest order)
 - Plugins without `start` script: skip with warning
+- Port conflicts are fatal — use `atk restart` which stops first, then starts
 
 **Exit Codes:**
 - 0: Success (all requested plugins started)
 - 3: ATK Home not initialized
 - 4: Plugin not found
 - 6: Service start failed
+- 8: Required environment variables not set
+- 9: Port conflict (declared port already in use)
 
 ---
 
@@ -278,7 +335,7 @@ Stop a plugin's service.
 
 ## `atk restart <plugin>`
 
-Restart a plugin's service.
+Restart a plugin's service by stopping then starting it.
 
 **Arguments:**
 - `<plugin>`: Plugin name or directory (required, unless `--all`)
@@ -287,22 +344,23 @@ Restart a plugin's service.
 **Behavior:**
 1. Validate ATK Home exists
 2. Find plugin by name or directory
-3. Call plugin's `restart` lifecycle event (or stop + start if no restart script)
-4. Report result
-
-**Lifecycle Event:**
-- Calls `restart` script if present, otherwise calls `stop` then `start`
-- Plugin-agnostic: implementation details depend on plugin type
+3. Call `stop` lifecycle event
+4. Call `start` lifecycle event (includes env var and port checks)
+5. Report result
 
 **Notes:**
-- Fallback to stop+start is automatic if no `restart` script exists
+- Always executes stop then start — there is no separate `restart` lifecycle command
+- This ensures port availability is verified before starting
 - When using `--all`: stop all (reverse order), then start all (manifest order)
+- Environment variables and port conflicts are checked during the start phase
 
 **Exit Codes:**
 - 0: Success
 - 3: ATK Home not initialized
 - 4: Plugin not found
-- 6: Service restart failed
+- 6: Service stop or start failed
+- 8: Required environment variables not set
+- 9: Port conflict (should not happen if stop succeeded)
 
 ---
 
@@ -326,8 +384,8 @@ For each plugin, display:
 - Directory name
 - Status (running, stopped, error, unknown)
 - Ports (if applicable)
-- Unset required variables count
-- Unset optional variables count
+- Missing required variables (listed explicitly by name)
+- Count of unset optional variables
 
 **Lifecycle Event:**
 - Calls `status` script if present in plugin directory
@@ -401,26 +459,47 @@ Run a custom script defined by a plugin.
 
 ## `atk mcp <plugin>`
 
-Display MCP (Model Context Protocol) configuration for a plugin.
+Generate MCP (Model Context Protocol) configuration JSON for a plugin.
 
 **Arguments:**
 - `<plugin>`: Plugin name or directory (required)
 
+**Usage:**
+```bash
+atk mcp openmemory          # Output MCP config JSON for openmemory
+```
+
 **Behavior:**
 1. Validate ATK Home exists
 2. Find plugin by name or directory
-3. Read plugin's MCP configuration
-4. Output in format suitable for inclusion in MCP config files
+3. Read plugin's MCP configuration from plugin.yaml
+4. Resolve environment variable values from `.env` file
+5. Output JSON in MCP standard format
+
+**Output Format:**
+```json
+{
+  "plugin-name": {
+    "command": "docker",
+    "args": ["exec", "-i", "container", "npx", "@org/mcp-server"],
+    "env": {
+      "API_KEY": "resolved-value-from-env-file"
+    }
+  }
+}
+```
 
 **Notes:**
-- Output format designed for copy-paste into client MCP configurations
-- Shows resolved values (environment variables substituted where applicable)
+- Output follows MCP standard JSON format for client configuration
+- Environment variables are resolved from `.env` file and substituted
+- If required env vars are missing, outputs with placeholder `<NOT_SET>` and warns
+- Plugin name is used as the server identifier key
 
 **Exit Codes:**
 - 0: Success
 - 3: ATK Home not initialized
 - 4: Plugin not found
-- 5: Plugin has no MCP configuration
+- 5: Plugin has no MCP configuration defined
 
 ---
 
