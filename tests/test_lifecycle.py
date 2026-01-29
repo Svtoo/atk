@@ -978,3 +978,132 @@ class TestRunCli:
 
         result = cli_runner.invoke(app, ["run", "test-plugin"])
         assert result.exit_code != exit_codes.SUCCESS
+
+
+@pytest.mark.usefixtures("atk_home")
+class TestSetupCli:
+    """Tests for atk setup CLI command."""
+
+    def test_cli_setup_prompts_for_env_vars_and_saves(
+        self, atk_home: Path, cli_runner
+    ) -> None:
+        """Verify atk setup prompts for each env var and saves to .env file."""
+        plugin_name = "TestPlugin"
+        plugin_dir_name = "test-plugin"
+        var1_name = "API_KEY"
+        var1_value = "my-api-key"
+        var2_name = "DEBUG_MODE"
+        var2_value = "true"
+
+        plugin_dir = atk_home / "plugins" / plugin_dir_name
+        plugin_dir.mkdir(parents=True, exist_ok=True)
+        plugin_yaml = {
+            "schema_version": PLUGIN_SCHEMA_VERSION,
+            "name": plugin_name,
+            "description": "Test plugin",
+            "env_vars": [
+                {"name": var1_name, "required": True},
+                {"name": var2_name, "required": False},
+            ],
+        }
+        (plugin_dir / "plugin.yaml").write_text(yaml.dump(plugin_yaml))
+        manifest = load_manifest(atk_home)
+        manifest.plugins.append(PluginEntry(name=plugin_name, directory=plugin_dir_name))
+        save_manifest(manifest, atk_home)
+
+        user_input = f"{var1_value}\n{var2_value}\n"
+        result = cli_runner.invoke(app, ["setup", plugin_dir_name], input=user_input)
+
+        assert result.exit_code == exit_codes.SUCCESS
+        env_file = plugin_dir / ".env"
+        assert env_file.exists()
+        content = env_file.read_text()
+        assert content == f"{var1_name}={var1_value}\n{var2_name}={var2_value}\n"
+
+    def test_cli_setup_plugin_not_found(self, cli_runner) -> None:
+        """Verify atk setup fails when plugin not found."""
+        result = cli_runner.invoke(app, ["setup", "nonexistent"])
+
+        assert result.exit_code == exit_codes.PLUGIN_NOT_FOUND
+        assert "not found" in result.output.lower()
+
+    def test_cli_setup_all_configures_multiple_plugins(
+        self, atk_home: Path, cli_runner
+    ) -> None:
+        """Verify atk setup --all configures all plugins with env vars."""
+        plugin1_name = "Plugin1"
+        plugin1_dir_name = "plugin1"
+        plugin1_var = "PLUGIN1_KEY"
+        plugin1_value = "value1"
+
+        plugin2_name = "Plugin2"
+        plugin2_dir_name = "plugin2"
+        plugin2_var = "PLUGIN2_KEY"
+        plugin2_value = "value2"
+
+        for name, dir_name, var in [
+            (plugin1_name, plugin1_dir_name, plugin1_var),
+            (plugin2_name, plugin2_dir_name, plugin2_var),
+        ]:
+            plugin_dir = atk_home / "plugins" / dir_name
+            plugin_dir.mkdir(parents=True, exist_ok=True)
+            plugin_yaml = {
+                "schema_version": PLUGIN_SCHEMA_VERSION,
+                "name": name,
+                "description": "Test plugin",
+                "env_vars": [{"name": var, "required": True}],
+            }
+            (plugin_dir / "plugin.yaml").write_text(yaml.dump(plugin_yaml))
+            manifest = load_manifest(atk_home)
+            manifest.plugins.append(PluginEntry(name=name, directory=dir_name))
+            save_manifest(manifest, atk_home)
+
+        user_input = f"{plugin1_value}\n{plugin2_value}\n"
+        result = cli_runner.invoke(app, ["setup", "--all"], input=user_input)
+
+        assert result.exit_code == exit_codes.SUCCESS
+        env1 = (atk_home / "plugins" / plugin1_dir_name / ".env").read_text()
+        env2 = (atk_home / "plugins" / plugin2_dir_name / ".env").read_text()
+        assert env1 == f"{plugin1_var}={plugin1_value}\n"
+        assert env2 == f"{plugin2_var}={plugin2_value}\n"
+
+    def test_cli_setup_skips_plugins_without_env_vars(
+        self, atk_home: Path, cli_runner
+    ) -> None:
+        """Verify atk setup --all skips plugins with no env vars defined."""
+        plugin_with_vars = "PluginWithVars"
+        plugin_with_vars_dir = "plugin-with-vars"
+        var_name = "MY_VAR"
+        var_value = "my-value"
+
+        plugin_without_vars = "PluginWithoutVars"
+        plugin_without_vars_dir = "plugin-without-vars"
+
+        plugin_dir1 = atk_home / "plugins" / plugin_with_vars_dir
+        plugin_dir1.mkdir(parents=True, exist_ok=True)
+        (plugin_dir1 / "plugin.yaml").write_text(yaml.dump({
+            "schema_version": PLUGIN_SCHEMA_VERSION,
+            "name": plugin_with_vars,
+            "description": "Has env vars",
+            "env_vars": [{"name": var_name}],
+        }))
+
+        plugin_dir2 = atk_home / "plugins" / plugin_without_vars_dir
+        plugin_dir2.mkdir(parents=True, exist_ok=True)
+        (plugin_dir2 / "plugin.yaml").write_text(yaml.dump({
+            "schema_version": PLUGIN_SCHEMA_VERSION,
+            "name": plugin_without_vars,
+            "description": "No env vars",
+        }))
+
+        manifest = load_manifest(atk_home)
+        manifest.plugins.append(PluginEntry(name=plugin_with_vars, directory=plugin_with_vars_dir))
+        manifest.plugins.append(PluginEntry(name=plugin_without_vars, directory=plugin_without_vars_dir))
+        save_manifest(manifest, atk_home)
+
+        user_input = f"{var_value}\n"
+        result = cli_runner.invoke(app, ["setup", "--all"], input=user_input)
+
+        assert result.exit_code == exit_codes.SUCCESS
+        assert (plugin_dir1 / ".env").exists()
+        assert not (plugin_dir2 / ".env").exists()

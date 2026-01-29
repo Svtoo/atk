@@ -39,6 +39,7 @@ from atk.lifecycle import (
 from atk.manifest_schema import load_manifest
 from atk.plugin import PluginNotFoundError, load_plugin
 from atk.remove import remove_plugin
+from atk.setup import run_setup
 
 app = typer.Typer(
     name="atk",
@@ -343,6 +344,67 @@ def remove(
     except ValueError as e:
         cli_logger.error(f"Failed to remove plugin: {e}")
         raise typer.Exit(exit_codes.GENERAL_ERROR) from e
+
+
+@app.command()
+def setup(
+    plugin: Annotated[
+        str | None,
+        typer.Argument(
+            help="Plugin name or directory to configure.",
+        ),
+    ] = None,
+    all_plugins: Annotated[
+        bool,
+        typer.Option(
+            "--all",
+            help="Configure all plugins with environment variables.",
+        ),
+    ] = False,
+) -> None:
+    """Configure environment variables for a plugin.
+
+    Prompts for each environment variable defined in the plugin's plugin.yaml.
+    Saves values to the plugin's .env file.
+    """
+    atk_home = require_ready_home()
+
+    if all_plugins and plugin:
+        cli_logger.error("Cannot specify both plugin and --all")
+        raise typer.Exit(exit_codes.INVALID_ARGS)
+
+    if not all_plugins and not plugin:
+        cli_logger.error("Must specify plugin or --all")
+        raise typer.Exit(exit_codes.INVALID_ARGS)
+
+    def prompt_func(text: str) -> str:
+        return input(text)
+
+    if plugin:
+        try:
+            plugin_schema, plugin_dir = load_plugin(atk_home, plugin)
+        except PluginNotFoundError:
+            cli_logger.error(f"Plugin '{plugin}' not found in manifest")
+            raise typer.Exit(exit_codes.PLUGIN_NOT_FOUND) from None
+
+        if not plugin_schema.env_vars:
+            cli_logger.info(f"Plugin '{plugin_schema.name}' has no environment variables defined")
+            raise typer.Exit(exit_codes.SUCCESS)
+
+        result = run_setup(plugin_schema, plugin_dir, prompt_func)
+        cli_logger.success(f"Configured {len(result.configured_vars)} variable(s) for '{result.plugin_name}'")
+        raise typer.Exit(exit_codes.SUCCESS)
+
+    manifest = load_manifest(atk_home)
+    for plugin_entry in manifest.plugins:
+        plugin_schema, plugin_dir = load_plugin(atk_home, plugin_entry.directory)
+        if not plugin_schema.env_vars:
+            continue
+        cli_logger.info(f"\nConfiguring '{plugin_schema.name}':")
+        result = run_setup(plugin_schema, plugin_dir, prompt_func)
+        cli_logger.success(f"Configured {len(result.configured_vars)} variable(s)")
+
+    raise typer.Exit(exit_codes.SUCCESS)
 
 
 @app.command()
