@@ -436,7 +436,7 @@ def mcp(
         cli_logger.error(f"Plugin '{plugin_schema.name}' has no MCP configuration")
         raise typer.Exit(exit_codes.PLUGIN_INVALID)
 
-    result = generate_mcp_config(plugin_schema, plugin_dir, plugin)
+    result = generate_mcp_config(plugin_schema, plugin_dir, plugin_schema.name)
 
     if result.missing_vars:
         for var in result.missing_vars:

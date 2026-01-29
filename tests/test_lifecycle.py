@@ -17,10 +17,10 @@ from atk.lifecycle import (
 )
 from atk.manifest_schema import PluginEntry, load_manifest, save_manifest
 from atk.plugin import PluginNotFoundError, load_plugin
-from atk.plugin_schema import PLUGIN_SCHEMA_VERSION
+from atk.plugin_schema import PLUGIN_SCHEMA_VERSION, EnvVarConfig, McpConfig
 
 # Type alias for the plugin factory fixture
-PluginFactory = Callable[[str, str, dict[str, str] | None], Path]
+PluginFactory = Callable[..., Path]
 
 
 class TestRunLifecycleCommand:
@@ -986,34 +986,27 @@ class TestSetupCli:
     """Tests for atk setup CLI command."""
 
     def test_cli_setup_prompts_for_env_vars_and_saves(
-        self, atk_home: Path, cli_runner
+        self, create_plugin: PluginFactory, cli_runner
     ) -> None:
         """Verify atk setup prompts for each env var and saves to .env file."""
-        plugin_name = "TestPlugin"
         plugin_dir_name = "test-plugin"
         var1_name = "API_KEY"
         var1_value = "my-api-key"
         var2_name = "DEBUG_MODE"
         var2_value = "true"
 
-        plugin_dir = atk_home / "plugins" / plugin_dir_name
-        plugin_dir.mkdir(parents=True, exist_ok=True)
-        plugin_yaml = {
-            "schema_version": PLUGIN_SCHEMA_VERSION,
-            "name": plugin_name,
-            "description": "Test plugin",
-            "env_vars": [
-                {"name": var1_name, "required": True},
-                {"name": var2_name, "required": False},
+        plugin_dir = create_plugin(
+            "TestPlugin",
+            plugin_dir_name,
+            env_vars=[
+                EnvVarConfig(name=var1_name, required=True),
+                EnvVarConfig(name=var2_name, required=False),
             ],
-        }
-        (plugin_dir / "plugin.yaml").write_text(yaml.dump(plugin_yaml))
-        manifest = load_manifest(atk_home)
-        manifest.plugins.append(PluginEntry(name=plugin_name, directory=plugin_dir_name))
-        save_manifest(manifest, atk_home)
+        )
 
-        user_input = f"{var1_value}\n{var2_value}\n"
-        result = cli_runner.invoke(app, ["setup", plugin_dir_name], input=user_input)
+        result = cli_runner.invoke(
+            app, ["setup", plugin_dir_name], input=f"{var1_value}\n{var2_value}\n"
+        )
 
         assert result.exit_code == exit_codes.SUCCESS
         env_file = plugin_dir / ".env"
@@ -1029,85 +1022,55 @@ class TestSetupCli:
         assert "not found" in result.output.lower()
 
     def test_cli_setup_all_configures_multiple_plugins(
-        self, atk_home: Path, cli_runner
+        self, atk_home: Path, create_plugin: PluginFactory, cli_runner
     ) -> None:
         """Verify atk setup --all configures all plugins with env vars."""
-        plugin1_name = "Plugin1"
-        plugin1_dir_name = "plugin1"
         plugin1_var = "PLUGIN1_KEY"
         plugin1_value = "value1"
-
-        plugin2_name = "Plugin2"
-        plugin2_dir_name = "plugin2"
         plugin2_var = "PLUGIN2_KEY"
         plugin2_value = "value2"
 
-        for name, dir_name, var in [
-            (plugin1_name, plugin1_dir_name, plugin1_var),
-            (plugin2_name, plugin2_dir_name, plugin2_var),
-        ]:
-            plugin_dir = atk_home / "plugins" / dir_name
-            plugin_dir.mkdir(parents=True, exist_ok=True)
-            plugin_yaml = {
-                "schema_version": PLUGIN_SCHEMA_VERSION,
-                "name": name,
-                "description": "Test plugin",
-                "env_vars": [{"name": var, "required": True}],
-            }
-            (plugin_dir / "plugin.yaml").write_text(yaml.dump(plugin_yaml))
-            manifest = load_manifest(atk_home)
-            manifest.plugins.append(PluginEntry(name=name, directory=dir_name))
-            save_manifest(manifest, atk_home)
+        plugin1_dir = create_plugin(
+            "Plugin1",
+            "plugin1",
+            env_vars=[EnvVarConfig(name=plugin1_var, required=True)],
+        )
+        plugin2_dir = create_plugin(
+            "Plugin2",
+            "plugin2",
+            env_vars=[EnvVarConfig(name=plugin2_var, required=True)],
+        )
 
-        user_input = f"{plugin1_value}\n{plugin2_value}\n"
-        result = cli_runner.invoke(app, ["setup", "--all"], input=user_input)
+        result = cli_runner.invoke(
+            app, ["setup", "--all"], input=f"{plugin1_value}\n{plugin2_value}\n"
+        )
 
         assert result.exit_code == exit_codes.SUCCESS
-        env1 = (atk_home / "plugins" / plugin1_dir_name / ".env").read_text()
-        env2 = (atk_home / "plugins" / plugin2_dir_name / ".env").read_text()
-        assert env1 == f"{plugin1_var}={plugin1_value}\n"
-        assert env2 == f"{plugin2_var}={plugin2_value}\n"
+        assert (plugin1_dir / ".env").read_text() == f"{plugin1_var}={plugin1_value}\n"
+        assert (plugin2_dir / ".env").read_text() == f"{plugin2_var}={plugin2_value}\n"
 
     def test_cli_setup_skips_plugins_without_env_vars(
-        self, atk_home: Path, cli_runner
+        self, create_plugin: PluginFactory, cli_runner
     ) -> None:
         """Verify atk setup --all skips plugins with no env vars defined."""
-        plugin_with_vars = "PluginWithVars"
-        plugin_with_vars_dir = "plugin-with-vars"
         var_name = "MY_VAR"
         var_value = "my-value"
 
-        plugin_without_vars = "PluginWithoutVars"
-        plugin_without_vars_dir = "plugin-without-vars"
+        plugin_with_vars_dir = create_plugin(
+            "PluginWithVars",
+            "plugin-with-vars",
+            env_vars=[EnvVarConfig(name=var_name)],
+        )
+        plugin_without_vars_dir = create_plugin(
+            "PluginWithoutVars",
+            "plugin-without-vars",
+        )
 
-        plugin_dir1 = atk_home / "plugins" / plugin_with_vars_dir
-        plugin_dir1.mkdir(parents=True, exist_ok=True)
-        (plugin_dir1 / "plugin.yaml").write_text(yaml.dump({
-            "schema_version": PLUGIN_SCHEMA_VERSION,
-            "name": plugin_with_vars,
-            "description": "Has env vars",
-            "env_vars": [{"name": var_name}],
-        }))
-
-        plugin_dir2 = atk_home / "plugins" / plugin_without_vars_dir
-        plugin_dir2.mkdir(parents=True, exist_ok=True)
-        (plugin_dir2 / "plugin.yaml").write_text(yaml.dump({
-            "schema_version": PLUGIN_SCHEMA_VERSION,
-            "name": plugin_without_vars,
-            "description": "No env vars",
-        }))
-
-        manifest = load_manifest(atk_home)
-        manifest.plugins.append(PluginEntry(name=plugin_with_vars, directory=plugin_with_vars_dir))
-        manifest.plugins.append(PluginEntry(name=plugin_without_vars, directory=plugin_without_vars_dir))
-        save_manifest(manifest, atk_home)
-
-        user_input = f"{var_value}\n"
-        result = cli_runner.invoke(app, ["setup", "--all"], input=user_input)
+        result = cli_runner.invoke(app, ["setup", "--all"], input=f"{var_value}\n")
 
         assert result.exit_code == exit_codes.SUCCESS
-        assert (plugin_dir1 / ".env").exists()
-        assert not (plugin_dir2 / ".env").exists()
+        assert (plugin_with_vars_dir / ".env").exists()
+        assert not (plugin_without_vars_dir / ".env").exists()
 
 
 @pytest.mark.usefixtures("atk_home")
@@ -1115,9 +1078,10 @@ class TestMcpCli:
     """Tests for atk mcp CLI command."""
 
     def test_cli_mcp_outputs_json_for_stdio_transport(
-        self, atk_home: Path, cli_runner
+        self, create_plugin: PluginFactory, cli_runner
     ) -> None:
         """Verify atk mcp outputs valid JSON with command, args, and resolved env vars."""
+        # Given
         plugin_name = "TestMcp"
         plugin_dir_name = "test-mcp"
         var_name = "API_KEY"
@@ -1125,31 +1089,26 @@ class TestMcpCli:
         mcp_command = "docker"
         mcp_args = ["exec", "-i", "container", "npx", "server"]
 
-        plugin_dir = atk_home / "plugins" / plugin_dir_name
-        plugin_dir.mkdir(parents=True, exist_ok=True)
-        plugin_yaml = {
-            "schema_version": PLUGIN_SCHEMA_VERSION,
-            "name": plugin_name,
-            "description": "Test plugin with MCP",
-            "mcp": {
-                "transport": "stdio",
-                "command": mcp_command,
-                "args": mcp_args,
-                "env": [var_name],
-            },
-        }
-        (plugin_dir / "plugin.yaml").write_text(yaml.dump(plugin_yaml))
+        plugin_dir = create_plugin(
+            plugin_name,
+            plugin_dir_name,
+            mcp=McpConfig(
+                transport="stdio",
+                command=mcp_command,
+                args=mcp_args,
+                env=[var_name],
+            ),
+        )
         (plugin_dir / ".env").write_text(f"{var_name}={var_value}\n")
-        manifest = load_manifest(atk_home)
-        manifest.plugins.append(PluginEntry(name=plugin_name, directory=plugin_dir_name))
-        save_manifest(manifest, atk_home)
 
+        # When
         result = cli_runner.invoke(app, ["mcp", plugin_dir_name])
 
+        # Then
         assert result.exit_code == exit_codes.SUCCESS
         output = json.loads(result.output)
         expected = {
-            plugin_dir_name: {
+            plugin_name: {
                 "command": mcp_command,
                 "args": mcp_args,
                 "env": {var_name: var_value},
@@ -1158,92 +1117,69 @@ class TestMcpCli:
         assert output == expected
 
     def test_cli_mcp_fails_when_no_mcp_config(
-        self, atk_home: Path, cli_runner
+        self, create_plugin: PluginFactory, cli_runner
     ) -> None:
         """Verify atk mcp fails with exit code 5 when plugin has no MCP config."""
+        # Given
         plugin_name = "NoMcpPlugin"
         plugin_dir_name = "no-mcp-plugin"
+        create_plugin(plugin_name, plugin_dir_name)
 
-        plugin_dir = atk_home / "plugins" / plugin_dir_name
-        plugin_dir.mkdir(parents=True, exist_ok=True)
-        plugin_yaml = {
-            "schema_version": PLUGIN_SCHEMA_VERSION,
-            "name": plugin_name,
-            "description": "Plugin without MCP",
-        }
-        (plugin_dir / "plugin.yaml").write_text(yaml.dump(plugin_yaml))
-        manifest = load_manifest(atk_home)
-        manifest.plugins.append(PluginEntry(name=plugin_name, directory=plugin_dir_name))
-        save_manifest(manifest, atk_home)
-
+        # When
         result = cli_runner.invoke(app, ["mcp", plugin_dir_name])
 
+        # Then
         assert result.exit_code == exit_codes.PLUGIN_INVALID
         assert "no mcp configuration" in result.output.lower()
 
     def test_cli_mcp_warns_on_missing_env_vars(
-        self, atk_home: Path, cli_runner
+        self, create_plugin: PluginFactory, cli_runner
     ) -> None:
         """Verify missing env vars produce warning and <NOT_SET> placeholder."""
+        # Given
         plugin_name = "MissingEnvPlugin"
         plugin_dir_name = "missing-env-plugin"
         var_name = "MISSING_VAR"
 
-        plugin_dir = atk_home / "plugins" / plugin_dir_name
-        plugin_dir.mkdir(parents=True, exist_ok=True)
-        plugin_yaml = {
-            "schema_version": PLUGIN_SCHEMA_VERSION,
-            "name": plugin_name,
-            "description": "Plugin with missing env var",
-            "mcp": {
-                "transport": "stdio",
-                "command": "echo",
-                "env": [var_name],
-            },
-        }
-        (plugin_dir / "plugin.yaml").write_text(yaml.dump(plugin_yaml))
-        manifest = load_manifest(atk_home)
-        manifest.plugins.append(PluginEntry(name=plugin_name, directory=plugin_dir_name))
-        save_manifest(manifest, atk_home)
+        create_plugin(
+            plugin_name,
+            plugin_dir_name,
+            mcp=McpConfig(transport="stdio", command="echo", env=[var_name]),
+        )
 
+        # When
         result = cli_runner.invoke(app, ["mcp", plugin_dir_name])
 
+        # Then
         assert result.exit_code == exit_codes.SUCCESS
         assert f"'{var_name}' is not set" in result.output
         json_start = result.output.find("{")
         json_output = result.output[json_start:]
         output = json.loads(json_output)
-        assert output[plugin_dir_name]["env"][var_name] == "<NOT_SET>"
+        assert output[plugin_name]["env"][var_name] == "<NOT_SET>"
 
     def test_cli_mcp_outputs_url_for_sse_transport(
-        self, atk_home: Path, cli_runner
+        self, create_plugin: PluginFactory, cli_runner
     ) -> None:
         """Verify SSE transport outputs url field instead of command/args."""
+        # Given
         plugin_name = "SsePlugin"
         plugin_dir_name = "sse-plugin"
         endpoint_url = "http://localhost:8080/sse"
 
-        plugin_dir = atk_home / "plugins" / plugin_dir_name
-        plugin_dir.mkdir(parents=True, exist_ok=True)
-        plugin_yaml = {
-            "schema_version": PLUGIN_SCHEMA_VERSION,
-            "name": plugin_name,
-            "description": "Plugin with SSE transport",
-            "mcp": {
-                "transport": "sse",
-                "endpoint": endpoint_url,
-            },
-        }
-        (plugin_dir / "plugin.yaml").write_text(yaml.dump(plugin_yaml))
-        manifest = load_manifest(atk_home)
-        manifest.plugins.append(PluginEntry(name=plugin_name, directory=plugin_dir_name))
-        save_manifest(manifest, atk_home)
+        create_plugin(
+            plugin_name,
+            plugin_dir_name,
+            mcp=McpConfig(transport="sse", endpoint=endpoint_url),
+        )
 
+        # When
         result = cli_runner.invoke(app, ["mcp", plugin_dir_name])
 
+        # Then
         assert result.exit_code == exit_codes.SUCCESS
         output = json.loads(result.output)
-        expected = {plugin_dir_name: {"url": endpoint_url}}
+        expected = {plugin_name: {"url": endpoint_url}}
         assert output == expected
-        assert "command" not in output[plugin_dir_name]
-        assert "args" not in output[plugin_dir_name]
+        assert "command" not in output[plugin_name]
+        assert "args" not in output[plugin_name]

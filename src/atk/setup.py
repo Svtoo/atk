@@ -98,6 +98,7 @@ def run_setup(
     current_env = load_env_file(env_file) if env_file.exists() else {}
 
     new_env: dict[str, str] = {}
+    descriptions: dict[str, str] = {}
     configured: list[str] = []
 
     for var in plugin.env_vars:
@@ -106,9 +107,11 @@ def run_setup(
         if value:
             new_env[var.name] = value
             configured.append(var.name)
+            if var.description:
+                descriptions[var.name] = var.description
 
     if new_env:
-        save_env_file(env_file, new_env)
+        save_env_file(env_file, new_env, descriptions)
 
     return SetupResult(plugin_name=plugin.name, configured_vars=configured)
 

@@ -9,7 +9,14 @@ from typer.testing import CliRunner
 
 from atk.init import init_atk_home
 from atk.manifest_schema import PluginEntry, load_manifest, save_manifest
-from atk.plugin_schema import PLUGIN_SCHEMA_VERSION
+from atk.plugin_schema import (
+    PLUGIN_SCHEMA_VERSION,
+    EnvVarConfig,
+    LifecycleConfig,
+    McpConfig,
+    PluginSchema,
+    PortConfig,
+)
 
 
 @pytest.fixture
@@ -40,34 +47,48 @@ def create_plugin(atk_home: Path) -> PluginFactory:
 
     The fixture itself takes no arguments beyond the atk_home dependency.
     It returns a factory function with signature:
-        (name: str, directory: str, lifecycle: dict | None, ports: list | None) -> Path
+        (name, directory, lifecycle, ports, env_vars, mcp) -> Path
+
+    All parameters except name and directory are optional Pydantic models.
 
     Usage:
         def test_something(create_plugin):
-            plugin_dir = create_plugin("MyPlugin", "my-plugin", {"start": "echo hi"})
-            plugin_with_ports = create_plugin("Other", "other", None, ports=[{"port": 8080}])
+            plugin_dir = create_plugin(
+                "MyPlugin",
+                "my-plugin",
+                lifecycle=LifecycleConfig(start="echo hi"),
+            )
+            plugin_with_mcp = create_plugin(
+                "Other",
+                "other",
+                mcp=McpConfig(transport="stdio", command="echo"),
+            )
     """
 
     def _create(
         name: str,
         directory: str,
-        lifecycle: dict[str, str] | None = None,
-        ports: list[dict] | None = None,
+        lifecycle: LifecycleConfig | None = None,
+        ports: list[PortConfig] | None = None,
+        env_vars: list[EnvVarConfig] | None = None,
+        mcp: McpConfig | None = None,
     ) -> Path:
         plugin_dir = atk_home / "plugins" / directory
         plugin_dir.mkdir(parents=True, exist_ok=True)
 
-        plugin_yaml: dict = {
-            "schema_version": PLUGIN_SCHEMA_VERSION,
-            "name": name,
-            "description": f"Test plugin {name}",
-        }
-        if lifecycle:
-            plugin_yaml["lifecycle"] = lifecycle
-        if ports:
-            plugin_yaml["ports"] = ports
+        plugin = PluginSchema(
+            schema_version=PLUGIN_SCHEMA_VERSION,
+            name=name,
+            description=f"Test plugin {name}",
+            lifecycle=lifecycle,
+            ports=ports or [],
+            env_vars=env_vars or [],
+            mcp=mcp,
+        )
 
-        (plugin_dir / "plugin.yaml").write_text(yaml.dump(plugin_yaml))
+        (plugin_dir / "plugin.yaml").write_text(
+            yaml.dump(plugin.model_dump(exclude_none=True))
+        )
 
         manifest = load_manifest(atk_home)
         manifest.plugins.append(PluginEntry(name=name, directory=directory))
