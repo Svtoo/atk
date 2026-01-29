@@ -7,7 +7,7 @@ import typer
 from rich.console import Console
 from rich.table import Table
 
-from atk import exit_codes
+from atk import cli_logger, exit_codes
 from atk.add import InstallFailedError, add_plugin
 from atk.banner import print_banner
 from atk.git import is_git_available
@@ -35,7 +35,7 @@ app = typer.Typer(
     no_args_is_help=True,
 )
 
-console = Console()
+console = Console()  # For Table rendering and other rich output
 
 
 def require_initialized_home() -> Path:
@@ -51,8 +51,8 @@ def require_initialized_home() -> Path:
     validation = validate_atk_home(atk_home)
 
     if not validation.is_valid:
-        console.print(f"[red]✗[/red] ATK Home not initialized at {atk_home}")
-        console.print("  Run [bold]atk init[/bold] first.")
+        cli_logger.error(f"ATK Home not initialized at {atk_home}")
+        cli_logger.info("  Run [bold]atk init[/bold] first.")
         raise typer.Exit(exit_codes.HOME_NOT_INITIALIZED)
 
     return atk_home
@@ -65,8 +65,8 @@ def require_git() -> None:
         typer.Exit: With GIT_ERROR if git is not available.
     """
     if not is_git_available():
-        console.print("[red]✗[/red] Git is not available")
-        console.print("  [dim]•[/dim] ATK requires git for repository management")
+        cli_logger.error("Git is not available")
+        cli_logger.dim("  • ATK requires git for repository management")
         raise typer.Exit(exit_codes.GIT_ERROR)
 
 
@@ -122,24 +122,22 @@ def _run_lifecycle_cli(
 
     # Validate arguments
     if all_plugins and plugin:
-        console.print("[red]✗[/red] Cannot specify both plugin and --all")
+        cli_logger.error("Cannot specify both plugin and --all")
         raise typer.Exit(exit_codes.INVALID_ARGS)
 
     if not all_plugins and not plugin:
-        console.print("[red]✗[/red] Must specify plugin or --all")
+        cli_logger.error("Must specify plugin or --all")
         raise typer.Exit(exit_codes.INVALID_ARGS)
 
     if all_plugins:
         result = run_all_plugins_lifecycle(atk_home, command_name, reverse=reverse)
         for name in result.succeeded:
-            console.print(f"[green]✓[/green] {verb} plugin '{name}'")
+            cli_logger.success(f"{verb} plugin '{name}'")
         for name in result.skipped:
-            console.print(
-                f"[yellow]![/yellow] Plugin '{name}' has no {command_name} command defined"
-            )
+            cli_logger.warning(f"Plugin '{name}' has no {command_name} command defined")
         for name, code in result.failed:
-            console.print(
-                f"[red]✗[/red] {command_name.capitalize()} failed for plugin '{name}' (exit code {code})"
+            cli_logger.error(
+                f"{command_name.capitalize()} failed for plugin '{name}' (exit code {code})"
             )
 
         if result.all_succeeded:
@@ -151,19 +149,17 @@ def _run_lifecycle_cli(
     try:
         exit_code = run_plugin_lifecycle(atk_home, plugin, command_name)  # type: ignore[arg-type]
         if exit_code == 0:
-            console.print(f"[green]✓[/green] {verb} plugin '{plugin}'")
+            cli_logger.success(f"{verb} plugin '{plugin}'")
         else:
-            console.print(
-                f"[red]✗[/red] {command_name.capitalize()} failed for plugin '{plugin}' (exit code {exit_code})"
+            cli_logger.error(
+                f"{command_name.capitalize()} failed for plugin '{plugin}' (exit code {exit_code})"
             )
         raise typer.Exit(exit_code)
     except PluginNotFoundError:
-        console.print(f"[red]✗[/red] Plugin '{plugin}' not found in manifest")
+        cli_logger.error(f"Plugin '{plugin}' not found in manifest")
         raise typer.Exit(exit_codes.PLUGIN_NOT_FOUND) from None
     except LifecycleCommandNotDefinedError:
-        console.print(
-            f"[yellow]![/yellow] Plugin '{plugin}' has no {command_name} command defined"
-        )
+        cli_logger.warning(f"Plugin '{plugin}' has no {command_name} command defined")
         raise typer.Exit(exit_codes.SUCCESS) from None
 
 
@@ -211,12 +207,12 @@ def init(
     result = init_atk_home(target)
 
     if result.is_valid:
-        console.print(f"[green]✓[/green] ATK Home initialized at {target}")
+        cli_logger.success(f"ATK Home initialized at {target}")
         raise typer.Exit(exit_codes.SUCCESS)
     else:
-        console.print(f"[red]✗[/red] Failed to initialize ATK Home at {target}")
+        cli_logger.error(f"Failed to initialize ATK Home at {target}")
         for error in result.errors:
-            console.print(f"  [dim]•[/dim] {error}")
+            cli_logger.dim(f"  • {error}")
         raise typer.Exit(exit_codes.GENERAL_ERROR)
 
 
@@ -238,18 +234,18 @@ def add(
 
     # Validate source exists
     if not source.exists():
-        console.print(f"[red]✗[/red] Source path does not exist: {source}")
+        cli_logger.error(f"Source path does not exist: {source}")
         raise typer.Exit(exit_codes.PLUGIN_INVALID)
 
     try:
         directory = add_plugin(source, atk_home)
-        console.print(f"[green]✓[/green] Added plugin to {atk_home}/plugins/{directory}")
+        cli_logger.success(f"Added plugin to {atk_home}/plugins/{directory}")
         raise typer.Exit(exit_codes.SUCCESS)
     except InstallFailedError as e:
-        console.print(f"[red]✗[/red] Install failed for plugin '{e.plugin_name}' (exit code {e.exit_code})")
+        cli_logger.error(f"Install failed for plugin '{e.plugin_name}' (exit code {e.exit_code})")
         raise typer.Exit(exit_codes.DOCKER_ERROR) from e
     except ValueError as e:
-        console.print(f"[red]✗[/red] Failed to add plugin: {e}")
+        cli_logger.error(f"Failed to add plugin: {e}")
         raise typer.Exit(exit_codes.PLUGIN_INVALID) from e
 
 
@@ -275,16 +271,15 @@ def remove(
         result = remove_plugin(plugin, atk_home)
         if result.removed:
             if result.stop_failed:
-                console.print(
-                    f"[yellow]![/yellow] Warning: stop failed for '{plugin}' "
-                    f"(exit code {result.stop_exit_code})"
+                cli_logger.warning(
+                    f"Warning: stop failed for '{plugin}' (exit code {result.stop_exit_code})"
                 )
-            console.print(f"[green]✓[/green] Removed plugin '{plugin}'")
+            cli_logger.success(f"Removed plugin '{plugin}'")
         else:
-            console.print(f"[yellow]![/yellow] Plugin '{plugin}' not found (no-op)")
+            cli_logger.warning(f"Plugin '{plugin}' not found (no-op)")
         raise typer.Exit(exit_codes.SUCCESS)
     except ValueError as e:
-        console.print(f"[red]✗[/red] Failed to remove plugin: {e}")
+        cli_logger.error(f"Failed to remove plugin: {e}")
         raise typer.Exit(exit_codes.GENERAL_ERROR) from e
 
 
@@ -379,26 +374,55 @@ def restart(
         ),
     ] = False,
 ) -> None:
-    """Run the restart lifecycle command for a plugin.
+    """Restart a plugin by executing stop then start.
 
-    For a single plugin: Executes the restart command defined in plugin.yaml.
-    Shows a warning if no restart command is defined.
+    For a single plugin: Executes stop then start in sequence.
+    If stop fails, start is not attempted.
 
     For --all: Stops all plugins in reverse order, then starts all in
     manifest order. If the stop phase has failures, the start phase is skipped.
     """
-    # Single plugin case - use standard lifecycle handler
+    # Single plugin case - execute stop then start
     if plugin and not all_plugins:
-        _run_lifecycle_cli("restart", plugin, all_plugins)
+        atk_home = require_ready_home()
+
+        try:
+            # Phase 1: Stop
+            try:
+                stop_code = run_plugin_lifecycle(atk_home, plugin, "stop")
+                if stop_code == 0:
+                    cli_logger.success(f"Stopped plugin '{plugin}'")
+                else:
+                    cli_logger.error(f"Stop failed for plugin '{plugin}' (exit code {stop_code})")
+                    raise typer.Exit(exit_codes.GENERAL_ERROR)
+            except LifecycleCommandNotDefinedError:
+                cli_logger.warning(f"Plugin '{plugin}' has no stop command defined")
+
+            # Phase 2: Start
+            try:
+                start_code = run_plugin_lifecycle(atk_home, plugin, "start")
+                if start_code == 0:
+                    cli_logger.success(f"Started plugin '{plugin}'")
+                    raise typer.Exit(exit_codes.SUCCESS)
+                else:
+                    cli_logger.error(f"Start failed for plugin '{plugin}' (exit code {start_code})")
+                    raise typer.Exit(exit_codes.GENERAL_ERROR)
+            except LifecycleCommandNotDefinedError:
+                cli_logger.warning(f"Plugin '{plugin}' has no start command defined")
+                raise typer.Exit(exit_codes.SUCCESS)
+
+        except PluginNotFoundError:
+            cli_logger.error(f"Plugin '{plugin}' not found in manifest")
+            raise typer.Exit(exit_codes.PLUGIN_NOT_FOUND)
         return
 
     # --all case - custom two-phase handling
     if all_plugins and plugin:
-        console.print("[red]✗[/red] Cannot specify both plugin and --all")
+        cli_logger.error("Cannot specify both plugin and --all")
         raise typer.Exit(exit_codes.INVALID_ARGS)
 
     if not all_plugins and not plugin:
-        console.print("[red]✗[/red] Must specify plugin or --all")
+        cli_logger.error("Must specify plugin or --all")
         raise typer.Exit(exit_codes.INVALID_ARGS)
 
     atk_home = require_ready_home()
@@ -406,24 +430,24 @@ def restart(
 
     # Report stop phase results
     for name in result.stop_succeeded:
-        console.print(f"[green]✓[/green] Stopped plugin '{name}'")
+        cli_logger.success(f"Stopped plugin '{name}'")
     for name in result.stop_skipped:
-        console.print(f"[yellow]![/yellow] Plugin '{name}' has no stop command defined")
+        cli_logger.warning(f"Plugin '{name}' has no stop command defined")
     for name, code in result.stop_failed:
-        console.print(f"[red]✗[/red] Stop failed for plugin '{name}' (exit code {code})")
+        cli_logger.error(f"Stop failed for plugin '{name}' (exit code {code})")
 
     # If stop phase failed, report and exit
     if not result.stop_result.all_succeeded:
-        console.print("[red]✗[/red] Restart aborted: stop phase had failures")
+        cli_logger.error("Restart aborted: stop phase had failures")
         raise typer.Exit(exit_codes.GENERAL_ERROR)
 
     # Report start phase results
     for name in result.start_succeeded:
-        console.print(f"[green]✓[/green] Started plugin '{name}'")
+        cli_logger.success(f"Started plugin '{name}'")
     for name in result.start_skipped:
-        console.print(f"[yellow]![/yellow] Plugin '{name}' has no start command defined")
+        cli_logger.warning(f"Plugin '{name}' has no start command defined")
     for name, code in result.start_failed:
-        console.print(f"[red]✗[/red] Start failed for plugin '{name}' (exit code {code})")
+        cli_logger.error(f"Start failed for plugin '{name}' (exit code {code})")
 
     if result.all_succeeded:
         raise typer.Exit(exit_codes.SUCCESS)
@@ -454,14 +478,14 @@ def status(
             _print_status_table([result])
             raise typer.Exit(exit_codes.SUCCESS)
         except PluginNotFoundError:
-            console.print(f"[red]✗[/red] Plugin '{plugin}' not found in manifest")
+            cli_logger.error(f"Plugin '{plugin}' not found in manifest")
             raise typer.Exit(exit_codes.PLUGIN_NOT_FOUND) from None
 
     # All plugins status
     results = get_all_plugins_status(atk_home)
 
     if not results:
-        console.print("[dim]No plugins installed.[/dim]")
+        cli_logger.dim("No plugins installed.")
         raise typer.Exit(exit_codes.SUCCESS)
 
     _print_status_table(results)
@@ -488,12 +512,10 @@ def logs(
         exit_code = run_plugin_lifecycle(atk_home, plugin, "logs")
         raise typer.Exit(exit_code)
     except PluginNotFoundError:
-        console.print(f"[red]✗[/red] Plugin '{plugin}' not found in manifest")
+        cli_logger.error(f"Plugin '{plugin}' not found in manifest")
         raise typer.Exit(exit_codes.PLUGIN_NOT_FOUND) from None
     except LifecycleCommandNotDefinedError:
-        console.print(
-            f"[yellow]![/yellow] Plugin '{plugin}' has no logs command defined"
-        )
+        cli_logger.warning(f"Plugin '{plugin}' has no logs command defined")
         raise typer.Exit(exit_codes.SUCCESS) from None
 
 
@@ -524,7 +546,7 @@ def run(
     try:
         _, plugin_dir = load_plugin(atk_home, plugin)
     except PluginNotFoundError:
-        console.print(f"[red]✗[/red] Plugin '{plugin}' not found in manifest")
+        cli_logger.error(f"Plugin '{plugin}' not found in manifest")
         raise typer.Exit(exit_codes.PLUGIN_NOT_FOUND) from None
 
     script_path = plugin_dir / script
@@ -533,7 +555,7 @@ def run(
         if script_path_with_ext.exists():
             script_path = script_path_with_ext
         else:
-            console.print(f"[red]✗[/red] Script '{script}' not found in plugin directory")
+            cli_logger.error(f"Script '{script}' not found in plugin directory")
             raise typer.Exit(exit_codes.GENERAL_ERROR)
 
     result = subprocess.run(

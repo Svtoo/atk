@@ -108,10 +108,6 @@ class LifecycleConfig(BaseModel):
         default=None,
         description="Command to stop the service",
     )
-    restart: str | None = Field(
-        default=None,
-        description="Command to restart the service",
-    )
     logs: str | None = Field(
         default=None,
         description="Command to view logs",

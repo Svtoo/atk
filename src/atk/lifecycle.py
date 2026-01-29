@@ -13,8 +13,7 @@ from atk.manifest_schema import load_manifest
 from atk.plugin import load_plugin
 from atk.plugin_schema import PluginSchema
 
-# Valid lifecycle command names matching LifecycleConfig fields
-LifecycleCommand = Literal["install", "start", "stop", "restart", "logs", "status"]
+LifecycleCommand = Literal["install", "start", "stop", "logs", "status"]
 
 
 class PluginStatus(str, Enum):

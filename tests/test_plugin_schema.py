@@ -269,7 +269,6 @@ class TestLifecycleConfig:
             "install": "./install.sh",
             "start": "docker compose up -d",
             "stop": "docker compose down",
-            "restart": "docker compose restart",
             "logs": "docker compose logs",
             "status": "docker compose ps",
             "health_endpoint": "http://localhost:8080/health",
@@ -287,7 +286,6 @@ class TestLifecycleConfig:
         assert lifecycle.install == data["install"]
         assert lifecycle.start == data["start"]
         assert lifecycle.stop == data["stop"]
-        assert lifecycle.restart == data["restart"]
         assert lifecycle.logs == data["logs"]
         assert lifecycle.status == data["status"]
         assert lifecycle.health_endpoint == data["health_endpoint"]
@@ -304,7 +302,6 @@ class TestLifecycleConfig:
         assert lifecycle.install is None
         assert lifecycle.start is None
         assert lifecycle.stop is None
-        assert lifecycle.restart is None
         assert lifecycle.logs is None
         assert lifecycle.status is None
         assert lifecycle.health_endpoint is None
@@ -418,7 +415,6 @@ class TestPluginSchemaFull:
                 "install": "./install.sh",
                 "start": "docker compose up -d",
                 "stop": "docker compose down",
-                "restart": "docker compose restart",
                 "health_endpoint": "/health",
             },
             "mcp": {
@@ -464,7 +460,6 @@ class TestPluginSchemaFull:
         assert plugin.lifecycle.install == "./install.sh"
         assert plugin.lifecycle.start == "docker compose up -d"
         assert plugin.lifecycle.stop == "docker compose down"
-        assert plugin.lifecycle.restart == "docker compose restart"
         assert plugin.lifecycle.health_endpoint == "/health"
 
         # And - mcp
