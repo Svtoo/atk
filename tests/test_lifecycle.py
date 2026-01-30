@@ -8,9 +8,10 @@ import pytest
 import yaml
 
 from atk import exit_codes
-from atk.cli import app
+from atk.cli import _format_env_status, app
 from atk.lifecycle import (
     LifecycleCommandNotDefinedError,
+    get_plugin_status,
     restart_all_plugins,
     run_lifecycle_command,
     run_plugin_lifecycle,
@@ -730,6 +731,162 @@ class TestGetPluginStatus:
         assert len(result.ports) == 1
         assert result.ports[0].port == 59999
         assert result.ports[0].listening is None
+
+    def test_env_status_all_required_set(
+        self, atk_home: Path, create_plugin: PluginFactory
+    ) -> None:
+        """Verify env_status shows all required vars set."""
+        # Given
+        plugin_dir = create_plugin(
+            "TestPlugin",
+            "test-plugin",
+            {"status": "exit 0"},
+            env_vars=[
+                {"name": "API_KEY", "required": True, "secret": True},
+                {"name": "OPTIONAL_VAR", "required": False, "secret": False},
+            ],
+        )
+        env_file = plugin_dir / ".env"
+        env_file.write_text("API_KEY=test-key\n")
+        expected_missing_required = []
+        expected_unset_optional = 1
+        expected_total_env_vars = 2
+
+        # When
+        result = get_plugin_status(atk_home, "test-plugin")
+
+        # Then
+        assert result.missing_required_vars == expected_missing_required
+        assert result.unset_optional_count == expected_unset_optional
+        assert result.total_env_vars == expected_total_env_vars
+
+    def test_env_status_missing_required_vars(
+        self, atk_home: Path, create_plugin: PluginFactory
+    ) -> None:
+        """Verify env_status shows missing required vars by name."""
+        # Given
+        var1_name = "API_KEY"
+        var2_name = "SECRET_KEY"
+        create_plugin(
+            "TestPlugin",
+            "test-plugin",
+            {"status": "exit 0"},
+            env_vars=[
+                {"name": var1_name, "required": True, "secret": True},
+                {"name": var2_name, "required": True, "secret": True},
+                {"name": "OPTIONAL_VAR", "required": False, "secret": False},
+            ],
+        )
+        expected_missing_required = [var1_name, var2_name]
+        expected_unset_optional = 1
+        expected_total_env_vars = 3
+
+        # When
+        result = get_plugin_status(atk_home, "test-plugin")
+
+        # Then
+        assert result.missing_required_vars == expected_missing_required
+        assert result.unset_optional_count == expected_unset_optional
+        assert result.total_env_vars == expected_total_env_vars
+
+    def test_env_status_no_env_vars_defined(
+        self, atk_home: Path, create_plugin: PluginFactory
+    ) -> None:
+        """Verify env_status when plugin has no env vars."""
+        # Given
+        create_plugin("TestPlugin", "test-plugin", {"status": "exit 0"})
+        expected_missing_required = []
+        expected_unset_optional = 0
+        expected_total_env_vars = 0
+
+        # When
+        result = get_plugin_status(atk_home, "test-plugin")
+
+        # Then
+        assert result.missing_required_vars == expected_missing_required
+        assert result.unset_optional_count == expected_unset_optional
+        assert result.total_env_vars == expected_total_env_vars
+
+
+class TestFormatEnvStatus:
+    """Tests for _format_env_status helper function."""
+
+    def test_shows_checkmark_when_all_required_set_with_unset_optional(self) -> None:
+        """Verify checkmark shown when all required vars set (even with unset optional vars).
+
+        Regression test: Bug where function returned "-" instead of "✓" when
+        all required vars were set but optional vars were unset.
+        """
+        # Given
+        missing_required_vars = []
+        unset_optional_count = 1
+        total_env_vars = 2
+        expected_result = "[green]✓[/green]"
+
+        # When
+        result = _format_env_status(missing_required_vars, unset_optional_count, total_env_vars)
+
+        # Then
+        assert result == expected_result
+
+    def test_shows_checkmark_when_all_vars_set(self) -> None:
+        """Verify checkmark shown when all vars (required and optional) are set."""
+        # Given
+        missing_required_vars = []
+        unset_optional_count = 0
+        total_env_vars = 2
+        expected_result = "[green]✓[/green]"
+
+        # When
+        result = _format_env_status(missing_required_vars, unset_optional_count, total_env_vars)
+
+        # Then
+        assert result == expected_result
+
+    def test_shows_dash_when_no_env_vars_defined(self) -> None:
+        """Verify dash shown when plugin has no env vars defined."""
+        # Given
+        missing_required_vars = []
+        unset_optional_count = 0
+        total_env_vars = 0
+        expected_result = "-"
+
+        # When
+        result = _format_env_status(missing_required_vars, unset_optional_count, total_env_vars)
+
+        # Then
+        assert result == expected_result
+
+    def test_shows_missing_required_vars_by_name(self) -> None:
+        """Verify missing required vars are listed by name."""
+        # Given
+        var1_name = "API_KEY"
+        var2_name = "SECRET_KEY"
+        missing_required_vars = [var1_name, var2_name]
+        unset_optional_count = 0
+        total_env_vars = 3
+        expected_result = f"[red]! {var1_name}, {var2_name}[/red]"
+
+        # When
+        result = _format_env_status(missing_required_vars, unset_optional_count, total_env_vars)
+
+        # Then
+        assert result == expected_result
+
+    def test_shows_optional_count_with_missing_required(self) -> None:
+        """Verify optional count shown when required vars missing."""
+        # Given
+        var_name = "API_KEY"
+        missing_required_vars = [var_name]
+        unset_optional_count = 2
+        total_env_vars = 3
+        expected_result = f"[red]! {var_name}[/red] [dim](+{unset_optional_count} optional)[/dim]"
+
+        # When
+        result = _format_env_status(missing_required_vars, unset_optional_count, total_env_vars)
+
+        # Then
+        assert result == expected_result
 
 
 class TestGetAllPluginsStatus:

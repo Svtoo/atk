@@ -213,9 +213,14 @@ class TestRemoveCLI:
         full_plugin_path = fixtures_dir / "full-plugin"
         minimal_plugin_path = fixtures_dir / "minimal-plugin"
 
-        result1 = runner.invoke(app, ["add", str(full_plugin_path)])
+        # full-plugin has 2 env vars (FULL_PLUGIN_API_KEY required, FULL_PLUGIN_DEBUG optional)
+        # Provide input for both prompts
+        result1 = runner.invoke(
+            app, ["add", str(full_plugin_path)], input="test-api-key\nfalse\n"
+        )
         assert result1.exit_code == exit_codes.SUCCESS, f"Failed to add full-plugin: {result1.stdout}"
 
+        # minimal-plugin has no env vars
         result2 = runner.invoke(app, ["add", str(minimal_plugin_path)])
         assert result2.exit_code == exit_codes.SUCCESS, f"Failed to add minimal-plugin: {result2.stdout}"
 
