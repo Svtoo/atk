@@ -10,7 +10,7 @@ from enum import Enum
 from pathlib import Path
 from typing import Literal
 
-from atk.env import check_required_env_vars, load_env_file
+from atk.env import check_required_env_vars, get_env_status, load_env_file
 from atk.manifest_schema import load_manifest
 from atk.plugin import PluginNotFoundError, load_plugin
 from atk.plugin_schema import PluginSchema
@@ -512,6 +512,9 @@ class PluginStatusResult:
     name: str
     status: PluginStatus
     ports: list[PortStatus]
+    missing_required_vars: list[str]  # Names of missing required env vars
+    unset_optional_count: int  # Count of unset optional env vars
+    total_env_vars: int  # Total number of env vars defined in plugin.yaml
 
 
 def get_plugin_status(atk_home: Path, identifier: str) -> PluginStatusResult:
@@ -522,7 +525,7 @@ def get_plugin_status(atk_home: Path, identifier: str) -> PluginStatusResult:
         identifier: Plugin name or directory.
 
     Returns:
-        PluginStatusResult with status and ports.
+        PluginStatusResult with status, ports, and env var information.
 
     Raises:
         PluginNotFoundError: If plugin is not in the manifest.
@@ -531,12 +534,21 @@ def get_plugin_status(atk_home: Path, identifier: str) -> PluginStatusResult:
 
     raw_ports = [p.port for p in plugin.ports]
 
+    # Get env var status
+    env_statuses = get_env_status(plugin, plugin_dir)
+    missing_required_vars = [s.name for s in env_statuses if s.required and not s.is_set]
+    unset_optional_count = sum(1 for s in env_statuses if not s.required and not s.is_set)
+    total_env_vars = len(env_statuses)
+
     if plugin.lifecycle is None or plugin.lifecycle.status is None:
         ports = [PortStatus(port=p, listening=None) for p in raw_ports]
         return PluginStatusResult(
             name=plugin.name,
             status=PluginStatus.UNKNOWN,
             ports=ports,
+            missing_required_vars=missing_required_vars,
+            unset_optional_count=unset_optional_count,
+            total_env_vars=total_env_vars,
         )
 
     result = subprocess.run(
@@ -557,6 +569,9 @@ def get_plugin_status(atk_home: Path, identifier: str) -> PluginStatusResult:
         name=plugin.name,
         status=status,
         ports=ports,
+        missing_required_vars=missing_required_vars,
+        unset_optional_count=unset_optional_count,
+        total_env_vars=total_env_vars,
     )
 
 

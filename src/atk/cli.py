@@ -746,6 +746,41 @@ def _format_port(port_status: PortStatus) -> str:
         return f"[red]{port_status.port} ✗[/red]"
 
 
+def _format_env_status(
+    missing_required_vars: list[str], unset_optional_count: int, total_env_vars: int
+) -> str:
+    """Format environment variable status for display.
+
+    Args:
+        missing_required_vars: List of missing required variable names.
+        unset_optional_count: Count of unset optional variables.
+        total_env_vars: Total number of env vars defined in plugin.yaml.
+
+    Returns:
+        Formatted string:
+        - "✓" if all required vars are set
+        - "! VAR1, VAR2 (+N optional)" if required vars missing
+        - "-" if no env vars defined
+    """
+    # No env vars defined
+    if total_env_vars == 0:
+        return "-"
+
+    # All required vars set
+    if not missing_required_vars:
+        return "[green]✓[/green]"
+
+    # Missing required vars
+    var_list = ", ".join(missing_required_vars)
+    result = f"[red]! {var_list}[/red]"
+
+    # Add optional count if any
+    if unset_optional_count > 0:
+        result += f" [dim](+{unset_optional_count} optional)[/dim]"
+
+    return result
+
+
 def _print_status_table(results: list[PluginStatusResult]) -> None:
     """Print a status table for the given plugin status results."""
 
@@ -753,6 +788,7 @@ def _print_status_table(results: list[PluginStatusResult]) -> None:
     table.add_column("NAME", style="cyan")
     table.add_column("STATUS")
     table.add_column("PORTS")
+    table.add_column("ENV")
 
     for result in results:
         if not isinstance(result, PluginStatusResult):
@@ -767,17 +803,37 @@ def _print_status_table(results: list[PluginStatusResult]) -> None:
 
         ports_str = ", ".join(_format_port(p) for p in result.ports) if result.ports else "-"
 
-        table.add_row(result.name, status_str, ports_str)
+        # Format ENV column
+        env_str = _format_env_status(
+            result.missing_required_vars, result.unset_optional_count, result.total_env_vars
+        )
+
+        table.add_row(result.name, status_str, ports_str, env_str)
 
     console.print(table)
 
+    # Print legend
     has_port_checks = any(
         p.listening is not None for r in results for p in r.ports
     )
-    if has_port_checks:
+    has_env_vars = any(r.total_env_vars > 0 for r in results)
+
+    if has_port_checks or has_env_vars:
         console.print()
-        console.print("[dim]Legend: ✓ port listening, ✗ port not listening[/dim]")
-        console.print("[dim]Note: Port checks verify if something is listening, not that it's the plugin.[/dim]")
+        console.print("[dim]Legend:[/dim]")
+
+        if has_port_checks:
+            console.print("[dim]  Ports: [/dim][green]✓[/green][dim] listening, [/dim][red]✗[/red][dim] not listening[/dim]")
+
+        if has_env_vars:
+            console.print(
+                "[dim]  ENV: [/dim][green]✓[/green][dim] all required vars set, "
+                "[/dim][red]![/red][dim] missing required vars, [/dim]-[dim] no env vars defined[/dim]"
+            )
+
+        if has_port_checks:
+            console.print()
+            console.print("[dim]Note: Port checks verify if something is listening, not that it's the plugin.[/dim]")
 
 
 if __name__ == "__main__":
