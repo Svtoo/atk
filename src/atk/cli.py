@@ -48,7 +48,15 @@ app = typer.Typer(
     no_args_is_help=True,
 )
 
-console = Console()  # For Table rendering and other rich output
+console = Console()
+
+
+def _stdin_prompt(text: str) -> str:
+    """Prompt user for input via stdin.
+
+    Shared helper for interactive prompts across CLI commands.
+    """
+    return input(text)  # For Table rendering and other rich output
 
 
 def require_initialized_home() -> Path:
@@ -292,7 +300,7 @@ def add(
     """Add a plugin to ATK Home.
 
     Copies plugin files to ATK Home and updates the manifest.
-    If the plugin directory already exists, it will be overwritten.
+    If the plugin has environment variables, prompts for configuration before install.
     """
     atk_home = require_ready_home()
 
@@ -302,7 +310,7 @@ def add(
         raise typer.Exit(exit_codes.PLUGIN_INVALID)
 
     try:
-        directory = add_plugin(source, atk_home)
+        directory = add_plugin(source, atk_home, _stdin_prompt)
         cli_logger.success(f"Added plugin to {atk_home}/plugins/{directory}")
         raise typer.Exit(exit_codes.SUCCESS)
     except InstallFailedError as e:
@@ -378,9 +386,6 @@ def setup(
         cli_logger.error("Must specify plugin or --all")
         raise typer.Exit(exit_codes.INVALID_ARGS)
 
-    def prompt_func(text: str) -> str:
-        return input(text)
-
     if plugin:
         try:
             plugin_schema, plugin_dir = load_plugin(atk_home, plugin)
@@ -392,7 +397,7 @@ def setup(
             cli_logger.info(f"Plugin '{plugin_schema.name}' has no environment variables defined")
             raise typer.Exit(exit_codes.SUCCESS)
 
-        result = run_setup(plugin_schema, plugin_dir, prompt_func)
+        result = run_setup(plugin_schema, plugin_dir, _stdin_prompt)
         cli_logger.success(f"Configured {len(result.configured_vars)} variable(s) for '{result.plugin_name}'")
         raise typer.Exit(exit_codes.SUCCESS)
 
@@ -402,7 +407,7 @@ def setup(
         if not plugin_schema.env_vars:
             continue
         cli_logger.info(f"\nConfiguring '{plugin_schema.name}':")
-        result = run_setup(plugin_schema, plugin_dir, prompt_func)
+        result = run_setup(plugin_schema, plugin_dir, _stdin_prompt)
         cli_logger.success(f"Configured {len(result.configured_vars)} variable(s)")
 
     raise typer.Exit(exit_codes.SUCCESS)

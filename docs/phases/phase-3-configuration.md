@@ -155,37 +155,35 @@ Environment variable management, port conflict detection, and MCP configuration 
 ## Acceptance Criteria
 
 ### Environment Variables
-- [ ] `.env` files are created in plugin directories
-- [ ] `.env` files are gitignored (verified in `.gitignore`)
-- [ ] Env vars are injected into lifecycle command environment
-- [ ] Required vars block start/install with clear error message
+- [x] `.env` files are created in plugin directories
+- [x] `.env` files are gitignored (verified in `.gitignore`)
+- [x] Env vars are injected into lifecycle command environment
+- [x] Required vars block start/install with clear error message
 
 ### Setup Wizard
 - [ ] `atk add` prompts for env vars before install
-- [ ] `atk setup <plugin>` allows reconfiguration
-- [ ] `atk setup --all` configures all plugins
-- [ ] Secrets use masked input
-- [ ] Defaults are shown and accepted with Enter
-- [ ] Existing values shown (masked for secrets)
+- [x] `atk setup <plugin>` allows reconfiguration
+- [x] `atk setup --all` configures all plugins
+- [x] Secrets use masked input
+- [x] Defaults are shown and accepted with Enter
+- [x] Existing values shown (masked for secrets)
 
 ### Port Conflicts
-- [ ] Ports checked during `atk start`
-- [ ] Conflicts produce clear error with port number and description
-- [ ] Conflicts block start (exit code 9)
-- [ ] `atk restart` works because it stops first
+- [x] Ports checked during `atk start`
+- [x] Conflicts produce clear error with port number and description
+- [x] Conflicts block start (exit code 9)
+- [x] `atk restart` works because it stops first
 
 ### Restart Lifecycle Cleanup
-- [ ] Remove `restart` field from `LifecycleConfig` in `src/atk/plugin_schema.py`
-- [ ] Remove `restart` field from `LifecycleCommands` in `cli/services/models.py`
-- [ ] Update `atk restart` command in `src/atk/cli.py` to always call stop then start
-- [ ] Update `ServiceLifecycle.restart` in `cli/services/lifecycle.py` to not check for restart command
-- [ ] Update tests to reflect new behavior
+- [x] Remove `restart` field from `LifecycleConfig` in `src/atk/plugin_schema.py`
+- [x] Update `atk restart` command in `src/atk/cli.py` to always call stop then start
+- [x] Update tests to reflect new behavior
 
 ### MCP Config
-- [ ] `atk mcp <plugin>` outputs valid JSON
-- [ ] Env vars are resolved from `.env`
-- [ ] Missing vars produce warning and placeholder
-- [ ] Error if plugin has no MCP config
+- [x] `atk mcp <plugin>` outputs valid JSON
+- [x] Env vars are resolved from `.env`
+- [x] Missing vars produce warning and placeholder
+- [x] Error if plugin has no MCP config
 
 ### Status Enhancement
 - [ ] `atk status` shows ENV column

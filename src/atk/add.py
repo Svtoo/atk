@@ -4,6 +4,7 @@ Handles adding plugins from local directories or single YAML files.
 """
 
 import shutil
+from collections.abc import Callable
 from enum import Enum
 from pathlib import Path
 
@@ -13,6 +14,7 @@ from atk.lifecycle import LifecycleCommandNotDefinedError, run_lifecycle_command
 from atk.manifest_schema import PluginEntry, load_manifest, save_manifest
 from atk.plugin import load_plugin_schema
 from atk.sanitize import sanitize_directory_name
+from atk.setup import run_setup
 
 
 class InstallFailedError(Exception):
@@ -69,12 +71,18 @@ def detect_source_type(source: Path) -> SourceType:
     return SourceType.FILE
 
 
-def add_plugin(source: Path, atk_home: Path) -> str:
+def add_plugin(
+    source: Path,
+    atk_home: Path,
+    prompt_func: Callable[[str], str],
+) -> str:
     """Add a plugin to ATK Home.
 
     Args:
         source: Path to plugin source (directory or single file).
         atk_home: Path to ATK Home directory.
+        prompt_func: Function for prompting user input. If the plugin has env vars,
+            runs interactive setup before install.
 
     Returns:
         The sanitized directory name where the plugin was installed.
@@ -112,6 +120,10 @@ def add_plugin(source: Path, atk_home: Path) -> str:
         # Single file: create directory and copy just the yaml
         target_dir.mkdir(parents=True)
         shutil.copy2(source, target_dir / "plugin.yaml")
+
+    # Run interactive setup if plugin has env vars
+    if schema.env_vars:
+        run_setup(schema, target_dir, prompt_func)
 
     # Run install lifecycle command if defined
     # Skip silently if not defined (unlike standalone atk install which warns)

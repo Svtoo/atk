@@ -11,7 +11,7 @@ from atk.cli import app
 from atk.exit_codes import HOME_NOT_INITIALIZED, PLUGIN_INVALID, SUCCESS
 from atk.init import init_atk_home
 from atk.manifest_schema import ManifestSchema
-from atk.plugin_schema import PLUGIN_SCHEMA_VERSION, PluginSchema
+from atk.plugin_schema import PLUGIN_SCHEMA_VERSION, EnvVarConfig, PluginSchema
 
 runner = CliRunner()
 
@@ -19,6 +19,11 @@ runner = CliRunner()
 def _serialize_plugin(plugin: PluginSchema) -> str:
     """Serialize a PluginSchema to YAML string."""
     return yaml.dump(plugin.model_dump(exclude_none=True), default_flow_style=False)
+
+
+def _noop_prompt(text: str) -> str:
+    """No-op prompt function for tests that don't care about env vars."""
+    return ""
 
 
 class TestDetectSourceType:
@@ -218,7 +223,7 @@ class TestAddPlugin:
         (subdir / "setup.sh").write_text(script_content)
 
         # When
-        add_plugin(source_dir, atk_home)
+        add_plugin(source_dir, atk_home, _noop_prompt)
 
         # Then - plugin directory exists with all files
         plugin_path = atk_home / "plugins" / expected_dir
@@ -255,7 +260,7 @@ class TestAddPlugin:
         plugin_yaml.write_text(_serialize_plugin(plugin))
 
         # When
-        add_plugin(plugin_yaml, atk_home)
+        add_plugin(plugin_yaml, atk_home, _noop_prompt)
 
         # Then - plugin directory exists with only plugin.yaml
         plugin_path = atk_home / "plugins" / expected_dir
@@ -285,7 +290,7 @@ class TestAddPlugin:
 
         # When/Then
         with pytest.raises(ValueError, match="already exists"):
-            add_plugin(source, atk_home)
+            add_plugin(source, atk_home, _noop_prompt)
 
     def test_add_plugin_to_uninitialized_home_raises(self, tmp_path: Path) -> None:
         """Verify adding to uninitialized ATK Home raises error."""
@@ -296,7 +301,7 @@ class TestAddPlugin:
 
         # When/Then
         with pytest.raises(ValueError, match="not initialized"):
-            add_plugin(source, atk_home)
+            add_plugin(source, atk_home, _noop_prompt)
 
 
 class TestAddCLI:
@@ -550,3 +555,78 @@ lifecycle:
         manifest_data = yaml.safe_load(manifest_path.read_text())
         manifest = ManifestSchema.model_validate(manifest_data)
         assert len(manifest.plugins) == 0
+
+
+class TestAddEnvVarSetup:
+    """Tests for env var setup during add."""
+
+    def test_add_runs_setup_when_plugin_has_env_vars(self, tmp_path: Path) -> None:
+        """Verify add_plugin calls run_setup when plugin has env vars."""
+        # Given - initialized ATK home
+        atk_home = tmp_path / "atk-home"
+        init_atk_home(atk_home)
+
+        # And - a source plugin with env vars
+        source_dir = tmp_path / "env-plugin"
+        source_dir.mkdir()
+        api_key_value = "test-api-key-12345"
+        plugin = PluginSchema(
+            schema_version=PLUGIN_SCHEMA_VERSION,
+            name="Env Plugin",
+            description="A plugin with env vars",
+            env_vars=[
+                EnvVarConfig(
+                    name="API_KEY",
+                    required=True,
+                    description="The API key",
+                )
+            ],
+        )
+        (source_dir / "plugin.yaml").write_text(_serialize_plugin(plugin))
+
+        # And - a prompt function that returns a known value
+        def prompt_func(text: str) -> str:
+            return api_key_value
+
+        # When
+        add_plugin(source_dir, atk_home, prompt_func)
+
+        # Then - .env file should exist with the prompted value
+        env_file = atk_home / "plugins" / "env-plugin" / ".env"
+        assert env_file.exists()
+        content = env_file.read_text()
+        assert content == f"# The API key\nAPI_KEY={api_key_value}\n"
+
+    def test_add_skips_setup_when_no_env_vars(self, tmp_path: Path) -> None:
+        """Verify add_plugin skips setup when plugin has no env vars."""
+        # Given - initialized ATK home
+        atk_home = tmp_path / "atk-home"
+        init_atk_home(atk_home)
+
+        # And - a source plugin without env vars
+        source_dir = tmp_path / "simple-plugin"
+        source_dir.mkdir()
+        plugin = PluginSchema(
+            schema_version=PLUGIN_SCHEMA_VERSION,
+            name="Simple Plugin",
+            description="A plugin without env vars",
+        )
+        (source_dir / "plugin.yaml").write_text(_serialize_plugin(plugin))
+
+        # And - a prompt function that should NOT be called
+        prompt_called = False
+
+        def prompt_func(text: str) -> str:
+            nonlocal prompt_called
+            prompt_called = True
+            return "should-not-be-called"
+
+        # When
+        add_plugin(source_dir, atk_home, prompt_func)
+
+        # Then - prompt should not have been called
+        assert not prompt_called
+
+        # And - .env file should NOT exist
+        env_file = atk_home / "plugins" / "simple-plugin" / ".env"
+        assert not env_file.exists()
