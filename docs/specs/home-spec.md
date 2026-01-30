@@ -63,12 +63,29 @@ plugins/*/*
 
 # Always ignore secrets
 *.env
+
+# Local plugins (managed by atk add/remove)
+# Example: !plugins/my-local-tool/
 ```
 
 This ensures:
 - Plugin files from upstream are not tracked (fetched on `atk install --all`)
 - User customizations in `custom/` are tracked and sync across machines
 - Secrets are never committed
+- Local plugins are fully tracked in git
+
+### Local Plugin Exemptions
+
+When adding a local plugin (`atk add ./plugins/my-tool`), ATK appends an exemption to the root `.gitignore`:
+
+```gitignore
+!plugins/my-tool/
+!plugins/my-tool/**
+```
+
+When removing a local plugin (`atk remove my-tool`), ATK removes these exemption lines.
+
+This allows local plugins to be fully tracked in git without needing a separate `custom/` directory.
 
 ## Manifest Schema
 

@@ -157,6 +157,7 @@ Remove a plugin from ATK Home.
 **Usage:**
 ```bash
 atk remove openmemory
+atk remove openmemory --force    # Skip confirmation
 ```
 
 **Parameters:**
@@ -165,19 +166,33 @@ atk remove openmemory
 |-----------|----------|-------------|
 | `plugin` | Yes | Plugin directory name |
 
+**Flags:**
+- `--force`: Skip confirmation prompt
+
 **Behavior:**
 1. Validate ATK Home is initialized (exit 3 if not)
 2. Find plugin by directory name in manifest (exit 4 if not found)
-3. Run `stop` lifecycle event (stop containers gracefully)
-4. Remove plugin directory from `~/.atk/plugins/`
-5. Remove entry from manifest
-6. Commit changes (if `auto_commit: true`)
+3. If `uninstall` lifecycle is defined → prompt for confirmation (unless `--force`)
+4. Run `stop` lifecycle event (stop containers gracefully)
+5. Run `uninstall` lifecycle event (if defined)
+6. Remove plugin directory from `~/.atk/plugins/`
+7. If local plugin → remove gitignore exemption from root `.gitignore`
+8. Remove entry from manifest
+9. Commit changes (if `auto_commit: true`)
+
+**Confirmation Prompt:**
+```
+⚠️  This will run the uninstall command which may delete data:
+    docker compose down -v --rmi local
+
+Continue? [y/N]:
+```
 
 **Exit Codes:**
 - 0: Success
 - 3: ATK Home not initialized
 - 4: Plugin not found
-- 6: Failed to stop containers
+- 6: Failed to stop containers or uninstall
 - 7: Git commit failed
 
 ---
@@ -552,6 +567,55 @@ atk upgrade --all         # Update all plugins to latest
 - 4: Plugin not found
 - 6: Install command failed
 - 7: Git commit failed
+
+---
+
+## `atk uninstall <plugin>`
+
+Run the uninstall lifecycle command for a plugin. Symmetric to `atk install`.
+
+**Usage:**
+```bash
+atk uninstall langfuse
+atk uninstall langfuse --force    # Skip confirmation
+```
+
+**Parameters:**
+
+| Parameter | Required | Description |
+|-----------|----------|-------------|
+| `plugin` | Yes | Plugin name or directory |
+
+**Flags:**
+- `--force`: Skip confirmation prompt
+
+**Behavior:**
+1. Validate ATK Home is initialized (exit 3 if not)
+2. Find plugin by name or directory (exit 4 if not found)
+3. Prompt for confirmation (unless `--force`)
+4. Run `stop` lifecycle command (if defined)
+5. Run `uninstall` lifecycle command (if defined)
+6. Report result
+
+**Confirmation Prompt:**
+```
+⚠️  This will run the uninstall command which may delete data:
+    docker compose down -v --rmi local
+
+Continue? [y/N]:
+```
+
+**Notes:**
+- Does NOT remove the plugin from manifest (use `atk remove` for that)
+- Useful for cleaning up resources before re-installing
+- Symmetric to `atk install`: install sets up, uninstall tears down
+- `atk remove` = `atk uninstall` + delete files + update manifest
+
+**Exit Codes:**
+- 0: Success (including no-op when uninstall not defined)
+- 3: ATK Home not initialized
+- 4: Plugin not found
+- 6: Uninstall command failed
 
 ---
 

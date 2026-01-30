@@ -103,16 +103,55 @@ Registry and git URL sources for plugins, version pinning, and the upgrade comma
 2. `atk setup --all` (configure env vars)
 3. `atk install --all`
 4. For each plugin in manifest:
-   - Fetch from source at pinned version (commit hash)
+   - Check if `.atk-ref` file exists with matching commit hash → skip fetch
+   - If missing or hash differs → fetch from source at pinned version
    - Run install lifecycle
 5. All plugins ready
 
 **Edge cases:**
 - Pinned version no longer exists → error with details
 - Some plugins fail → continue, report summary
-- Already have plugin files → skip fetch, just run install
+- Already have plugin files with matching `.atk-ref` → skip fetch, just run install
 
-### Scenario 6: User Customizations
+### Scenario 6: Uninstalling a Plugin
+
+**User story:** I want to remove a plugin and clean up its resources (containers, volumes, etc.).
+
+**Flow:**
+1. `atk uninstall langfuse`
+2. ATK prompts for confirmation (data may be deleted)
+3. ATK runs `stop` lifecycle (if defined)
+4. ATK runs `uninstall` lifecycle (if defined)
+5. ATK removes plugin directory
+6. ATK removes entry from manifest
+7. ATK commits changes
+
+**Edge cases:**
+- User cancels confirmation → abort, no changes
+- `--force` flag → skip confirmation
+- `uninstall` lifecycle fails → report error, abort (files not deleted)
+- Plugin not found → error
+
+**Note:** `atk remove` also calls uninstall lifecycle. Both commands require confirmation.
+
+### Scenario 7: Local Plugin Development
+
+**User story:** I want to create my own plugin and keep it in my ATK home without pushing to a separate repo.
+
+**Flow:**
+1. Create `plugins/my-tool/plugin.yaml` manually
+2. `atk add ./plugins/my-tool`
+3. ATK recognizes it's a local source
+4. ATK adds exemption to root `.gitignore`: `!plugins/my-tool/`
+5. ATK updates manifest with `source.type: local`
+6. All files in `plugins/my-tool/` are tracked in git
+
+**Edge cases:**
+- Local plugin has no `custom/` directory (not needed — everything is "custom")
+- `atk upgrade` on local plugin → error "local plugins cannot be upgraded"
+- `atk remove` on local plugin → removes gitignore exemption
+
+### Scenario 8: User Customizations
 
 **User story:** I customized my Langfuse plugin and want to upgrade without losing changes.
 
@@ -156,7 +195,23 @@ Registry and git URL sources for plugins, version pinning, and the upgrade comma
 ### Version Pinning
 - [ ] Manifest stores commit hash for registry and git sources
 - [ ] `atk install --all` fetches at pinned versions (bootstrap)
+- [ ] `.atk-ref` file stores commit hash in plugin directory
+- [ ] Skip fetch if `.atk-ref` matches manifest ref
 - [ ] Pinned versions enable reproducible setups
+
+### Uninstall Command
+- [ ] `atk uninstall <plugin>` runs uninstall lifecycle and removes plugin
+- [ ] `atk remove <plugin>` calls uninstall lifecycle before removing
+- [ ] Both commands require confirmation (or `--force` flag)
+- [ ] Plugin schema: if `install` is defined, `uninstall` must be defined
+- [ ] Uninstall lifecycle cleans up resources (volumes, images, etc.)
+
+### Local Plugin Support
+- [ ] `atk add ./plugins/my-tool` recognizes local source
+- [ ] Adds gitignore exemption: `!plugins/my-tool/` to root `.gitignore`
+- [ ] `atk remove` removes the gitignore exemption
+- [ ] Local plugins are fully tracked in git (no `custom/` needed)
+- [ ] `atk upgrade` errors for local plugins
 
 ### Customization Preservation
 - [ ] `custom/` directory is never modified by ATK
@@ -203,14 +258,29 @@ Determine source type from user input:
 ### 4.6 Bootstrap Flow
 
 - Update `atk install --all` to fetch missing plugins
+- Check `.atk-ref` file before fetching (skip if hash matches)
 - Fetch at pinned version from manifest
 - Handle missing plugins gracefully
 
-### 4.7 Gitignore Updates
+### 4.7 Uninstall Command
+
+- Implement `atk uninstall <plugin>` command
+- Update `atk remove` to call uninstall lifecycle
+- Add confirmation prompt (or `--force` flag)
+- Add schema validation: install requires uninstall
+
+### 4.8 Local Plugin Support
+
+- Detect local source (path inside ATK home)
+- Add/remove gitignore exemptions in root `.gitignore`
+- Track all local plugin files in git
+
+### 4.9 Gitignore Updates
 
 - Update `.gitignore` template for new pattern
 - Ensure `custom/` directories are tracked
 - Ensure plugin files (except custom/) are ignored
+- Support local plugin exemptions
 
 ---
 
@@ -220,4 +290,5 @@ Determine source type from user input:
 - **Version constraints**: Semver ranges, "latest" tag — keep it simple with commit hashes
 - **Automatic updates**: No auto-update mechanism — user controls when to upgrade
 - **Private registries**: Single public registry for now
+- **`atk create`**: Scaffold new local plugin — defer to Phase 5
 

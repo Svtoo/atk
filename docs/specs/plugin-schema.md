@@ -88,6 +88,7 @@ classDiagram
         +start: str?
         +stop: str?
         +install: str?
+        +uninstall: str?
         +status: str?
         +logs: str?
         +health_endpoint: str?
@@ -194,11 +195,14 @@ Custom commands for lifecycle operations. These override defaults based on `serv
 | `start` | string | ❌ | Command to start the service |
 | `stop` | string | ❌ | Command to stop the service |
 | `install` | string | ❌ | One-time setup command |
+| `uninstall` | string | ❌ | Cleanup command (remove volumes, images, etc.) |
 | `status` | string | ❌ | Command to check if running |
 | `logs` | string | ❌ | Command to view logs |
 | `health_endpoint` | string | ❌ | HTTP endpoint for health checks |
 
-**Note**: There is no `restart` field. The `atk restart` command always executes `stop` then `start` in sequence. 
+**Notes:**
+- There is no `restart` field. The `atk restart` command always executes `stop` then `start` in sequence.
+- **Install/Uninstall symmetry**: If `install` is defined, `uninstall` must also be defined. This ensures plugins that set up resources also clean them up.
 
 ### McpConfig
 
