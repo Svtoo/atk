@@ -1,7 +1,7 @@
 # Phase 3: Configuration
 
-> **Status**: Not Started
-> **Last Updated**: 2026-01-29
+> **Status**: Complete
+> **Last Updated**: 2026-01-30
 
 Environment variable management, port conflict detection, and MCP configuration output.
 
@@ -161,7 +161,7 @@ Environment variable management, port conflict detection, and MCP configuration 
 - [x] Required vars block start/install with clear error message
 
 ### Setup Wizard
-- [ ] `atk add` prompts for env vars before install
+- [x] `atk add` prompts for env vars before install
 - [x] `atk setup <plugin>` allows reconfiguration
 - [x] `atk setup --all` configures all plugins
 - [x] Secrets use masked input
@@ -186,9 +186,9 @@ Environment variable management, port conflict detection, and MCP configuration 
 - [x] Error if plugin has no MCP config
 
 ### Status Enhancement
-- [ ] `atk status` shows ENV column
-- [ ] Missing required vars listed explicitly by name
-- [ ] Unset optional vars shown as count only
+- [x] `atk status` shows ENV column
+- [x] Missing required vars listed explicitly by name
+- [x] Unset optional vars shown as count only
 
 ---
 
