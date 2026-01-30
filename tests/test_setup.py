@@ -7,29 +7,38 @@ class TestMaskValue:
 
     def test_masks_long_value_showing_last_4_chars(self) -> None:
         """Verify long values show asterisks with last 4 characters visible."""
+        # Given
         value = "sk-1234567890abcdef"
         expected = "*" * (len(value) - 4) + "cdef"
 
+        # When
         result = mask_value(value)
 
+        # Then
         assert result == expected
 
     def test_masks_short_value_completely(self) -> None:
         """Verify short values (4 chars or less) are fully masked."""
+        # Given
         value = "abc"
         expected = "***"
 
+        # When
         result = mask_value(value)
 
+        # Then
         assert result == expected
 
     def test_masks_exactly_4_chars_completely(self) -> None:
         """Verify 4-char values are fully masked."""
+        # Given
         value = "abcd"
         expected = "****"
 
+        # When
         result = mask_value(value)
 
+        # Then
         assert result == expected
 
 
@@ -38,6 +47,7 @@ class TestPromptEnvVar:
 
     def test_returns_user_input(self) -> None:
         """Verify user input is returned."""
+        # Given
         var = EnvVarConfig(name="API_KEY")
         user_input = "my-api-key"
         prompts_received: list[str] = []
@@ -46,37 +56,46 @@ class TestPromptEnvVar:
             prompts_received.append(text)
             return user_input
 
+        # When
         result = prompt_env_var(var, None, mock_prompt)
 
+        # Then
         assert result == user_input
         assert "API_KEY" in prompts_received[0]
 
     def test_returns_current_value_on_empty_input(self) -> None:
         """Verify pressing Enter returns current value."""
+        # Given
         var = EnvVarConfig(name="API_KEY")
         current_value = "existing-key"
 
         def mock_prompt(_text: str) -> str:
             return ""
 
+        # When
         result = prompt_env_var(var, current_value, mock_prompt)
 
+        # Then
         assert result == current_value
 
     def test_returns_default_on_empty_input_when_no_current(self) -> None:
         """Verify pressing Enter returns default when no current value."""
+        # Given
         default_value = "default-key"
         var = EnvVarConfig(name="API_KEY", default=default_value)
 
         def mock_prompt(_text: str) -> str:
             return ""
 
+        # When
         result = prompt_env_var(var, None, mock_prompt)
 
+        # Then
         assert result == default_value
 
     def test_shows_masked_current_value_for_secrets(self) -> None:
         """Verify secret values are masked in prompt."""
+        # Given
         var = EnvVarConfig(name="SECRET_KEY", secret=True)
         current_value = "super-secret-value"
         prompts_received: list[str] = []
@@ -85,14 +104,17 @@ class TestPromptEnvVar:
             prompts_received.append(text)
             return ""
 
+        # When
         prompt_env_var(var, current_value, mock_prompt)
 
+        # Then
         prompt_text = prompts_received[0]
         assert "super-secret-value" not in prompt_text
         assert "alue" in prompt_text  # Last 4 chars visible
 
     def test_shows_unmasked_current_value_for_non_secrets(self) -> None:
         """Verify non-secret values are shown in full."""
+        # Given
         var = EnvVarConfig(name="DEBUG_MODE", secret=False)
         current_value = "true"
         prompts_received: list[str] = []
@@ -101,13 +123,16 @@ class TestPromptEnvVar:
             prompts_received.append(text)
             return ""
 
+        # When
         prompt_env_var(var, current_value, mock_prompt)
 
+        # Then
         prompt_text = prompts_received[0]
         assert "true" in prompt_text
 
     def test_shows_default_value_in_prompt(self) -> None:
         """Verify default value is shown in prompt."""
+        # Given
         default_value = "localhost:8080"
         var = EnvVarConfig(name="API_URL", default=default_value)
         prompts_received: list[str] = []
@@ -116,13 +141,16 @@ class TestPromptEnvVar:
             prompts_received.append(text)
             return ""
 
+        # When
         prompt_env_var(var, None, mock_prompt)
 
+        # Then
         prompt_text = prompts_received[0]
         assert default_value in prompt_text
 
     def test_shows_required_indicator(self) -> None:
         """Verify required vars show (required) in prompt."""
+        # Given
         var = EnvVarConfig(name="API_KEY", required=True)
         prompts_received: list[str] = []
 
@@ -130,13 +158,16 @@ class TestPromptEnvVar:
             prompts_received.append(text)
             return "value"
 
+        # When
         prompt_env_var(var, None, mock_prompt)
 
+        # Then
         prompt_text = prompts_received[0]
         assert "(required)" in prompt_text
 
     def test_shows_description_in_prompt(self) -> None:
         """Verify description is shown in prompt."""
+        # Given
         description = "Your OpenAI API key"
         var = EnvVarConfig(name="OPENAI_API_KEY", description=description)
         prompts_received: list[str] = []
@@ -145,8 +176,10 @@ class TestPromptEnvVar:
             prompts_received.append(text)
             return "value"
 
+        # When
         prompt_env_var(var, None, mock_prompt)
 
+        # Then
         prompt_text = prompts_received[0]
         assert description in prompt_text
 

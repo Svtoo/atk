@@ -1,5 +1,6 @@
 """Tests for atk remove command."""
 
+import subprocess
 from pathlib import Path
 
 import pytest
@@ -12,13 +13,9 @@ from atk.init import init_atk_home
 from atk.manifest_schema import ManifestSchema
 from atk.plugin_schema import PLUGIN_SCHEMA_VERSION, PluginSchema
 from atk.remove import remove_plugin
+from tests.conftest import write_plugin_yaml
 
 runner = CliRunner()
-
-
-def _serialize_plugin(plugin: PluginSchema) -> str:
-    """Serialize a PluginSchema to YAML string."""
-    return yaml.dump(plugin.model_dump(exclude_none=True), default_flow_style=False)
 
 
 def _add_plugin_to_home(atk_home: Path, name: str, directory: str) -> Path:
@@ -33,7 +30,7 @@ def _add_plugin_to_home(atk_home: Path, name: str, directory: str) -> Path:
         name=name,
         description=f"Test plugin: {name}",
     )
-    (plugin_dir / "plugin.yaml").write_text(_serialize_plugin(plugin))
+    write_plugin_yaml(plugin_dir, plugin)
 
     # Update manifest
     manifest_path = atk_home / "manifest.yaml"
@@ -263,8 +260,6 @@ class TestRemoveAutoCommit:
 
     def test_remove_creates_git_commit_when_auto_commit_true(self) -> None:
         """Verify remove creates a git commit when auto_commit is enabled."""
-        import subprocess
-
         # Given - initialized ATK home with a plugin added via atk add (creates commit)
         init_atk_home(self.atk_home)
         source = Path("tests/fixtures/plugins/minimal-plugin")
@@ -289,8 +284,6 @@ class TestRemoveAutoCommit:
 
     def test_remove_skips_git_commit_when_auto_commit_false(self) -> None:
         """Verify remove does NOT create a git commit when auto_commit is disabled."""
-        import subprocess
-
         # Given - initialized ATK home
         init_atk_home(self.atk_home)
 

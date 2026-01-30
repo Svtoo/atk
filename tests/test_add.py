@@ -12,13 +12,9 @@ from atk.exit_codes import HOME_NOT_INITIALIZED, PLUGIN_INVALID, SUCCESS
 from atk.init import init_atk_home
 from atk.manifest_schema import ManifestSchema
 from atk.plugin_schema import PLUGIN_SCHEMA_VERSION, EnvVarConfig, PluginSchema
+from tests.conftest import write_plugin_yaml
 
 runner = CliRunner()
-
-
-def _serialize_plugin(plugin: PluginSchema) -> str:
-    """Serialize a PluginSchema to YAML string."""
-    return yaml.dump(plugin.model_dump(exclude_none=True), default_flow_style=False)
 
 
 def _noop_prompt(_text: str) -> str:
@@ -111,7 +107,7 @@ class TestLoadPluginSchema:
             description="A test plugin",
         )
         plugin_yaml = plugin_dir / "plugin.yaml"
-        plugin_yaml.write_text(_serialize_plugin(expected_plugin))
+        write_plugin_yaml(plugin_yaml, expected_plugin)
 
         # When
         actual = load_plugin_schema(plugin_dir)
@@ -130,7 +126,7 @@ class TestLoadPluginSchema:
             description="A single file plugin",
         )
         plugin_yaml = tmp_path / "my-plugin.yaml"
-        plugin_yaml.write_text(_serialize_plugin(expected_plugin))
+        write_plugin_yaml(plugin_yaml, expected_plugin)
 
         # When
         actual = load_plugin_schema(plugin_yaml)
@@ -185,8 +181,7 @@ class TestAddPlugin:
             name=name,
             description="A test plugin",
         )
-        plugin_yaml = plugin_dir / "plugin.yaml"
-        plugin_yaml.write_text(_serialize_plugin(plugin))
+        write_plugin_yaml(plugin_dir, plugin)
         return plugin_dir
 
     def test_add_plugin_from_directory(self, tmp_path: Path) -> None:
@@ -207,7 +202,7 @@ class TestAddPlugin:
             name=plugin_name,
             description="A test plugin with multiple files",
         )
-        (source_dir / "plugin.yaml").write_text(_serialize_plugin(plugin))
+        write_plugin_yaml(source_dir / "plugin.yaml", plugin)
 
         # Create additional files to verify they are copied
         readme_content = "# Test Plugin README"
@@ -257,7 +252,7 @@ class TestAddPlugin:
             description="A single file plugin",
         )
         plugin_yaml = tmp_path / "my-plugin.yaml"
-        plugin_yaml.write_text(_serialize_plugin(plugin))
+        write_plugin_yaml(plugin_yaml, plugin)
 
         # When
         add_plugin(plugin_yaml, atk_home, _noop_prompt)
@@ -323,8 +318,7 @@ class TestAddCLI:
             name=name,
             description="A test plugin",
         )
-        plugin_yaml = plugin_dir / "plugin.yaml"
-        plugin_yaml.write_text(_serialize_plugin(plugin))
+        write_plugin_yaml(plugin_dir, plugin)
         return plugin_dir
 
     def test_add_success(self) -> None:
@@ -582,7 +576,7 @@ class TestAddEnvVarSetup:
                 )
             ],
         )
-        (source_dir / "plugin.yaml").write_text(_serialize_plugin(plugin))
+        write_plugin_yaml(source_dir / "plugin.yaml", plugin)
 
         # And - a prompt function that returns a known value
         def prompt_func(_text: str) -> str:
@@ -611,7 +605,7 @@ class TestAddEnvVarSetup:
             name="Simple Plugin",
             description="A plugin without env vars",
         )
-        (source_dir / "plugin.yaml").write_text(_serialize_plugin(plugin))
+        write_plugin_yaml(source_dir / "plugin.yaml", plugin)
 
         # And - a prompt function that should NOT be called
         prompt_called = False

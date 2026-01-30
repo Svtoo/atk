@@ -2,6 +2,10 @@
 
 from typer.testing import CliRunner
 
+from atk import __version__
+from atk.cli import app
+from atk.init import init_atk_home
+
 
 class TestVersion:
     """Tests for ATK version and package structure."""
@@ -17,15 +21,14 @@ class TestVersion:
         expected = self.expected_version
 
         # When
-        from atk import __version__
+        actual = __version__
 
         # Then
-        assert __version__ == expected
+        assert actual == expected
 
     def test_cli_app_is_importable(self) -> None:
         """Verify that the CLI app can be imported."""
-        # When
-        from atk.cli import app
+        # Given/When - app is imported at module level
 
         # Then
         assert app is not None
@@ -34,8 +37,6 @@ class TestVersion:
     def test_version_flag_shows_banner(self) -> None:
         """Verify that --version flag outputs the banner with version."""
         # Given
-        from atk.cli import app
-
         version = self.expected_version
 
         # When
@@ -50,14 +51,14 @@ class TestVersion:
 
     def test_status_command_exists(self, tmp_path, monkeypatch) -> None:
         """Verify that status command is available."""
-        from atk.cli import app
-        from atk.init import init_atk_home
-
+        # Given
         monkeypatch.setenv("ATK_HOME", str(tmp_path))
         init_atk_home(tmp_path)
 
+        # When
         result = self.runner.invoke(app, ["status"])
 
+        # Then
         assert result.exit_code == 0
         assert "No plugins installed" in result.output
 
