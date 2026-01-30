@@ -17,8 +17,8 @@
 | 0     | Foundation           | ✅      | Project setup, plugin schema, CLI skeleton  |
 | 1     | Core CLI             | ✅      | init, add, remove, git integration          |
 | 2     | Service Lifecycle    | ✅      | start, stop, restart, status, logs, run     |
-| 3     | Configuration        | 🔄     | .env management, port conflicts, MCP config |
-| 4     | Plugin Sources       | ⏳      | Registry, git URL sources, version pinning  |
+| 3     | Configuration        | ✅      | .env management, port conflicts, MCP config |
+| 4     | Plugin Sources       | 🔄      | Registry, git URL sources, upgrade command  |
 | 5     | Polish               | ⏳      | Error messages, help text, documentation    |
 | 6     | Community            | ⏳      | PyPI, contribution guide, CI/CD             |
 | 7     | AI Agent Integration | ⏳      | MCP server, agent-friendly output           |
@@ -43,14 +43,14 @@ codes.
 `atk start/stop/restart <plugin>`, `atk status`, `atk logs`, `atk run <plugin> <script>`. Lifecycle events from
 plugin.yaml. Health checks.
 
-### Phase 3: Configuration ⏳
+### Phase 3: Configuration ✅
 
 `.env` file management per plugin. Install wizard for required env vars. Port conflict detection. `atk mcp <plugin>` for
 MCP client config generation.
 
-### Phase 4: Plugin Sources ⏳
+### Phase 4: Plugin Sources 🔄
 
-Create `atk-registry` repo. Install from registry by name. Git URL sources. Version pinning in manifest.
+Registry and git URL sources. `atk upgrade` command. Version pinning via commit hash. User customizations in `custom/` directory.
 
 ### Phase 5: Polish ⏳
 

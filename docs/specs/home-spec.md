@@ -26,22 +26,53 @@ This allows:
 ```
 ~/.atk/                           # ATK Home (default location)
 ├── .git/                         # Git repository
-├── manifest.yaml                 # General configuration and installed plugins
+├── manifest.yaml                 # Installed plugins with source references
 ├── plugins/
 │   ├── openmemory/
-│   │   ├── plugin.yaml           # Plugin definition (source of truth)
-│   │   ├── docker-compose.yml    # Service configuration
-│   │   ├── docker-compose.override.yml  # User customizations (tracked)
+│   │   ├── plugin.yaml           # Plugin definition (from source, gitignored)
+│   │   ├── docker-compose.yml    # Service configuration (from source, gitignored)
 │   │   ├── .env                  # Secrets (gitignored)
-│   │   └── maintenance.sh        # User-defined scripts (in plugin root)
+│   │   └── custom/               # User customizations (tracked)
+│   │       ├── overrides.yaml    # Merged with plugin.yaml at runtime
+│   │       ├── my-script.sh      # User-defined scripts
+│   │       └── docker-compose.override.yml  # Docker Compose overrides
 │   └── langfuse/
 │       └── ...
-└── .gitignore                    # *.env patterns
+└── .gitignore                    # Plugin files + *.env patterns
 ```
+
+### What Gets Tracked in Git
+
+| Path | Tracked | Notes |
+|------|---------|-------|
+| `manifest.yaml` | ✅ | Source of truth for installed plugins |
+| `plugins/*/.env` | ❌ | Secrets, never committed |
+| `plugins/*/custom/**` | ✅ | User customizations |
+| `plugins/*/*` (other) | ❌ | Fetched from source on install |
+
+### Gitignore Pattern
+
+The root `.gitignore` uses this pattern:
+```gitignore
+# Ignore all plugin contents
+plugins/*/*
+
+# But keep custom directories
+!plugins/*/custom/
+!plugins/*/custom/**
+
+# Always ignore secrets
+*.env
+```
+
+This ensures:
+- Plugin files from upstream are not tracked (fetched on `atk install --all`)
+- User customizations in `custom/` are tracked and sync across machines
+- Secrets are never committed
 
 ## Manifest Schema
 
-The manifest is **minimal by design**. Plugins are objects mapping display name to directory.
+The manifest tracks installed plugins and their sources.
 
 ```yaml
 schema_version: "2026-01-22"
@@ -50,20 +81,39 @@ config:
   auto_commit: true               # Commit after mutations (default: true)
 
 plugins:
-  - name: "OpenMemory"            # Display name (user-friendly, any format)
-    directory: openmemory         # Sanitized directory name (follows validation rules)
+  - name: "OpenMemory"            # Display name (user-friendly)
+    directory: openmemory         # Sanitized directory name
+    source:                       # Where plugin came from (for upgrades)
+      type: registry              # registry | git | local
+      ref: abc123def              # Git commit hash (for registry/git sources)
   - name: "Langfuse"
     directory: langfuse
+    source:
+      type: git
+      url: github.com/langfuse/langfuse
+      ref: def456abc
+  - name: "Custom Tool"
+    directory: custom-tool
+    source:
+      type: local                 # No ref for local sources
 ```
+
+### Source Types
+
+| Type | Description | Upgradeable |
+|------|-------------|-------------|
+| `registry` | From ATK registry | ✅ `atk upgrade` fetches latest |
+| `git` | From git repository | ✅ `atk upgrade` fetches latest |
+| `local` | From local filesystem | ❌ Must re-add to update |
 
 ### Design Rationale
 
 - **Objects from the start**: Avoids painful migration when we add more plugin fields later
 - **Flexible display names**: Users can name plugins whatever they want
 - **Sanitized directories**: Directory names follow strict validation for safety
-- **No version duplication**: Plugin version lives in `plugins/<dir>/plugin.yaml`
-- **No config duplication**: Plugin config lives in plugin directory
-- **Single source of truth**: Manifest says "what's installed", plugin dirs say "how it's configured"
+- **Source tracking**: Enables `atk upgrade` to fetch updates
+- **Commit hash pinning**: Reproducible installs across machines
+- **Single source of truth**: Manifest says "what's installed and where from"
 
 ## Plugin Directory Validation
 
@@ -87,61 +137,78 @@ Display names (`name` field) have no restrictions—they are for human readabili
 | Command                     | Commits? | Reason                                                    |
 |-----------------------------|----------|-----------------------------------------------------------|
 | `atk init`                  | Yes      | Creates manifest and .gitignore                           |
-| `atk add <plugin>`          | Yes      | Adds plugin to manifest, copies files                     |
+| `atk add <plugin>`          | Yes      | Adds plugin to manifest                                   |
+| `atk upgrade <plugin>`      | Yes      | Updates manifest with new source ref                      |
 | `atk remove <plugin>`       | Yes      | Removes plugin from manifest, deletes files               |
 | `atk start/stop/restart`    | No       | Service control, no file changes (restart = stop + start) |
-| `atk install`               | No       | Install and/or updates the underlying service             |
+| `atk install`               | No       | Fetches plugins + runs install lifecycle                  |
 | `atk status`                | No       | Read-only                                                 |
 | `atk logs`                  | No       | Read-only                                                 |
 | `atk run <plugin> <script>` | No       | Executes script, no file changes                          |
 
 If `auto_commit: false`, user must manually commit changes.
 
-## User Scripts
+## User Customizations
 
-Users can add scripts to plugins.
+Users customize plugins via the `custom/` directory inside each plugin.
 
-### Location
-
-Scripts/executables live directly in the plugin root directory:
+### The `custom/` Directory
 
 ```
-plugins/<plugin>/<script>.sh
+plugins/<plugin>/custom/
+├── overrides.yaml              # Merged with plugin.yaml
+├── my-script.sh                # User scripts
+└── docker-compose.override.yml # Docker Compose overrides
 ```
 
-### Execution
+Everything in `custom/` is:
+- **Tracked in git** — syncs across machines
+- **Preserved on upgrade** — `atk upgrade` never touches `custom/`
+- **Merged at runtime** — overrides take precedence over upstream
+
+### Plugin Overrides
+
+`custom/overrides.yaml` is merged with the upstream `plugin.yaml`:
+
+```yaml
+# custom/overrides.yaml
+env_vars:
+  - name: MY_CUSTOM_VAR
+    required: false
+    default: "my-value"
+
+lifecycle:
+  start: "./custom/my-start.sh"  # Override upstream's start command
+```
+
+**Merge behavior:**
+- Objects are deep-merged (user values override upstream)
+- Arrays are replaced entirely (not concatenated)
+
+### User Scripts
+
+User scripts live in `custom/` and take precedence over upstream scripts:
 
 ```bash
 atk run <plugin> <script>
-# Example: atk run langfuse maintenance
-# Executes: plugins/langfuse/maintenance.sh
+# Resolution order:
+# 1. plugins/<plugin>/custom/<script>
+# 2. plugins/<plugin>/<script>
 ```
 
-### Use Cases
+### Docker Compose Overrides
 
-1. **Maintenance tasks**: Cache cleanup, database maintenance, log rotation
-2. **MCP integration**: AI agents can list and execute scripts programmatically
-3. **Custom workflows**: Tasks specific to user's environment or the plugin
-
-Scripts are tracked in git and sync across machines.
-
-## Docker Customization
-
-Users customize Docker services via `docker-compose.override.yml`:
+For Docker Compose plugins, use the standard override pattern:
 
 ```yaml
-# plugins/langfuse/docker-compose.override.yml
+# plugins/langfuse/custom/docker-compose.override.yml
 services:
   langfuse:
     ports:
       - "3001:3000"    # Override default port
-    environment:
-      - CUSTOM_VAR=value
 ```
 
-- Override files are **tracked in git** (not gitignored)
-- User customizations persist across updates
-- Standard Docker Compose override pattern
+ATK automatically includes override files when running compose commands.
 
 ## Environment Variables
 
@@ -185,39 +252,57 @@ Lifecycle commands (start, install) fail fast if required env vars are not set. 
 
 All lifecycle commands are plugin-agnostic — they execute whatever the plugin defines.
 
-## Plugin Sources (MVP)
+## Plugin Sources
 
-For MVP, local sources are supported:
+ATK supports three plugin source types:
 
 ```bash
-atk add ./openmemory/        # Directory containing plugin.yaml
-atk add ./mcp-server.yaml    # Single plugin.yaml file
+atk add ./openmemory/              # Local directory
+atk add openmemory                 # Registry (by name)
+atk add github.com/org/repo        # Git URL
 ```
 
-| Source Type | Use Case                                                          |
-|-------------|-------------------------------------------------------------------|
-| Directory   | Docker Compose plugins with multiple files (compose.yml, scripts) |
-| Single file | Simple MCP servers installed via command line                     |
+| Source Type | Resolution | Upgradeable |
+|-------------|------------|-------------|
+| Local directory | Path to directory containing `plugin.yaml` | ❌ |
+| Registry | Plugin name → fetched from `atk-registry` | ✅ |
+| Git URL | Repository URL → looks for `.atk/` directory | ✅ |
 
-### Explicitly NOT Supported (MVP)
+### Registry
 
-- **Git URL**: Deferred to Phase 4
-- **Registry**: Deferred to Phase 4
+The ATK registry (`atk-registry` repo) contains curated plugins:
 
-### Rationale
+```
+atk-registry/
+├── plugins/
+│   ├── openmemory/
+│   │   ├── plugin.yaml
+│   │   └── docker-compose.yml
+│   └── langfuse/
+│       └── ...
+└── index.yaml          # Generated manifest for fast lookup
+```
 
-- No data duplication: Git URL can be obtained from git itself
-- User can modify origin independently; ATK doesn't need to track it
-- Keeps manifest minimal and avoids sync issues
+### Git URL Convention
+
+For git sources, ATK looks for the `.atk/` directory at repository root:
+
+```
+some-repo/
+├── .atk/               # ATK plugin definition
+│   ├── plugin.yaml
+│   └── docker-compose.yml
+└── ...                 # Rest of the repository
+```
+
+ATK uses sparse checkout to fetch only the `.atk/` directory.
 
 ## What's NOT Included
 
 | Feature                      | Status   | Reason                            |
 |------------------------------|----------|-----------------------------------|
 | Hooks (pre/post lifecycle)   | Deferred | Too much lifecycle complication   |
-| Git URL source in manifest   | Never    | Avoid data duplication with git   |
 | Plugin overrides in manifest | Never    | Config lives in plugin dirs       |
-| Registry support             | Post-MVP | Focus on core functionality first |
 
 ## Security Considerations
 

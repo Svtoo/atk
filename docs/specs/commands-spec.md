@@ -184,11 +184,11 @@ atk remove openmemory
 
 ## `atk install [plugin]`
 
-Run the install lifecycle command for plugin(s).
+Run the install lifecycle command for plugin(s). For bootstrap scenarios, also fetches plugin files.
 
 **Use Cases:**
-1. **Update**: Re-run install after plugin files changed (pulls new images, rebuilds containers)
-2. **Bootstrap**: Install all plugins on a new machine after `git clone` of ATK Home
+1. **Re-run install**: After plugin files changed locally (pulls new images, rebuilds containers)
+2. **Bootstrap**: Set up all plugins on a new machine after `git clone` of ATK Home
 
 **Arguments:**
 - `[plugin]`: Plugin name or directory (optional if `--all`)
@@ -198,22 +198,33 @@ Run the install lifecycle command for plugin(s).
 
 **Usage:**
 ```bash
-atk install langfuse       # Install/update one plugin
-atk install --all          # Install all plugins (bootstrap scenario)
+atk install langfuse       # Run install lifecycle for one plugin
+atk install --all          # Bootstrap: fetch plugins + run install for all
 ```
 
 **Behavior:**
+
+For single plugin (`atk install <plugin>`):
 1. Validate ATK Home is initialized (exit 3 if not)
-2. Find plugin(s) by name or directory
+2. Find plugin by name or directory
 3. Check required environment variables are set (exit 8 if missing)
 4. Run `install` lifecycle command from plugin.yaml
 5. If `install` not defined → skip silently (no-op)
 6. Report output to user
 
+For all plugins (`atk install --all`):
+1. Validate ATK Home is initialized (exit 3 if not)
+2. For each plugin in manifest:
+   - If plugin files missing: fetch from source at pinned version
+   - Check required environment variables are set
+   - Run `install` lifecycle command
+3. Continue on failure, report summary at end
+
 **Workflow Clarification:**
-- `atk add` = copy files + prompt for env vars + run install (for adding new plugins from source)
+- `atk add` = add new plugin from source + prompt for env vars + run install
+- `atk upgrade` = fetch latest from source + update manifest + run install
 - `atk setup` = prompt for env vars only (for configuring existing plugins)
-- `atk install` = run install only (for update or bootstrap after git pull)
+- `atk install` = run install lifecycle (single) or bootstrap (--all)
 
 **Exit Codes:**
 - 0: Success (including no-op when install not defined)
@@ -500,6 +511,47 @@ atk mcp openmemory          # Output MCP config JSON for openmemory
 - 3: ATK Home not initialized
 - 4: Plugin not found
 - 5: Plugin has no MCP configuration defined
+
+---
+
+## `atk upgrade [plugin]`
+
+Update plugin(s) to the latest version from their source.
+
+**Arguments:**
+- `[plugin]`: Plugin name or directory (optional if `--all`)
+
+**Flags:**
+- `--all`: Upgrade all plugins to latest versions
+
+**Usage:**
+```bash
+atk upgrade openmemory    # Update one plugin to latest
+atk upgrade --all         # Update all plugins to latest
+```
+
+**Behavior:**
+1. Validate ATK Home is initialized (exit 3 if not)
+2. Find plugin(s) by name or directory
+3. Fetch latest plugin definition from source (registry or git)
+4. Update manifest with new source reference (commit hash)
+5. Replace plugin files (preserving `custom/` directory)
+6. If new required env vars exist, run setup prompts
+7. Run `install` lifecycle command
+8. Commit changes (if `auto_commit: true`)
+
+**Notes:**
+- Only works on already-installed plugins
+- Fetches from the source recorded in manifest
+- User customizations in `custom/` are preserved
+- This is the primary way to update plugins after initial installation
+
+**Exit Codes:**
+- 0: Success
+- 3: ATK Home not initialized
+- 4: Plugin not found
+- 6: Install command failed
+- 7: Git commit failed
 
 ---
 
