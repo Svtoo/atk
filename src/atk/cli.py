@@ -28,6 +28,7 @@ from atk.lifecycle import (
     LifecycleSuccess,
     PluginStatus,
     PluginStatusResult,
+    PortConflict,
     PortStatus,
     execute_all_lifecycle,
     execute_lifecycle,
@@ -153,6 +154,7 @@ def _run_lifecycle_cli(
     if all_plugins:
         _run_all_plugins_lifecycle_cli(atk_home, command_name, verb, reverse=reverse)
     else:
+        assert plugin is not None
         _run_single_plugin_lifecycle_cli(atk_home, plugin, command_name, verb)
 
 
@@ -190,7 +192,7 @@ def _run_single_plugin_lifecycle_cli(
             raise typer.Exit(exit_codes.PORT_CONFLICT)
 
 
-def _format_port_conflicts(plugin_name: str, conflicts: list) -> None:
+def _format_port_conflicts(plugin_name: str, conflicts: list[PortConflict]) -> None:
     """Format port conflict error messages."""
     for conflict in conflicts:
         cli_logger.error(f"Port {conflict.port} is already in use")
@@ -577,11 +579,11 @@ def restart(
                     raise typer.Exit(exit_codes.GENERAL_ERROR)
             except LifecycleCommandNotDefinedError:
                 cli_logger.warning(f"Plugin '{plugin}' has no start command defined")
-                raise typer.Exit(exit_codes.SUCCESS)
+                raise typer.Exit(exit_codes.SUCCESS) from None
 
         except PluginNotFoundError:
             cli_logger.error(f"Plugin '{plugin}' not found in manifest")
-            raise typer.Exit(exit_codes.PLUGIN_NOT_FOUND)
+            raise typer.Exit(exit_codes.PLUGIN_NOT_FOUND) from None
         return
 
     # --all case - custom two-phase handling

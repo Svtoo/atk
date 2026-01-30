@@ -2,8 +2,6 @@
 
 from pathlib import Path
 
-import pytest
-
 from atk.env import EnvVarStatus, get_env_status, load_env_file, save_env_file
 from atk.plugin_schema import EnvVarConfig, PluginSchema
 

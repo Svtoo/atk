@@ -1,12 +1,5 @@
-"""Tests for setup wizard functionality."""
-
-from pathlib import Path
-
-import pytest
-import yaml
-
-from atk.plugin_schema import EnvVarConfig, PLUGIN_SCHEMA_VERSION
-from atk.setup import mask_value, prompt_env_var, run_setup
+from atk.plugin_schema import EnvVarConfig
+from atk.setup import mask_value, prompt_env_var
 
 
 class TestMaskValue:
@@ -63,7 +56,7 @@ class TestPromptEnvVar:
         var = EnvVarConfig(name="API_KEY")
         current_value = "existing-key"
 
-        def mock_prompt(text: str) -> str:
+        def mock_prompt(_text: str) -> str:
             return ""
 
         result = prompt_env_var(var, current_value, mock_prompt)
@@ -75,7 +68,7 @@ class TestPromptEnvVar:
         default_value = "default-key"
         var = EnvVarConfig(name="API_KEY", default=default_value)
 
-        def mock_prompt(text: str) -> str:
+        def mock_prompt(_text: str) -> str:
             return ""
 
         result = prompt_env_var(var, None, mock_prompt)

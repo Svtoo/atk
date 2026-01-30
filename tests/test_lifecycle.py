@@ -14,10 +14,9 @@ from atk.lifecycle import (
     get_plugin_status,
     restart_all_plugins,
     run_lifecycle_command,
-    run_plugin_lifecycle,
 )
 from atk.manifest_schema import PluginEntry, load_manifest, save_manifest
-from atk.plugin import PluginNotFoundError, load_plugin
+from atk.plugin import load_plugin
 from atk.plugin_schema import PLUGIN_SCHEMA_VERSION, EnvVarConfig, McpConfig
 
 # Type alias for the plugin factory fixture
@@ -1179,7 +1178,7 @@ class TestSetupCli:
         assert "not found" in result.output.lower()
 
     def test_cli_setup_all_configures_multiple_plugins(
-        self, atk_home: Path, create_plugin: PluginFactory, cli_runner
+        self,create_plugin: PluginFactory, cli_runner
     ) -> None:
         """Verify atk setup --all configures all plugins with env vars."""
         plugin1_var = "PLUGIN1_KEY"

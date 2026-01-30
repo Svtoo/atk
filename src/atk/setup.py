@@ -1,5 +1,6 @@
 """Setup wizard for configuring plugin environment variables."""
 
+from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -28,7 +29,7 @@ def mask_value(value: str) -> str:
 def prompt_env_var(
     var: EnvVarConfig,
     current_value: str | None,
-    prompt_func: callable,
+    prompt_func: Callable[[str], str],
 ) -> str:
     """Prompt user for a single environment variable value.
 
@@ -52,10 +53,7 @@ def prompt_env_var(
 
     default_display = None
     if current_value:
-        if var.secret:
-            default_display = mask_value(current_value)
-        else:
-            default_display = current_value
+        default_display = mask_value(current_value) if var.secret else current_value
     elif var.default:
         default_display = var.default
 
@@ -79,7 +77,7 @@ def prompt_env_var(
 def run_setup(
     plugin: PluginSchema,
     plugin_dir: Path,
-    prompt_func: callable,
+    prompt_func: Callable[[str], str],
 ) -> SetupResult:
     """Run interactive setup for a plugin.
 

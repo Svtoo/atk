@@ -21,7 +21,7 @@ def _serialize_plugin(plugin: PluginSchema) -> str:
     return yaml.dump(plugin.model_dump(exclude_none=True), default_flow_style=False)
 
 
-def _noop_prompt(text: str) -> str:
+def _noop_prompt(_text: str) -> str:
     """No-op prompt function for tests that don't care about env vars."""
     return ""
 
@@ -585,7 +585,7 @@ class TestAddEnvVarSetup:
         (source_dir / "plugin.yaml").write_text(_serialize_plugin(plugin))
 
         # And - a prompt function that returns a known value
-        def prompt_func(text: str) -> str:
+        def prompt_func(_text: str) -> str:
             return api_key_value
 
         # When
@@ -616,7 +616,7 @@ class TestAddEnvVarSetup:
         # And - a prompt function that should NOT be called
         prompt_called = False
 
-        def prompt_func(text: str) -> str:
+        def prompt_func(_text: str) -> str:
             nonlocal prompt_called
             prompt_called = True
             return "should-not-be-called"
