@@ -113,6 +113,10 @@ def create_plugin(atk_home: Path) -> PluginFactory:
                 raise ValueError(msg)
             # Convert dict to LifecycleConfig if needed (for backward compatibility)
             if isinstance(lifecycle, dict):
+                # Auto-add uninstall if install is present but uninstall is not
+                # This ensures backward compatibility with tests that only specify install
+                if "install" in lifecycle and "uninstall" not in lifecycle:
+                    lifecycle["uninstall"] = "echo 'Auto-generated uninstall for testing'"
                 lifecycle = LifecycleConfig.model_validate(lifecycle)
             final_plugin = PluginSchema(
                 schema_version=PLUGIN_SCHEMA_VERSION,

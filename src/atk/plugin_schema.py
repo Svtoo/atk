@@ -7,7 +7,7 @@ how to install and manage AI development tools.
 from enum import Enum
 from typing import Literal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
 # Schema version - update when plugin schema changes
 PLUGIN_SCHEMA_VERSION = "2026-01-23"
@@ -100,6 +100,10 @@ class LifecycleConfig(BaseModel):
         default=None,
         description="Command to install/update the plugin",
     )
+    uninstall: str | None = Field(
+        default=None,
+        description="Command to uninstall the plugin and clean up resources",
+    )
     start: str | None = Field(
         default=None,
         description="Command to start the service",
@@ -183,4 +187,16 @@ class PluginSchema(BaseModel):
         default=None,
         description="MCP integration configuration",
     )
+
+    @model_validator(mode="after")
+    def validate_install_uninstall_pairing(self) -> "PluginSchema":
+        """Validate that if install is defined, uninstall must also be defined."""
+        if (
+            self.lifecycle is not None
+            and self.lifecycle.install is not None
+            and self.lifecycle.uninstall is None
+        ):
+            msg = "If 'install' lifecycle is defined, 'uninstall' must also be required to ensure proper cleanup"
+            raise ValueError(msg)
+        return self
 

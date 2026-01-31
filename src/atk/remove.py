@@ -21,20 +21,22 @@ class RemoveResult:
     removed: bool
     stop_failed: bool = False
     stop_exit_code: int | None = None
+    uninstall_failed: bool = False
+    uninstall_exit_code: int | None = None
 
 
 def remove_plugin(identifier: str, atk_home: Path) -> RemoveResult:
     """Remove a plugin from ATK Home.
 
-    Runs the stop lifecycle command before removing files (if defined).
-    Continues with removal even if stop fails.
+    Runs the stop and uninstall lifecycle commands before removing files (if defined).
+    Continues with removal even if stop or uninstall fails.
 
     Args:
         identifier: Plugin identifier - can be directory name or plugin name.
         atk_home: Path to ATK Home directory.
 
     Returns:
-        RemoveResult with removed status and stop lifecycle info.
+        RemoveResult with removed status and lifecycle info.
 
     Raises:
         ValueError: If ATK Home is not initialized.
@@ -68,15 +70,30 @@ def remove_plugin(identifier: str, atk_home: Path) -> RemoveResult:
     # Run stop lifecycle command if defined
     stop_failed = False
     stop_exit_code = None
+    uninstall_failed = False
+    uninstall_exit_code = None
+
     if plugin_dir.exists():
+        schema = load_plugin_schema(plugin_dir)
+
+        # Run stop lifecycle
         try:
-            schema = load_plugin_schema(plugin_dir)
             exit_code = run_lifecycle_command(schema, plugin_dir, "stop")
             if exit_code != 0:
                 stop_failed = True
                 stop_exit_code = exit_code
         except LifecycleCommandNotDefinedError:
             # Skip silently - stop is optional
+            pass
+
+        # Run uninstall lifecycle
+        try:
+            exit_code = run_lifecycle_command(schema, plugin_dir, "uninstall")
+            if exit_code != 0:
+                uninstall_failed = True
+                uninstall_exit_code = exit_code
+        except LifecycleCommandNotDefinedError:
+            # Skip silently - uninstall is optional
             pass
 
     # Remove plugin directory if it exists
@@ -94,5 +111,11 @@ def remove_plugin(identifier: str, atk_home: Path) -> RemoveResult:
         git_add(atk_home)
         git_commit(atk_home, f"Remove plugin '{plugin_name}'")
 
-    return RemoveResult(removed=True, stop_failed=stop_failed, stop_exit_code=stop_exit_code)
+    return RemoveResult(
+        removed=True,
+        stop_failed=stop_failed,
+        stop_exit_code=stop_exit_code,
+        uninstall_failed=uninstall_failed,
+        uninstall_exit_code=uninstall_exit_code,
+    )
 

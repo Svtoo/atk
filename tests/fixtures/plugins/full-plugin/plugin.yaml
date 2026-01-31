@@ -28,6 +28,7 @@ env_vars:
 
 lifecycle:
   install: ./install.sh
+  uninstall: echo "Uninstalling full-plugin"
   start: ./start.sh
   stop: ./stop.sh
   status: ./status.sh

@@ -17,7 +17,14 @@ from atk.lifecycle import (
 )
 from atk.manifest_schema import PluginEntry, load_manifest, save_manifest
 from atk.plugin import load_plugin
-from atk.plugin_schema import PLUGIN_SCHEMA_VERSION, EnvVarConfig, McpConfig
+from atk.plugin_schema import (
+    PLUGIN_SCHEMA_VERSION,
+    EnvVarConfig,
+    LifecycleConfig,
+    McpConfig,
+    PluginSchema,
+)
+from tests.conftest import write_plugin_yaml
 
 # Type alias for the plugin factory fixture
 PluginFactory = Callable[..., Path]
@@ -461,19 +468,25 @@ class TestInstallCli:
         self, atk_home: Path, cli_runner
     ) -> None:
         """Verify CLI fails with exit code 8 when required env vars are missing."""
+        # Given - plugin with required env var
         plugin_name = "TestPlugin"
         plugin_dir_name = "test-plugin"
         required_var = "REQUIRED_API_KEY"
         plugin_dir = atk_home / "plugins" / plugin_dir_name
         plugin_dir.mkdir(parents=True, exist_ok=True)
-        plugin_yaml = {
-            "schema_version": PLUGIN_SCHEMA_VERSION,
-            "name": plugin_name,
-            "description": "Test plugin",
-            "lifecycle": {"install": "echo installing"},
-            "env_vars": [{"name": required_var, "required": True}],
-        }
-        (plugin_dir / "plugin.yaml").write_text(yaml.dump(plugin_yaml))
+
+        plugin = PluginSchema(
+            schema_version=PLUGIN_SCHEMA_VERSION,
+            name=plugin_name,
+            description="Test plugin",
+            lifecycle=LifecycleConfig(
+                install="echo installing",
+                uninstall="echo uninstalling",
+            ),
+            env_vars=[EnvVarConfig(name=required_var, required=True)],
+        )
+        write_plugin_yaml(plugin_dir, plugin)
+
         manifest = load_manifest(atk_home)
         manifest.plugins.append(PluginEntry(name=plugin_name, directory=plugin_dir_name))
         save_manifest(manifest, atk_home)
@@ -483,6 +496,140 @@ class TestInstallCli:
         assert result.exit_code == exit_codes.ENV_NOT_CONFIGURED
         assert required_var in result.output
         assert "Missing required" in result.output
+
+
+@pytest.mark.usefixtures("atk_home")
+class TestUninstallCli:
+    """Tests for atk uninstall CLI command."""
+
+    def test_cli_uninstall_single_plugin(
+        self, create_plugin: PluginFactory, cli_runner
+    ) -> None:
+        """Verify CLI uninstalls a single plugin with --force flag."""
+        # Given - plugin with uninstall lifecycle
+        plugin_dir = create_plugin(
+            "TestPlugin",
+            "test-plugin",
+            {"install": "touch installed.txt", "uninstall": "touch uninstalled.txt"},
+        )
+
+        # When
+        result = cli_runner.invoke(app, ["uninstall", "test-plugin", "--force"])
+
+        # Then
+        assert result.exit_code == exit_codes.SUCCESS
+        assert "Uninstalled" in result.output
+        assert (plugin_dir / "uninstalled.txt").exists()
+
+    def test_cli_uninstall_plugin_not_found(self, cli_runner) -> None:
+        """Verify CLI returns PLUGIN_NOT_FOUND for unknown plugin."""
+        # Given - no plugin installed
+
+        # When
+        result = cli_runner.invoke(app, ["uninstall", "nonexistent", "--force"])
+
+        # Then
+        assert result.exit_code == exit_codes.PLUGIN_NOT_FOUND
+        assert "not found" in result.output.lower()
+
+    def test_cli_uninstall_shows_warning_when_not_defined(
+        self, create_plugin: PluginFactory, cli_runner
+    ) -> None:
+        """Verify CLI shows warning when uninstall command not defined."""
+        # Given - plugin without uninstall lifecycle
+        create_plugin("TestPlugin", "test-plugin", {"start": "echo start"})
+
+        # When
+        result = cli_runner.invoke(app, ["uninstall", "test-plugin", "--force"])
+
+        # Then
+        assert result.exit_code == exit_codes.SUCCESS
+        assert "no uninstall command defined" in result.output
+
+    def test_cli_uninstall_runs_stop_before_uninstall(
+        self, atk_home: Path, create_plugin: PluginFactory, cli_runner
+    ) -> None:
+        """Verify uninstall runs stop lifecycle before uninstall."""
+        # Given - plugin with stop and uninstall lifecycles that write to order file
+        order_file = atk_home / "order.txt"
+        expected_order = ["stop", "uninstall"]
+        create_plugin(
+            "TestPlugin",
+            "test-plugin",
+            {
+                "install": "echo install",
+                "uninstall": f"echo {expected_order[1]} >> {order_file}",
+                "stop": f"echo {expected_order[0]} >> {order_file}",
+            },
+        )
+
+        # When
+        result = cli_runner.invoke(app, ["uninstall", "test-plugin", "--force"])
+
+        # Then
+        assert result.exit_code == exit_codes.SUCCESS
+        order = order_file.read_text().strip().split("\n")
+        assert order == expected_order
+
+    def test_cli_uninstall_continues_when_stop_fails(
+        self, create_plugin: PluginFactory, cli_runner
+    ) -> None:
+        """Verify uninstall continues even if stop fails."""
+        # Given - plugin with failing stop lifecycle
+        plugin_dir = create_plugin(
+            "TestPlugin",
+            "test-plugin",
+            {
+                "install": "echo install",
+                "uninstall": "touch uninstalled.txt",
+                "stop": "exit 1",
+            },
+        )
+
+        # When
+        result = cli_runner.invoke(app, ["uninstall", "test-plugin", "--force"])
+
+        # Then - uninstall still runs despite stop failure
+        assert result.exit_code == exit_codes.SUCCESS
+        assert "Stop failed" in result.output
+        assert (plugin_dir / "uninstalled.txt").exists()
+
+    def test_cli_uninstall_prompts_for_confirmation(
+        self, create_plugin: PluginFactory, cli_runner
+    ) -> None:
+        """Verify uninstall prompts for confirmation without --force."""
+        # Given - plugin with uninstall lifecycle
+        create_plugin(
+            "TestPlugin",
+            "test-plugin",
+            {"install": "echo install", "uninstall": "echo uninstalling"},
+        )
+
+        # When - user cancels confirmation
+        result = cli_runner.invoke(app, ["uninstall", "test-plugin"], input="n\n")
+
+        # Then
+        assert result.exit_code == exit_codes.SUCCESS
+        assert "Continue?" in result.output
+        assert "cancelled" in result.output.lower()
+
+    def test_cli_uninstall_accepts_confirmation(
+        self, create_plugin: PluginFactory, cli_runner
+    ) -> None:
+        """Verify uninstall proceeds when user confirms."""
+        # Given - plugin with uninstall lifecycle
+        plugin_dir = create_plugin(
+            "TestPlugin",
+            "test-plugin",
+            {"install": "echo install", "uninstall": "touch uninstalled.txt"},
+        )
+
+        # When - user confirms
+        result = cli_runner.invoke(app, ["uninstall", "test-plugin"], input="y\n")
+
+        # Then
+        assert result.exit_code == exit_codes.SUCCESS
+        assert (plugin_dir / "uninstalled.txt").exists()
 
 
 class TestRestartAll:

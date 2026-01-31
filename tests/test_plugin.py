@@ -6,13 +6,10 @@ import pytest
 import yaml
 
 from atk.init import init_atk_home
-from atk.manifest_schema import (
-    PluginEntry,
-    load_manifest,
-    save_manifest,
-)
+from atk.manifest_schema import PluginEntry, load_manifest, save_manifest
 from atk.plugin import PluginNotFoundError, load_plugin
-from atk.plugin_schema import PLUGIN_SCHEMA_VERSION, PluginSchema
+from atk.plugin_schema import PLUGIN_SCHEMA_VERSION, LifecycleConfig, PluginSchema
+from tests.conftest import write_plugin_yaml
 
 
 class TestLoadPlugin:
@@ -106,17 +103,20 @@ class TestLoadPlugin:
         plugin_dir.mkdir(parents=True)
 
         install_command = "docker compose pull"
+        uninstall_command = "docker compose down -v"
         start_command = "docker compose up -d"
-        plugin_yaml = {
-            "schema_version": self.schema_version,
-            "name": self.plugin_name,
-            "description": self.plugin_description,
-            "lifecycle": {
-                "install": install_command,
-                "start": start_command,
-            },
-        }
-        (plugin_dir / "plugin.yaml").write_text(yaml.dump(plugin_yaml))
+
+        plugin = PluginSchema(
+            schema_version=self.schema_version,
+            name=self.plugin_name,
+            description=self.plugin_description,
+            lifecycle=LifecycleConfig(
+                install=install_command,
+                uninstall=uninstall_command,
+                start=start_command,
+            ),
+        )
+        write_plugin_yaml(plugin_dir, plugin)
 
         manifest = load_manifest(tmp_path)
         manifest.plugins.append(

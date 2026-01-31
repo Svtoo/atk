@@ -478,6 +478,79 @@ def install(
 
 
 @app.command()
+def uninstall(
+    plugin: Annotated[
+        str,
+        typer.Argument(
+            help="Plugin name or directory to uninstall.",
+        ),
+    ],
+    force: Annotated[
+        bool,
+        typer.Option(
+            "--force",
+            help="Skip confirmation prompt.",
+        ),
+    ] = False,
+) -> None:
+    """Run the uninstall lifecycle command for a plugin.
+
+    Runs stop and uninstall lifecycle commands to clean up resources.
+    Does NOT remove the plugin from manifest (use 'atk remove' for that).
+    Symmetric to 'atk install': install sets up, uninstall tears down.
+    """
+    atk_home = require_ready_home()
+
+    # Load plugin to get schema
+    try:
+        plugin_schema, plugin_dir = load_plugin(atk_home, plugin)
+    except PluginNotFoundError:
+        cli_logger.error(f"Plugin '{plugin}' not found in manifest")
+        raise typer.Exit(exit_codes.PLUGIN_NOT_FOUND) from None
+
+    # Check if uninstall is defined
+    if plugin_schema.lifecycle is None or plugin_schema.lifecycle.uninstall is None:
+        cli_logger.warning(f"Plugin '{plugin_schema.name}' has no uninstall command defined")
+        raise typer.Exit(exit_codes.SUCCESS)
+
+    # Show confirmation prompt unless --force
+    if not force:
+        console.print(
+            f"\n⚠️  This will run the uninstall command which may delete data:\n"
+            f"    {plugin_schema.lifecycle.uninstall}\n",
+            style="yellow",
+        )
+        confirm = typer.confirm("Continue?", default=False)
+        if not confirm:
+            cli_logger.info("Uninstall cancelled")
+            raise typer.Exit(exit_codes.SUCCESS)
+
+    # Run stop lifecycle first (if defined)
+    from atk.lifecycle import LifecycleCommandNotDefinedError, run_lifecycle_command
+
+    try:
+        exit_code = run_lifecycle_command(plugin_schema, plugin_dir, "stop")
+        if exit_code != 0:
+            cli_logger.warning(f"Stop failed with exit code {exit_code}, continuing with uninstall")
+    except LifecycleCommandNotDefinedError:
+        # Stop is optional, continue
+        pass
+
+    # Run uninstall lifecycle
+    try:
+        exit_code = run_lifecycle_command(plugin_schema, plugin_dir, "uninstall")
+        if exit_code != 0:
+            cli_logger.error(f"Uninstall failed with exit code {exit_code}")
+            raise typer.Exit(exit_codes.DOCKER_ERROR)
+        cli_logger.success(f"Uninstalled '{plugin_schema.name}'")
+        raise typer.Exit(exit_codes.SUCCESS)
+    except LifecycleCommandNotDefinedError as e:
+        # Should not happen since we checked above, but handle gracefully
+        cli_logger.warning(f"Plugin '{plugin_schema.name}' has no uninstall command defined")
+        raise typer.Exit(exit_codes.SUCCESS) from e
+
+
+@app.command()
 def start(
     plugin: Annotated[
         str | None,

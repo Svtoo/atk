@@ -8,10 +8,15 @@ from typer.testing import CliRunner
 
 from atk.add import SourceType, add_plugin, detect_source_type, load_plugin_schema
 from atk.cli import app
-from atk.exit_codes import HOME_NOT_INITIALIZED, PLUGIN_INVALID, SUCCESS
+from atk.exit_codes import DOCKER_ERROR, HOME_NOT_INITIALIZED, PLUGIN_INVALID, SUCCESS
 from atk.init import init_atk_home
 from atk.manifest_schema import ManifestSchema
-from atk.plugin_schema import PLUGIN_SCHEMA_VERSION, EnvVarConfig, PluginSchema
+from atk.plugin_schema import (
+    PLUGIN_SCHEMA_VERSION,
+    EnvVarConfig,
+    LifecycleConfig,
+    PluginSchema,
+)
 from tests.conftest import write_plugin_yaml
 
 runner = CliRunner()
@@ -459,14 +464,17 @@ class TestAddInstallLifecycle:
         plugin_dir = self.tmp_path / "marker-plugin"
         plugin_dir.mkdir()
         marker_file = self.tmp_path / "install-ran.marker"
-        plugin_yaml = plugin_dir / "plugin.yaml"
-        plugin_yaml.write_text(f"""
-schema_version: "2026-01-23"
-name: Marker Plugin
-description: A plugin that creates a marker file on install
-lifecycle:
-  install: touch {marker_file}
-""")
+
+        plugin = PluginSchema(
+            schema_version="2026-01-23",
+            name="Marker Plugin",
+            description="A plugin that creates a marker file on install",
+            lifecycle=LifecycleConfig(
+                install=f"touch {marker_file}",
+                uninstall=f"rm -f {marker_file}",
+            ),
+        )
+        write_plugin_yaml(plugin_dir, plugin)
 
         # When
         result = runner.invoke(app, ["add", str(plugin_dir)])
@@ -496,22 +504,23 @@ lifecycle:
 
     def test_add_fails_when_install_lifecycle_fails(self) -> None:
         """Verify add fails with exit code 6 when install lifecycle fails."""
-        from atk.exit_codes import DOCKER_ERROR
-
         # Given - initialized ATK home
         init_atk_home(self.atk_home)
 
         # And - a plugin with failing install lifecycle
         plugin_dir = self.tmp_path / "failing-plugin"
         plugin_dir.mkdir()
-        plugin_yaml = plugin_dir / "plugin.yaml"
-        plugin_yaml.write_text("""
-schema_version: "2026-01-23"
-name: Failing Plugin
-description: A plugin with failing install
-lifecycle:
-  install: exit 1
-""")
+
+        plugin = PluginSchema(
+            schema_version="2026-01-23",
+            name="Failing Plugin",
+            description="A plugin with failing install",
+            lifecycle=LifecycleConfig(
+                install="exit 1",
+                uninstall="echo 'Uninstalling'",
+            ),
+        )
+        write_plugin_yaml(plugin_dir, plugin)
 
         # When
         result = runner.invoke(app, ["add", str(plugin_dir)])

@@ -15,7 +15,7 @@ from atk.manifest_schema import load_manifest
 from atk.plugin import PluginNotFoundError, load_plugin
 from atk.plugin_schema import PluginSchema
 
-LifecycleCommand = Literal["install", "start", "stop", "logs", "status"]
+LifecycleCommand = Literal["install", "uninstall", "start", "stop", "logs", "status"]
 
 
 # --- Result types for single plugin execution ---

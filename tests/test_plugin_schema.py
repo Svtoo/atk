@@ -1,6 +1,7 @@
 """Tests for plugin YAML schema validation."""
 
 import pytest
+import yaml
 
 from atk.plugin_schema import (
     EnvVarConfig,
@@ -413,6 +414,7 @@ class TestPluginSchemaFull:
             ],
             "lifecycle": {
                 "install": "./install.sh",
+                "uninstall": "docker compose down -v",
                 "start": "docker compose up -d",
                 "stop": "docker compose down",
                 "health_endpoint": "/health",
@@ -556,10 +558,75 @@ mcp:
         assert plugin.mcp.args == ["exec", "-i", "langfuse", "npx", "@langfuse/mcp-server"]
         assert plugin.mcp.env == ["LANGFUSE_PUBLIC_KEY", "LANGFUSE_SECRET_KEY"]
 
+
+class TestLifecycleValidation:
+    """Tests for lifecycle validation rules."""
+
+    def setup_method(self) -> None:
+        """Set up test fixtures."""
+        self.base_plugin_data = {
+            "schema_version": "2026-01-23",
+            "name": "test-plugin",
+            "description": "A test plugin",
+        }
+
+    def test_install_without_uninstall_is_invalid(self) -> None:
+        """Verify that defining install without uninstall raises validation error."""
+        # Given - plugin with install but no uninstall
+        plugin_data = self.base_plugin_data.copy()
+        plugin_data["lifecycle"] = {"install": "./install.sh"}
+
+        # When/Then - validation should fail
+        with pytest.raises(ValueError, match="uninstall.*required.*install"):
+            PluginSchema.model_validate(plugin_data)
+
+    def test_uninstall_without_install_is_valid(self) -> None:
+        """Verify that defining uninstall without install is allowed."""
+        # Given - plugin with uninstall but no install
+        plugin_data = self.base_plugin_data.copy()
+        plugin_data["lifecycle"] = {"uninstall": "./uninstall.sh"}
+
+        # When
+        plugin = PluginSchema.model_validate(plugin_data)
+
+        # Then - validation succeeds
+        assert plugin.lifecycle is not None
+        assert plugin.lifecycle.uninstall == "./uninstall.sh"
+        assert plugin.lifecycle.install is None
+
+    def test_install_with_uninstall_is_valid(self) -> None:
+        """Verify that defining both install and uninstall is valid."""
+        # Given - plugin with both install and uninstall
+        install_cmd = "./install.sh"
+        uninstall_cmd = "./uninstall.sh"
+        plugin_data = self.base_plugin_data.copy()
+        plugin_data["lifecycle"] = {"install": install_cmd, "uninstall": uninstall_cmd}
+
+        # When
+        plugin = PluginSchema.model_validate(plugin_data)
+
+        # Then - validation succeeds
+        assert plugin.lifecycle is not None
+        assert plugin.lifecycle.install == install_cmd
+        assert plugin.lifecycle.uninstall == uninstall_cmd
+
+    def test_neither_install_nor_uninstall_is_valid(self) -> None:
+        """Verify that having neither install nor uninstall is valid."""
+        # Given - plugin with lifecycle but no install or uninstall
+        plugin_data = self.base_plugin_data.copy()
+        plugin_data["lifecycle"] = {"start": "docker compose up -d", "stop": "docker compose down"}
+
+        # When
+        plugin = PluginSchema.model_validate(plugin_data)
+
+        # Then - validation succeeds
+        assert plugin.lifecycle is not None
+        assert plugin.lifecycle.install is None
+        assert plugin.lifecycle.uninstall is None
+        assert plugin.lifecycle.start == "docker compose up -d"
+
     def test_parse_systemd_service(self) -> None:
         """Parse ollama example - Systemd service with install lifecycle."""
-        import yaml
-
         # Given - exact YAML from docs/plugin-schema.md lines 328-348
         yaml_content = """
 schema_version: "2026-01-22"
@@ -581,6 +648,7 @@ ports:
 
 lifecycle:
   install: "curl -fsSL https://ollama.ai/install.sh | sh"
+  uninstall: "systemctl stop ollama && systemctl disable ollama"
 """
         # When
         data = yaml.safe_load(yaml_content)
@@ -614,8 +682,6 @@ lifecycle:
 
     def test_parse_script_service(self) -> None:
         """Parse custom-tool example - Script service with full lifecycle."""
-        import yaml
-
         # Given - exact YAML from docs/plugin-schema.md lines 352-366
         yaml_content = """
 schema_version: "2026-01-22"
@@ -631,6 +697,7 @@ lifecycle:
   status: "pgrep -f custom-tool > /dev/null"
   logs: "tail -f logs/custom-tool.log"
   install: "./install.sh"
+  uninstall: "./uninstall.sh"
 """
         # When
         data = yaml.safe_load(yaml_content)
