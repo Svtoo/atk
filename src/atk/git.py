@@ -136,3 +136,76 @@ def git_commit(path: Path, message: str) -> bool:
     )
     return True
 
+
+def add_gitignore_exemption(path: Path, plugin_dir: str) -> None:
+    """Add gitignore exemption for a local plugin.
+
+    Adds two lines to .gitignore to track a local plugin:
+    - !plugins/<plugin_dir>/
+    - !plugins/<plugin_dir>/**
+
+    This function is idempotent - if the exemption already exists, it won't be duplicated.
+
+    Args:
+        path: Path to directory containing .gitignore (typically ATK Home root).
+        plugin_dir: Plugin directory name (e.g., "my-plugin").
+    """
+    gitignore_path = path / ".gitignore"
+
+    # Read existing content or start with empty string
+    content = gitignore_path.read_text() if gitignore_path.exists() else ""
+
+    # Generate exemption lines
+    exemption_dir = f"!plugins/{plugin_dir}/"
+    exemption_glob = f"!plugins/{plugin_dir}/**"
+
+    # Check if exemptions already exist (idempotent)
+    lines = content.split("\n") if content else []
+    if exemption_dir in lines and exemption_glob in lines:
+        return  # Already exists, nothing to do
+
+    # Add exemptions at the end
+    if content and not content.endswith("\n"):
+        content += "\n"
+
+    content += f"{exemption_dir}\n{exemption_glob}\n"
+
+    # Write back
+    gitignore_path.write_text(content)
+
+
+def remove_gitignore_exemption(path: Path, plugin_dir: str) -> None:
+    """Remove gitignore exemption for a local plugin.
+
+    Removes the two exemption lines added by add_gitignore_exemption:
+    - !plugins/<plugin_dir>/
+    - !plugins/<plugin_dir>/**
+
+    This function is idempotent - if the exemption doesn't exist, it's a no-op.
+
+    Args:
+        path: Path to directory containing .gitignore (typically ATK Home root).
+        plugin_dir: Plugin directory name (e.g., "my-plugin").
+    """
+    gitignore_path = path / ".gitignore"
+
+    # If .gitignore doesn't exist, nothing to do
+    if not gitignore_path.exists():
+        return
+
+    # Read content
+    content = gitignore_path.read_text()
+
+    # Generate exemption lines to remove
+    exemption_dir = f"!plugins/{plugin_dir}/"
+    exemption_glob = f"!plugins/{plugin_dir}/**"
+
+    # Filter out the exemption lines
+    lines = content.split("\n")
+    filtered_lines = [
+        line for line in lines if line not in (exemption_dir, exemption_glob)
+    ]
+
+    # Write back
+    gitignore_path.write_text("\n".join(filtered_lines))
+

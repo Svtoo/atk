@@ -5,6 +5,7 @@ installed plugins in ATK Home.
 """
 
 import re
+from enum import Enum
 from pathlib import Path
 
 import yaml
@@ -18,12 +19,20 @@ MANIFEST_SCHEMA_VERSION = "2026-01-23"
 # ends with alphanumeric, no consecutive hyphens, minimum 2 chars
 DIRECTORY_PATTERN = re.compile(r"^[a-z][a-z0-9]*(-[a-z0-9]+)*$")
 
+class SourceType(str, Enum):
+    """Type of plugin source."""
+
+    LOCAL = "local"
+    REGISTRY = "registry"
+    GIT = "git"
+
 
 class PluginEntry(BaseModel):
     """Entry for an installed plugin in the manifest."""
 
     name: str = Field(description="Display name (user-friendly, any format)")
     directory: str = Field(description="Sanitized directory name")
+    source: SourceType = SourceType.LOCAL
 
     @field_validator("directory")
     @classmethod

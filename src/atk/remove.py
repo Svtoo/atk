@@ -7,10 +7,10 @@ import shutil
 from dataclasses import dataclass
 from pathlib import Path
 
-from atk.git import git_add, git_commit
+from atk.git import git_add, git_commit, remove_gitignore_exemption
 from atk.home import validate_atk_home
 from atk.lifecycle import LifecycleCommandNotDefinedError, run_lifecycle_command
-from atk.manifest_schema import load_manifest, save_manifest
+from atk.manifest_schema import load_manifest, save_manifest, SourceType
 from atk.plugin import load_plugin_schema
 
 
@@ -95,6 +95,10 @@ def remove_plugin(identifier: str, atk_home: Path) -> RemoveResult:
         except LifecycleCommandNotDefinedError:
             # Skip silently - uninstall is optional
             pass
+
+    # Remove gitignore exemption for local plugins
+    if plugin_entry.source == SourceType.LOCAL:
+        remove_gitignore_exemption(atk_home, plugin_entry.directory)
 
     # Remove plugin directory if it exists
     if plugin_dir.exists():
