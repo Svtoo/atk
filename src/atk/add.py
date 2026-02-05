@@ -8,10 +8,10 @@ from collections.abc import Callable
 from enum import Enum
 from pathlib import Path
 
-from atk.git import git_add, git_commit
+from atk.git import add_gitignore_exemption, git_add, git_commit
 from atk.home import validate_atk_home
 from atk.lifecycle import LifecycleCommandNotDefinedError, run_lifecycle_command
-from atk.manifest_schema import PluginEntry, load_manifest, save_manifest
+from atk.manifest_schema import PluginEntry, SourceType, load_manifest, save_manifest
 from atk.plugin import load_plugin_schema
 from atk.sanitize import sanitize_directory_name
 from atk.setup import run_setup
@@ -29,21 +29,21 @@ class InstallFailedError(Exception):
         )
 
 
-class SourceType(str, Enum):
-    """Type of plugin source."""
+class AddSourceType(str, Enum):
+    """Type of plugin source for add command (directory or file)."""
 
     DIRECTORY = "directory"
     FILE = "file"
 
 
-def detect_source_type(source: Path) -> SourceType:
+def detect_source_type(source: Path) -> AddSourceType:
     """Detect whether the source is a directory or single file.
 
     Args:
         source: Path to the plugin source (directory or file).
 
     Returns:
-        SourceType indicating whether source is a directory or file.
+        AddSourceType indicating whether source is a directory or file.
 
     Raises:
         FileNotFoundError: If the source path does not exist.
@@ -61,14 +61,14 @@ def detect_source_type(source: Path) -> SourceType:
         if not plugin_yaml.exists() and not plugin_yml.exists():
             msg = f"Directory '{source}' does not contain plugin.yaml or plugin.yml"
             raise ValueError(msg)
-        return SourceType.DIRECTORY
+        return AddSourceType.DIRECTORY
 
     # File must be .yaml or .yml
     if source.suffix not in (".yaml", ".yml"):
         msg = f"Source file '{source}' must be .yaml or .yml"
         raise ValueError(msg)
 
-    return SourceType.FILE
+    return AddSourceType.FILE
 
 
 def add_plugin(
@@ -105,21 +105,33 @@ def add_plugin(
     # Generate directory name from plugin name
     directory = sanitize_directory_name(schema.name)
 
+    # Fail fast: check if plugin is already in manifest
+    manifest = load_manifest(atk_home)
+    if any(p.directory == directory for p in manifest.plugins):
+        msg = f"Plugin '{schema.name}' is already added (directory: {directory})"
+        raise ValueError(msg)
+
     # Determine target directory
     target_dir = atk_home / "plugins" / directory
 
-    # Error if plugin already exists
-    if target_dir.exists():
-        msg = f"Plugin directory '{directory}' already exists at {target_dir}"
-        raise ValueError(msg)
+    # Check if source is already in the target location (plugin created directly in plugins/)
+    source_resolved = source.resolve()
+    target_resolved = target_dir.resolve()
+    already_in_place = source_resolved == target_resolved
 
-    # Copy files based on source type
-    if source_type == SourceType.DIRECTORY:
-        shutil.copytree(source, target_dir)
-    else:
-        # Single file: create directory and copy just the yaml
-        target_dir.mkdir(parents=True)
-        shutil.copy2(source, target_dir / "plugin.yaml")
+    if not already_in_place:
+        # Check for directory conflict (different source, same target name)
+        if target_dir.exists():
+            msg = f"Plugin directory '{directory}' already exists at {target_dir}"
+            raise ValueError(msg)
+
+        # Copy files to plugins/ directory
+        if source_type == AddSourceType.DIRECTORY:
+            shutil.copytree(source, target_dir)
+        else:
+            # Single file: create directory and copy just the yaml
+            target_dir.mkdir(parents=True)
+            shutil.copy2(source, target_dir / "plugin.yaml")
 
     # Run interactive setup if plugin has env vars
     if schema.env_vars:
@@ -131,14 +143,18 @@ def add_plugin(
         exit_code = run_lifecycle_command(schema, target_dir, "install")
         if exit_code != 0:
             # Clean up on failure
-            _cleanup_failed_add(atk_home, target_dir, directory)
+            _cleanup_failed_add(atk_home, target_dir, directory, already_in_place)
             raise InstallFailedError(schema.name, exit_code)
     except LifecycleCommandNotDefinedError:
         # Skip silently - install is optional
         pass
 
+    # Add gitignore exemption for ALL local plugins
+    add_gitignore_exemption(atk_home, directory)
+
     # Update manifest and get auto_commit setting
-    auto_commit = _update_manifest(atk_home, schema.name, directory)
+    # All local plugins get source=LOCAL
+    auto_commit = _update_manifest(atk_home, schema.name, directory, source=SourceType.LOCAL)
 
     # Commit changes if auto_commit is enabled
     if auto_commit:
@@ -148,18 +164,21 @@ def add_plugin(
     return directory
 
 
-def _cleanup_failed_add(atk_home: Path, target_dir: Path, directory: str) -> None:
+def _cleanup_failed_add(atk_home: Path, target_dir: Path, directory: str, already_in_place: bool) -> None:
     """Clean up after a failed add operation.
 
     Removes the plugin directory and any manifest entry.
+    For plugins already in place, leaves the directory intact.
 
     Args:
         atk_home: Path to ATK Home directory.
         target_dir: Path to the plugin directory to remove.
         directory: Sanitized directory name.
+        already_in_place: Whether the plugin was already in the target location.
     """
-    # Remove plugin directory
-    if target_dir.exists():
+    # Remove plugin directory only if we copied it
+    # If it was already in place, leave it alone
+    if not already_in_place and target_dir.exists():
         shutil.rmtree(target_dir)
 
     # Remove from manifest if it was added
@@ -172,24 +191,22 @@ def _cleanup_failed_add(atk_home: Path, target_dir: Path, directory: str) -> Non
         pass
 
 
-def _update_manifest(atk_home: Path, plugin_name: str, directory: str) -> bool:
+def _update_manifest(atk_home: Path, plugin_name: str, directory: str, source: SourceType) -> bool:
     """Update manifest.yaml with new plugin entry.
 
     Args:
         atk_home: Path to ATK Home directory.
         plugin_name: Display name of the plugin.
         directory: Sanitized directory name.
+        source: Source type (LOCAL, REGISTRY, or GIT).
 
     Returns:
         True if auto_commit is enabled in config, False otherwise.
     """
     manifest = load_manifest(atk_home)
 
-    # Remove existing entry with same directory (if any)
-    manifest.plugins = [p for p in manifest.plugins if p.directory != directory]
-
-    # Add new entry
-    manifest.plugins.append(PluginEntry(name=plugin_name, directory=directory))
+    # Add new entry (we already checked it doesn't exist in add_plugin)
+    manifest.plugins.append(PluginEntry(name=plugin_name, directory=directory, source=source))
 
     # Write back
     save_manifest(manifest, atk_home)

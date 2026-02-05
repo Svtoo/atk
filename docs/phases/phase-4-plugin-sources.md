@@ -207,10 +207,10 @@ Registry and git URL sources for plugins, version pinning, and the upgrade comma
 - [ ] Uninstall lifecycle cleans up resources (volumes, images, etc.)
 
 ### Local Plugin Support
-- [ ] `atk add ./plugins/my-tool` recognizes local source
-- [ ] Adds gitignore exemption: `!plugins/my-tool/` to root `.gitignore`
-- [ ] `atk remove` removes the gitignore exemption
-- [ ] Local plugins are fully tracked in git (no `custom/` needed)
+- [x] `atk add ./plugins/my-tool` recognizes local source
+- [x] Adds gitignore exemption: `!plugins/my-tool/` and `!plugins/my-tool/**` to root `.gitignore`
+- [x] `atk remove` removes the gitignore exemption for local plugins
+- [x] Local plugins are fully tracked in git (no `custom/` needed)
 - [ ] `atk upgrade` errors for local plugins
 
 ### Customization Preservation
@@ -269,11 +269,14 @@ Determine source type from user input:
 - Add confirmation prompt (or `--force` flag)
 - Add schema validation: install requires uninstall
 
-### 4.8 Local Plugin Support
+### 4.8 Local Plugin Support ✅
 
-- Detect local source (path inside ATK home)
-- Add/remove gitignore exemptions in root `.gitignore`
-- Track all local plugin files in git
+- [x] All local plugins (from local machine) get `source='local'` in manifest
+- [x] All local plugins get gitignore exemptions: `!plugins/<dir>/` and `!plugins/<dir>/**`
+- [x] Edge case: if source is already in `atk_home/plugins/`, skip copy step
+- [x] `atk remove` removes gitignore exemptions for plugins with `source='local'`
+- [x] Added `add_gitignore_exemption()` and `remove_gitignore_exemption()` to git.py
+- [x] Added `source` field to `PluginEntry` in manifest_schema.py
 
 ### 4.9 Gitignore Updates
 

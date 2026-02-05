@@ -9,8 +9,9 @@ from typer.testing import CliRunner
 
 from atk import exit_codes
 from atk.cli import app
-from atk.init import init_atk_home
-from atk.manifest_schema import ManifestSchema
+from atk.git import add_gitignore_exemption
+from atk.init import GITIGNORE_CONTENT, init_atk_home
+from atk.manifest_schema import ManifestSchema, PluginEntry, load_manifest, save_manifest
 from atk.plugin_schema import PLUGIN_SCHEMA_VERSION, PluginSchema
 from atk.remove import remove_plugin
 from tests.conftest import write_plugin_yaml
@@ -18,8 +19,18 @@ from tests.conftest import write_plugin_yaml
 runner = CliRunner()
 
 
-def _add_plugin_to_home(atk_home: Path, name: str, directory: str) -> Path:
-    """Helper to manually add a plugin to ATK Home for testing."""
+def _add_plugin_to_home(atk_home: Path, name: str, directory: str, source: str = "local") -> Path:
+    """Helper to manually add a plugin to ATK Home for testing.
+
+    Creates a plugin directory with plugin.yaml and updates the manifest.
+    Does NOT add gitignore exemptions - that's business logic for add_plugin.
+
+    Args:
+        atk_home: Path to ATK Home directory.
+        name: Plugin name.
+        directory: Plugin directory name.
+        source: Source type ('local', 'registry', 'git'). Defaults to 'local'.
+    """
     # Create plugin directory
     plugin_dir = atk_home / "plugins" / directory
     plugin_dir.mkdir(parents=True)
@@ -33,17 +44,9 @@ def _add_plugin_to_home(atk_home: Path, name: str, directory: str) -> Path:
     write_plugin_yaml(plugin_dir, plugin)
 
     # Update manifest
-    manifest_path = atk_home / "manifest.yaml"
-    manifest_data = yaml.safe_load(manifest_path.read_text())
-    manifest = ManifestSchema.model_validate(manifest_data)
-    manifest.plugins.append(
-        ManifestSchema.model_fields["plugins"].annotation.__args__[0](
-            name=name, directory=directory
-        )
-    )
-    manifest_path.write_text(
-        yaml.dump(manifest.model_dump(), default_flow_style=False, sort_keys=False)
-    )
+    manifest = load_manifest(atk_home)
+    manifest.plugins.append(PluginEntry(name=name, directory=directory, source=source))
+    save_manifest(manifest, atk_home)
 
     return plugin_dir
 
@@ -142,6 +145,61 @@ class TestRemovePlugin:
         manifest_data = yaml.safe_load(manifest_path.read_text())
         manifest = ManifestSchema.model_validate(manifest_data)
         assert len(manifest.plugins) == 0
+
+    def test_remove_local_plugin_removes_gitignore_exemption(self, tmp_path: Path) -> None:
+        """Verify removing a local plugin removes its gitignore exemption."""
+        # Given
+        atk_home = tmp_path / "atk-home"
+        init_atk_home(atk_home)
+        plugin_name = "Local Plugin"
+        directory = "local-plugin"
+        exemption_dir = f"!plugins/{directory}/"
+        exemption_glob = f"!plugins/{directory}/**"
+
+        # Add plugin with source='local' and manually add gitignore exemption
+        plugin_dir = _add_plugin_to_home(atk_home, plugin_name, directory, source="local")
+        add_gitignore_exemption(atk_home, directory)
+
+        # Verify gitignore exemption exists
+        gitignore_path = atk_home / ".gitignore"
+        expected_before = f"{GITIGNORE_CONTENT}{exemption_dir}\n{exemption_glob}\n"
+        actual_before = gitignore_path.read_text()
+        assert actual_before == expected_before
+
+        # When
+        remove_plugin(directory, atk_home)
+
+        # Then - gitignore exemption is removed, only original content remains
+        actual_after = gitignore_path.read_text()
+        assert actual_after == GITIGNORE_CONTENT
+
+        # Then - plugin directory is gone
+        assert not plugin_dir.exists()
+
+    def test_remove_non_local_plugin_does_not_touch_gitignore(self, tmp_path: Path) -> None:
+        """Verify removing a non-local plugin doesn't modify gitignore."""
+        # Given
+        atk_home = tmp_path / "atk-home"
+        init_atk_home(atk_home)
+        plugin_name = "Non-Local Plugin"
+        directory = "non-local-plugin"
+
+        # Add plugin with source='registry' (non-local)
+        plugin_dir = _add_plugin_to_home(atk_home, plugin_name, directory, source="registry")
+
+        # Get initial gitignore content
+        gitignore_path = atk_home / ".gitignore"
+        initial_gitignore = gitignore_path.read_text()
+
+        # When
+        remove_plugin(directory, atk_home)
+
+        # Then - gitignore unchanged
+        final_gitignore = gitignore_path.read_text()
+        assert final_gitignore == initial_gitignore
+
+        # Then - plugin directory is gone
+        assert not plugin_dir.exists()
 
 
 class TestRemoveCLI:
@@ -353,17 +411,11 @@ lifecycle:
 """)
 
         # And - plugin is in manifest
-        manifest_path = self.atk_home / "manifest.yaml"
-        manifest_data = yaml.safe_load(manifest_path.read_text())
-        manifest = ManifestSchema.model_validate(manifest_data)
+        manifest = load_manifest(self.atk_home)
         manifest.plugins.append(
-            ManifestSchema.model_fields["plugins"].annotation.__args__[0](
-                name="Marker Plugin", directory="marker-plugin"
-            )
+            PluginEntry(name="Marker Plugin", directory="marker-plugin", source="local")
         )
-        manifest_path.write_text(
-            yaml.dump(manifest.model_dump(), default_flow_style=False, sort_keys=False)
-        )
+        save_manifest(manifest, self.atk_home)
 
         # When
         result = runner.invoke(app, ["remove", "marker-plugin"])
@@ -412,17 +464,11 @@ lifecycle:
 """)
 
         # And - plugin is in manifest
-        manifest_path = self.atk_home / "manifest.yaml"
-        manifest_data = yaml.safe_load(manifest_path.read_text())
-        manifest = ManifestSchema.model_validate(manifest_data)
+        manifest = load_manifest(self.atk_home)
         manifest.plugins.append(
-            ManifestSchema.model_fields["plugins"].annotation.__args__[0](
-                name="Failing Stop Plugin", directory="failing-stop-plugin"
-            )
+            PluginEntry(name="Failing Stop Plugin", directory="failing-stop-plugin", source="local")
         )
-        manifest_path.write_text(
-            yaml.dump(manifest.model_dump(), default_flow_style=False, sort_keys=False)
-        )
+        save_manifest(manifest, self.atk_home)
 
         # When
         result = runner.invoke(app, ["remove", "failing-stop-plugin"])

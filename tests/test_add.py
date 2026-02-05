@@ -6,11 +6,11 @@ import pytest
 import yaml
 from typer.testing import CliRunner
 
-from atk.add import SourceType, add_plugin, detect_source_type, load_plugin_schema
+from atk.add import AddSourceType, add_plugin, detect_source_type, load_plugin_schema
 from atk.cli import app
 from atk.exit_codes import DOCKER_ERROR, HOME_NOT_INITIALIZED, PLUGIN_INVALID, SUCCESS
-from atk.init import init_atk_home
-from atk.manifest_schema import ManifestSchema
+from atk.init import GITIGNORE_CONTENT, init_atk_home
+from atk.manifest_schema import ManifestSchema, SourceType
 from atk.plugin_schema import (
     PLUGIN_SCHEMA_VERSION,
     EnvVarConfig,
@@ -42,7 +42,7 @@ class TestDetectSourceType:
         result = detect_source_type(plugin_dir)
 
         # Then
-        assert result == SourceType.DIRECTORY
+        assert result == AddSourceType.DIRECTORY
 
     def test_single_yaml_file(self, tmp_path: Path) -> None:
         """Verify single .yaml file is detected as file source."""
@@ -54,7 +54,7 @@ class TestDetectSourceType:
         result = detect_source_type(plugin_yaml)
 
         # Then
-        assert result == SourceType.FILE
+        assert result == AddSourceType.FILE
 
     def test_single_yml_file(self, tmp_path: Path) -> None:
         """Verify single .yml file is detected as file source."""
@@ -66,7 +66,7 @@ class TestDetectSourceType:
         result = detect_source_type(plugin_yml)
 
         # Then
-        assert result == SourceType.FILE
+        assert result == AddSourceType.FILE
 
     def test_directory_without_plugin_yaml_raises(self, tmp_path: Path) -> None:
         """Verify directory without plugin.yaml raises ValueError."""
@@ -236,13 +236,22 @@ class TestAddPlugin:
         assert (plugin_path / "scripts" / "setup.sh").exists()
         assert (plugin_path / "scripts" / "setup.sh").read_text() == script_content
 
-        # Then - manifest updated
+        # Then - manifest updated with source='local'
         manifest_path = atk_home / "manifest.yaml"
         manifest_data = yaml.safe_load(manifest_path.read_text())
         manifest = ManifestSchema.model_validate(manifest_data)
         assert len(manifest.plugins) == 1
         assert manifest.plugins[0].name == plugin_name
         assert manifest.plugins[0].directory == expected_dir
+        assert manifest.plugins[0].source == SourceType.LOCAL
+
+        # Then - gitignore exemption added
+        gitignore_path = atk_home / ".gitignore"
+        exemption_dir = f"!plugins/{expected_dir}/"
+        exemption_glob = f"!plugins/{expected_dir}/**"
+        expected_gitignore = f"{GITIGNORE_CONTENT}{exemption_dir}\n{exemption_glob}\n"
+        actual_gitignore = gitignore_path.read_text()
+        assert actual_gitignore == expected_gitignore
 
     def test_add_plugin_from_single_file(self, tmp_path: Path) -> None:
         """Verify adding plugin from single file creates directory."""
@@ -267,12 +276,65 @@ class TestAddPlugin:
         assert plugin_path.exists()
         assert (plugin_path / "plugin.yaml").exists()
 
-        # Then - manifest updated
+        # Then - manifest updated with source='local'
         manifest_path = atk_home / "manifest.yaml"
         manifest_data = yaml.safe_load(manifest_path.read_text())
         manifest = ManifestSchema.model_validate(manifest_data)
         assert len(manifest.plugins) == 1
         assert manifest.plugins[0].name == plugin_name
+        assert manifest.plugins[0].source == "local"
+
+        # Then - gitignore exemption added
+        gitignore_path = atk_home / ".gitignore"
+        exemption_dir = f"!plugins/{expected_dir}/"
+        exemption_glob = f"!plugins/{expected_dir}/**"
+        expected_gitignore = f"{GITIGNORE_CONTENT}{exemption_dir}\n{exemption_glob}\n"
+        actual_gitignore = gitignore_path.read_text()
+        assert actual_gitignore == expected_gitignore
+
+    def test_add_plugin_already_in_plugins_directory(self, tmp_path: Path) -> None:
+        """Verify adding plugin that's already in plugins/ directory skips copy."""
+        # Given
+        atk_home = tmp_path / "atk-home"
+        init_atk_home(atk_home)
+        plugin_name = "Already In Place Plugin"
+        expected_dir = "already-in-place-plugin"
+
+        # Create plugin directly in plugins/ directory
+        plugin_dir = atk_home / "plugins" / expected_dir
+        plugin_dir.mkdir(parents=True)
+        plugin = PluginSchema(
+            schema_version=PLUGIN_SCHEMA_VERSION,
+            name=plugin_name,
+            description="A plugin already in the right location",
+        )
+        write_plugin_yaml(plugin_dir / "plugin.yaml", plugin)
+        (plugin_dir / "README.md").write_text("# Already here")
+
+        # When - add the plugin using its current location as source
+        add_plugin(plugin_dir, atk_home, _noop_prompt)
+
+        # Then - plugin directory still exists with original files
+        assert plugin_dir.exists()
+        assert (plugin_dir / "plugin.yaml").exists()
+        assert (plugin_dir / "README.md").read_text() == "# Already here"
+
+        # Then - manifest updated with source='local'
+        manifest_path = atk_home / "manifest.yaml"
+        manifest_data = yaml.safe_load(manifest_path.read_text())
+        manifest = ManifestSchema.model_validate(manifest_data)
+        assert len(manifest.plugins) == 1
+        assert manifest.plugins[0].name == plugin_name
+        assert manifest.plugins[0].directory == expected_dir
+        assert manifest.plugins[0].source == "local"
+
+        # Then - gitignore exemption added
+        gitignore_path = atk_home / ".gitignore"
+        exemption_dir = f"!plugins/{expected_dir}/"
+        exemption_glob = f"!plugins/{expected_dir}/**"
+        expected_gitignore = f"{GITIGNORE_CONTENT}{exemption_dir}\n{exemption_glob}\n"
+        actual_gitignore = gitignore_path.read_text()
+        assert actual_gitignore == expected_gitignore
 
     def test_add_plugin_existing_raises(self, tmp_path: Path) -> None:
         """Verify adding plugin when directory already exists raises error."""

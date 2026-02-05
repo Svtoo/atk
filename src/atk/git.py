@@ -149,11 +149,17 @@ def add_gitignore_exemption(path: Path, plugin_dir: str) -> None:
     Args:
         path: Path to directory containing .gitignore (typically ATK Home root).
         plugin_dir: Plugin directory name (e.g., "my-plugin").
+
+    Raises:
+        FileNotFoundError: If .gitignore does not exist (ATK Home not properly initialized).
     """
     gitignore_path = path / ".gitignore"
 
-    # Read existing content or start with empty string
-    content = gitignore_path.read_text() if gitignore_path.exists() else ""
+    if not gitignore_path.exists():
+        msg = f".gitignore not found at {gitignore_path}. ATK Home may not be properly initialized."
+        raise FileNotFoundError(msg)
+
+    content = gitignore_path.read_text()
 
     # Generate exemption lines
     exemption_dir = f"!plugins/{plugin_dir}/"
@@ -186,14 +192,16 @@ def remove_gitignore_exemption(path: Path, plugin_dir: str) -> None:
     Args:
         path: Path to directory containing .gitignore (typically ATK Home root).
         plugin_dir: Plugin directory name (e.g., "my-plugin").
+
+    Raises:
+        FileNotFoundError: If .gitignore does not exist (ATK Home not properly initialized).
     """
     gitignore_path = path / ".gitignore"
 
-    # If .gitignore doesn't exist, nothing to do
     if not gitignore_path.exists():
-        return
+        msg = f".gitignore not found at {gitignore_path}. ATK Home may not be properly initialized."
+        raise FileNotFoundError(msg)
 
-    # Read content
     content = gitignore_path.read_text()
 
     # Generate exemption lines to remove

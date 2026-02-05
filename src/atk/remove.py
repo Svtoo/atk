@@ -10,7 +10,7 @@ from pathlib import Path
 from atk.git import git_add, git_commit, remove_gitignore_exemption
 from atk.home import validate_atk_home
 from atk.lifecycle import LifecycleCommandNotDefinedError, run_lifecycle_command
-from atk.manifest_schema import load_manifest, save_manifest, SourceType
+from atk.manifest_schema import SourceType, load_manifest, save_manifest
 from atk.plugin import load_plugin_schema
 
 

@@ -103,6 +103,7 @@ def save_manifest(manifest: "ManifestSchema", atk_home: Path) -> None:
         atk_home: Path to ATK Home directory.
     """
     manifest_path = atk_home / "manifest.yaml"
+    # Use mode="json" to serialize enums as their string values
     manifest_path.write_text(
-        yaml.dump(manifest.model_dump(), default_flow_style=False, sort_keys=False)
+        yaml.dump(manifest.model_dump(mode="json"), default_flow_style=False, sort_keys=False)
     )
