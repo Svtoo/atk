@@ -1486,3 +1486,43 @@ class TestMcpCli:
         assert output == expected
         assert "command" not in output[plugin_name]
         assert "args" not in output[plugin_name]
+
+    def test_cli_mcp_substitutes_atk_plugin_dir(
+        self, create_plugin: PluginFactory, cli_runner
+    ) -> None:
+        """Verify $ATK_PLUGIN_DIR is substituted with absolute path in MCP config."""
+        # Given
+        plugin_name = "Piper"
+        plugin_dir_name = "piper"
+        command = "$ATK_PLUGIN_DIR/mcp-server.sh"
+        args = ["--config", "${ATK_PLUGIN_DIR}/config.json"]
+        working_dir = "$ATK_PLUGIN_DIR/vendor"
+
+        plugin_dir = create_plugin(
+            plugin_name,
+            plugin_dir_name,
+            mcp=McpConfig(
+                transport="stdio",
+                command=command,
+                args=args,
+                working_dir=working_dir,
+            ),
+        )
+
+        # When
+        result = cli_runner.invoke(app, ["mcp", plugin_dir_name])
+
+        # Then
+        assert result.exit_code == exit_codes.SUCCESS
+        output = json.loads(result.output)
+
+        # Verify substitution happened
+        plugin_dir_str = str(plugin_dir.resolve())
+        expected = {
+            plugin_name: {
+                "command": f"{plugin_dir_str}/mcp-server.sh",
+                "args": ["--config", f"{plugin_dir_str}/config.json"],
+                "cwd": f"{plugin_dir_str}/vendor",
+            }
+        }
+        assert output == expected

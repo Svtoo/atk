@@ -226,6 +226,61 @@ Configuration for MCP (Model Context Protocol) server exposure. ATK uses this co
 - `stdio`: Requires `command`. Optional: `args`, `working_dir`, `env`.
 - `sse`: Requires `endpoint`. The `command`/`args` are ignored.
 
+#### Plugin Path Resolution with `$ATK_PLUGIN_DIR`
+
+Plugin developers often need to reference files within their plugin directory (e.g., MCP server scripts, configuration files). However, they don't know where ATK will install the plugin on the user's machine.
+
+**Solution:** ATK provides an explicit `$ATK_PLUGIN_DIR` environment variable convention. When generating MCP configuration, ATK substitutes `$ATK_PLUGIN_DIR` and `${ATK_PLUGIN_DIR}` with the absolute path to the plugin directory.
+
+**Substitution applies to:**
+- `command` field
+- `args` array (each element)
+- `working_dir` field
+
+**Supported syntaxes:**
+- `$ATK_PLUGIN_DIR` — Shell-style variable reference
+- `${ATK_PLUGIN_DIR}` — Braced variable reference (useful when followed by other characters)
+
+**Example plugin.yaml:**
+```yaml
+mcp:
+  transport: stdio
+  command: $ATK_PLUGIN_DIR/mcp-server.sh
+  args:
+    - --config
+    - $ATK_PLUGIN_DIR/config.json
+    - --data-dir
+    - ${ATK_PLUGIN_DIR}/data
+  working_dir: $ATK_PLUGIN_DIR/vendor
+  env:
+    - API_KEY
+```
+
+**Generated MCP config** (when plugin is installed at `/Users/sasha/.atk/plugins/my-plugin`):
+```json
+{
+  "my-plugin": {
+    "command": "/Users/sasha/.atk/plugins/my-plugin/mcp-server.sh",
+    "args": [
+      "--config",
+      "/Users/sasha/.atk/plugins/my-plugin/config.json",
+      "--data-dir",
+      "/Users/sasha/.atk/plugins/my-plugin/data"
+    ],
+    "cwd": "/Users/sasha/.atk/plugins/my-plugin/vendor",
+    "env": {
+      "API_KEY": "..."
+    }
+  }
+}
+```
+
+**Benefits:**
+- **Explicit** — Plugin developers see exactly what's happening
+- **Consistent** — Same variable works across MCP command, args, and working_dir
+- **Debuggable** — Users can see the substitution in generated config
+- **Portable** — Plugin developers can test locally by setting `ATK_PLUGIN_DIR=$(pwd)`
+
 ## Sensible Defaults
 
 ATK applies sensible defaults to minimize configuration:

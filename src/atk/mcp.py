@@ -7,6 +7,8 @@ from typing import Any
 from atk.env import load_env_file
 from atk.plugin_schema import PluginSchema
 
+# Environment variable name for plugin directory
+ATK_PLUGIN_DIR = "ATK_PLUGIN_DIR"
 
 @dataclass
 class McpConfigResult:
@@ -17,12 +19,33 @@ class McpConfigResult:
     missing_vars: list[str]
 
 
+def substitute_plugin_dir(value: str, plugin_dir: Path) -> str:
+    """Substitute $ATK_PLUGIN_DIR and ${ATK_PLUGIN_DIR} with absolute path.
+
+    Args:
+        value: String that may contain $ATK_PLUGIN_DIR or ${ATK_PLUGIN_DIR}.
+        plugin_dir: Absolute path to the plugin directory.
+
+    Returns:
+        String with substitutions applied.
+    """
+    plugin_dir_str = str(plugin_dir.resolve())
+    # Replace ${ATK_PLUGIN_DIR} first (more specific)
+    value = value.replace(f"${{{ATK_PLUGIN_DIR}}}", plugin_dir_str)
+    # Then replace $ATK_PLUGIN_DIR
+    value = value.replace(f"${ATK_PLUGIN_DIR}", plugin_dir_str)
+    return value
+
+
 def generate_mcp_config(
     plugin: PluginSchema,
     plugin_dir: Path,
     plugin_identifier: str,
 ) -> McpConfigResult:
     """Generate MCP config dict for a plugin.
+
+    Substitutes $ATK_PLUGIN_DIR and ${ATK_PLUGIN_DIR} in command, args, and
+    working_dir with the absolute path to the plugin directory.
 
     Args:
         plugin: The plugin schema.
@@ -44,9 +67,11 @@ def generate_mcp_config(
 
     if mcp.transport == "stdio":
         if mcp.command:
-            config["command"] = mcp.command
+            config["command"] = substitute_plugin_dir(mcp.command, plugin_dir)
         if mcp.args:
-            config["args"] = mcp.args
+            config["args"] = [substitute_plugin_dir(arg, plugin_dir) for arg in mcp.args]
+        if mcp.working_dir:
+            config["cwd"] = substitute_plugin_dir(mcp.working_dir, plugin_dir)
     elif mcp.transport == "sse":
         if mcp.endpoint:
             config["url"] = mcp.endpoint
