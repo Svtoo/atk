@@ -60,6 +60,8 @@ class TestInitAtkHome:
         # Then
         gitignore_content = (target / ".gitignore").read_text()
         assert "*.env" in gitignore_content
+        assert ".env.*" in gitignore_content
+        assert "plugins/" in gitignore_content
 
     def test_git_repo_initialized_with_commit(self, tmp_path: Path) -> None:
         """Verify git repo is initialized with initial commit."""

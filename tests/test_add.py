@@ -435,6 +435,9 @@ class TestAddRegistryPlugin:
         gitignore_content = gitignore_path.read_text()
         assert f"!plugins/{expected_dir}/" not in gitignore_content
 
+        # Then - plugins/ blanket ignore rule IS present (registry plugins stay ignored)
+        assert "plugins/" in gitignore_content
+
 
 class TestAddCLI:
     """Tests for atk add CLI command."""
