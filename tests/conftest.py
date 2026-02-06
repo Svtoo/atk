@@ -1,7 +1,10 @@
 """Shared test fixtures for ATK tests."""
 
+import os
+import subprocess
 from collections.abc import Callable
 from pathlib import Path
+from typing import NamedTuple
 
 import pytest
 import yaml
@@ -146,3 +149,66 @@ def create_plugin(atk_home: Path) -> PluginFactory:
 
     return _create
 
+
+
+class FakeRegistry(NamedTuple):
+    """Result of creating a fake registry for testing."""
+
+    url: str
+    commit_hash: str
+
+
+def create_fake_registry(tmp_path: Path) -> FakeRegistry:
+    """Create a local git repo mimicking the atk-registry structure.
+
+    Returns a FakeRegistry with the file:// URL and the commit hash.
+    The repo contains a single plugin "test-plugin" with plugin.yaml
+    and docker-compose.yml.
+    """
+    work_dir = tmp_path / "registry-work"
+    work_dir.mkdir()
+    plugins_dir = work_dir / "plugins" / "test-plugin"
+    plugins_dir.mkdir(parents=True)
+
+    (plugins_dir / "plugin.yaml").write_text(
+        yaml.dump({
+            "schema_version": PLUGIN_SCHEMA_VERSION,
+            "name": "Test Plugin",
+            "description": "A test plugin from registry",
+        })
+    )
+    (plugins_dir / "docker-compose.yml").write_text("version: '3'\n")
+
+    (work_dir / "index.yaml").write_text(
+        yaml.dump({
+            "schema_version": PLUGIN_SCHEMA_VERSION,
+            "plugins": [
+                {
+                    "name": "test-plugin",
+                    "path": "plugins/test-plugin",
+                    "description": "A test plugin",
+                }
+            ],
+        })
+    )
+
+    env = {
+        **os.environ,
+        "GIT_AUTHOR_NAME": "Test",
+        "GIT_AUTHOR_EMAIL": "test@test.com",
+        "GIT_COMMITTER_NAME": "Test",
+        "GIT_COMMITTER_EMAIL": "test@test.com",
+    }
+    subprocess.run(["git", "init"], cwd=work_dir, check=True, capture_output=True)
+    subprocess.run(["git", "add", "-A"], cwd=work_dir, check=True, capture_output=True)
+    subprocess.run(
+        ["git", "commit", "-m", "Initial"],
+        cwd=work_dir, check=True, capture_output=True, env=env,
+    )
+
+    commit_hash = subprocess.run(
+        ["git", "rev-parse", "HEAD"],
+        cwd=work_dir, check=True, capture_output=True, text=True,
+    ).stdout.strip()
+
+    return FakeRegistry(url=f"file://{work_dir}", commit_hash=commit_hash)

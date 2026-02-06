@@ -1,7 +1,7 @@
 # Phase 4: Plugin Sources
 
-> **Status**: Planning
-> **Last Updated**: 2026-01-30
+> **Status**: In Progress
+> **Last Updated**: 2026-02-06
 
 Registry and git URL sources for plugins, version pinning, and the upgrade command.
 
@@ -173,9 +173,9 @@ Registry and git URL sources for plugins, version pinning, and the upgrade comma
 ### Registry Support
 - [x] Create `atk-registry` repository with flat `plugins/` structure
 - [x] CI generates `index.yaml` on merge to main
-- [ ] `atk add <name>` resolves from registry
-- [ ] Sparse checkout fetches only the plugin directory
-- [ ] Manifest records `source.type: registry` and `source.ref: <hash>`
+- [x] `atk add <name>` resolves from registry
+- [x] Sparse checkout fetches plugin directory from registry
+- [x] Manifest records `source.type: registry` and `source.ref: <hash>`
 
 ### Git URL Support
 - [ ] `atk add <url>` clones and looks for `.atk/` directory
@@ -193,7 +193,7 @@ Registry and git URL sources for plugins, version pinning, and the upgrade comma
 - [ ] Commits changes (if auto_commit enabled)
 
 ### Version Pinning
-- [ ] Manifest stores commit hash for registry and git sources
+- [x] Manifest stores commit hash for registry and git sources
 - [ ] `atk install --all` fetches at pinned versions (bootstrap)
 - [ ] `.atk-ref` file stores commit hash in plugin directory
 - [ ] Skip fetch if `.atk-ref` matches manifest ref
@@ -223,18 +223,26 @@ Registry and git URL sources for plugins, version pinning, and the upgrade comma
 
 ## Implementation Sections
 
-### 4.1 Source Resolution
+### 4.1 Source Resolution ✅
 
-Determine source type from user input:
-1. If path exists locally → local source
-2. If matches URL pattern → git source
-3. Otherwise → registry lookup
+- [x] `resolve_source()` in `src/atk/source.py` classifies user input
+- [x] Explicit path syntax (`./`, `../`, `/`, `~/`) → local (even if path doesn't exist)
+- [x] Path exists on disk → local
+- [x] URL pattern (https://, git@, host.tld/path) → git
+- [x] Everything else → registry name
+- [x] Reuses `SourceType` from `manifest_schema.py` (no duplicate enum)
 
-### 4.2 Registry Infrastructure
+### 4.2 Registry Infrastructure ✅
 
 - [x] Create `atk-registry` repo with `plugins/` directory
 - [x] Add CI workflow to generate `index.yaml`
-- [ ] Implement registry fetch and plugin resolution
+- [x] Implement registry fetch and plugin resolution
+  - [x] `_lookup_plugin()` — private lookup by name in `RegistryIndexSchema`
+  - [x] `fetch_registry_plugin()` — sparse checkout + copy plugin dir + return commit hash
+  - [x] `PluginNotFoundError`, `RegistryFetchError` exceptions
+  - [x] `FetchResult` dataclass with `commit_hash` for version pinning
+- [x] Wired into `atk add` — `atk add <name>` works end-to-end
+- [x] CLI handles `RegistryPluginNotFoundError` with user-friendly message
 
 ### 4.3 Git Source Support
 
@@ -249,11 +257,13 @@ Determine source type from user input:
 - Preserve `custom/` during file replacement
 - Detect and prompt for new required env vars
 
-### 4.5 Manifest Source Tracking
+### 4.5 Manifest Source Tracking ✅
 
-- Add `source` field to manifest plugin entries
-- Store type, URL (for git), and ref (commit hash)
-- Update ref on upgrade
+- [x] `SourceInfo` model with `type`, `ref`, `url` fields on `PluginEntry`
+- [x] Local plugins: `source.type: local`, no ref/url
+- [x] Registry plugins: `source.type: registry`, `source.ref: <commit_hash>`
+- [ ] Git plugins: `source.type: git`, `source.url: <url>`, `source.ref: <commit_hash>`
+- [ ] Update ref on upgrade
 
 ### 4.6 Bootstrap Flow
 

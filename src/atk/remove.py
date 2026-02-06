@@ -97,7 +97,7 @@ def remove_plugin(identifier: str, atk_home: Path) -> RemoveResult:
             pass
 
     # Remove gitignore exemption for local plugins
-    if plugin_entry.source == SourceType.LOCAL:
+    if plugin_entry.source.type == SourceType.LOCAL:
         remove_gitignore_exemption(atk_home, plugin_entry.directory)
 
     # Remove plugin directory if it exists

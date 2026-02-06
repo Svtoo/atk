@@ -9,6 +9,7 @@ from atk.manifest_schema import (
     ConfigSection,
     ManifestSchema,
     PluginEntry,
+    SourceInfo,
     SourceType,
     load_manifest,
     save_manifest,
@@ -22,7 +23,7 @@ class TestPluginEntry:
         """Set up test fixtures."""
         self.valid_name = "OpenMemory"
         self.valid_directory = "openmemory"
-        self.valid_source = "local"
+        self.valid_source = SourceInfo(type=SourceType.LOCAL)
 
     def test_plugin_entry_with_all_required_fields(self) -> None:
         """Verify plugin entry with all required fields is valid."""
@@ -37,7 +38,7 @@ class TestPluginEntry:
         # Then
         assert entry.name == name
         assert entry.directory == directory
-        assert entry.source == source
+        assert entry.source.type == SourceType.LOCAL
 
     def test_plugin_entry_name_is_required(self) -> None:
         """Verify that name field is required."""
@@ -64,13 +65,14 @@ class TestPluginEntry:
         # Given
         name = self.valid_name
         directory = self.valid_directory
-        expected_source = SourceType.LOCAL
 
         # When
         entry = PluginEntry(name=name, directory=directory)
 
         # Then
-        assert entry.source == expected_source
+        assert entry.source.type == SourceType.LOCAL
+        assert entry.source.ref is None
+        assert entry.source.url is None
 
     @pytest.mark.parametrize(
         "directory",
@@ -113,11 +115,10 @@ class TestPluginEntry:
         """Verify invalid directory names are rejected."""
         # Given
         name = "Test"
-        source = "local"
 
         # When/Then
         with pytest.raises(ValueError, match="directory"):
-            PluginEntry(name=name, directory=directory, source=source)
+            PluginEntry(name=name, directory=directory)
 
 
 class TestConfigSection:
@@ -172,7 +173,7 @@ class TestManifestSchema:
         schema_version = self.schema_version
         plugin_name = self.plugin_name
         plugin_directory = self.plugin_directory
-        plugin_source = "local"
+        plugin_source = {"type": "local"}
         plugins_data = [{"name": plugin_name, "directory": plugin_directory, "source": plugin_source}]
 
         # When
@@ -182,7 +183,7 @@ class TestManifestSchema:
         assert len(manifest.plugins) == 1
         assert manifest.plugins[0].name == plugin_name
         assert manifest.plugins[0].directory == plugin_directory
-        assert manifest.plugins[0].source == plugin_source
+        assert manifest.plugins[0].source.type == SourceType.LOCAL
 
     def test_manifest_with_config(self) -> None:
         """Verify manifest with config section is valid."""
@@ -213,7 +214,7 @@ class TestLoadManifest:
     def test_loads_valid_manifest(self, tmp_path: Path) -> None:
         """Verify load_manifest returns ManifestSchema for valid file."""
         # Given - create a valid manifest
-        schema_version = "2026-01-23"
+        schema_version = "2026-02-06"
         manifest_path = tmp_path / "manifest.yaml"
         manifest_content = {
             "schema_version": schema_version,
@@ -236,12 +237,12 @@ class TestLoadManifest:
         # Given
         plugin_name = "OpenMemory"
         plugin_directory = "openmemory"
-        plugin_source = "local"
+        plugin_source_type = "local"
         manifest_path = tmp_path / "manifest.yaml"
         manifest_content = {
-            "schema_version": "2026-01-23",
+            "schema_version": "2026-02-06",
             "config": {"auto_commit": False},
-            "plugins": [{"name": plugin_name, "directory": plugin_directory, "source": plugin_source}],
+            "plugins": [{"name": plugin_name, "directory": plugin_directory, "source": {"type": plugin_source_type}}],
         }
         manifest_path.write_text(yaml.dump(manifest_content))
 
@@ -252,7 +253,7 @@ class TestLoadManifest:
         assert len(result.plugins) == 1
         assert result.plugins[0].name == plugin_name
         assert result.plugins[0].directory == plugin_directory
-        assert result.plugins[0].source == plugin_source
+        assert result.plugins[0].source.type == SourceType.LOCAL
         assert result.config.auto_commit is False
 
     def test_raises_when_manifest_not_found(self, tmp_path: Path) -> None:
@@ -285,7 +286,7 @@ class TestLoadManifest:
         manifest_path = tmp_path / "manifest.yaml"
         invalid_directory = "123-invalid"
         invalid_content = {
-            "schema_version": "2026-01-23",
+            "schema_version": "2026-02-06",
             "config": {"auto_commit": True},
             "plugins": [{"name": "Test Plugin", "directory": invalid_directory}],
         }
@@ -304,7 +305,7 @@ class TestSaveManifest:
     def test_saves_manifest_to_file(self, tmp_path: Path) -> None:
         """Verify save_manifest writes ManifestSchema to YAML file."""
         # Given
-        schema_version = "2026-01-23"
+        schema_version = "2026-02-06"
         manifest = ManifestSchema(
             schema_version=schema_version,
             config=ConfigSection(auto_commit=True),
@@ -327,9 +328,9 @@ class TestSaveManifest:
         # Given
         plugin_name = "Langfuse"
         plugin_directory = "langfuse"
-        plugin_source = "local"
+        plugin_source = SourceInfo(type=SourceType.LOCAL)
         manifest = ManifestSchema(
-            schema_version="2026-01-23",
+            schema_version="2026-02-06",
             config=ConfigSection(auto_commit=False),
             plugins=[PluginEntry(name=plugin_name, directory=plugin_directory, source=plugin_source)],
         )
@@ -343,7 +344,7 @@ class TestSaveManifest:
         assert len(saved_content["plugins"]) == 1
         assert saved_content["plugins"][0]["name"] == plugin_name
         assert saved_content["plugins"][0]["directory"] == plugin_directory
-        assert saved_content["plugins"][0]["source"] == plugin_source
+        assert saved_content["plugins"][0]["source"]["type"] == "local"
         assert saved_content["config"]["auto_commit"] is False
 
     def test_overwrites_existing_manifest(self, tmp_path: Path) -> None:
@@ -353,7 +354,7 @@ class TestSaveManifest:
         manifest_path.write_text("old content")
 
         new_manifest = ManifestSchema(
-            schema_version="2026-01-23",
+            schema_version="2026-02-06",
             config=ConfigSection(auto_commit=True),
             plugins=[],
         )
@@ -363,4 +364,4 @@ class TestSaveManifest:
 
         # Then
         saved_content = yaml.safe_load(manifest_path.read_text())
-        assert saved_content["schema_version"] == "2026-01-23"
+        assert saved_content["schema_version"] == "2026-02-06"

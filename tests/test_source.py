@@ -1,4 +1,4 @@
-"""Tests for source resolution (Phase 4.1).
+"""Tests for source resolution.
 
 Determines whether user input to `atk add` is a local path, git URL, or registry name.
 """

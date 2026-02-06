@@ -10,14 +10,15 @@ from atk.add import AddSourceType, add_plugin, detect_source_type, load_plugin_s
 from atk.cli import app
 from atk.exit_codes import DOCKER_ERROR, HOME_NOT_INITIALIZED, PLUGIN_INVALID, SUCCESS
 from atk.init import GITIGNORE_CONTENT, init_atk_home
-from atk.manifest_schema import ManifestSchema, SourceType
+from atk.manifest_schema import ManifestSchema, SourceType, load_manifest
 from atk.plugin_schema import (
     PLUGIN_SCHEMA_VERSION,
     EnvVarConfig,
     LifecycleConfig,
     PluginSchema,
 )
-from tests.conftest import write_plugin_yaml
+from atk.registry import PluginNotFoundError
+from tests.conftest import create_fake_registry, write_plugin_yaml
 
 runner = CliRunner()
 
@@ -223,7 +224,7 @@ class TestAddPlugin:
         (subdir / "setup.sh").write_text(script_content)
 
         # When
-        add_plugin(source_dir, atk_home, _noop_prompt)
+        add_plugin(str(source_dir), atk_home, _noop_prompt)
 
         # Then - plugin directory exists with all files
         plugin_path = atk_home / "plugins" / expected_dir
@@ -243,7 +244,7 @@ class TestAddPlugin:
         assert len(manifest.plugins) == 1
         assert manifest.plugins[0].name == plugin_name
         assert manifest.plugins[0].directory == expected_dir
-        assert manifest.plugins[0].source == SourceType.LOCAL
+        assert manifest.plugins[0].source.type == SourceType.LOCAL
 
         # Then - gitignore exemption added
         gitignore_path = atk_home / ".gitignore"
@@ -269,7 +270,7 @@ class TestAddPlugin:
         write_plugin_yaml(plugin_yaml, plugin)
 
         # When
-        add_plugin(plugin_yaml, atk_home, _noop_prompt)
+        add_plugin(str(plugin_yaml), atk_home, _noop_prompt)
 
         # Then - plugin directory exists with only plugin.yaml
         plugin_path = atk_home / "plugins" / expected_dir
@@ -282,7 +283,7 @@ class TestAddPlugin:
         manifest = ManifestSchema.model_validate(manifest_data)
         assert len(manifest.plugins) == 1
         assert manifest.plugins[0].name == plugin_name
-        assert manifest.plugins[0].source == "local"
+        assert manifest.plugins[0].source.type == SourceType.LOCAL
 
         # Then - gitignore exemption added
         gitignore_path = atk_home / ".gitignore"
@@ -312,7 +313,7 @@ class TestAddPlugin:
         (plugin_dir / "README.md").write_text("# Already here")
 
         # When - add the plugin using its current location as source
-        add_plugin(plugin_dir, atk_home, _noop_prompt)
+        add_plugin(str(plugin_dir), atk_home, _noop_prompt)
 
         # Then - plugin directory still exists with original files
         assert plugin_dir.exists()
@@ -326,7 +327,7 @@ class TestAddPlugin:
         assert len(manifest.plugins) == 1
         assert manifest.plugins[0].name == plugin_name
         assert manifest.plugins[0].directory == expected_dir
-        assert manifest.plugins[0].source == "local"
+        assert manifest.plugins[0].source.type == SourceType.LOCAL
 
         # Then - gitignore exemption added
         gitignore_path = atk_home / ".gitignore"
@@ -352,7 +353,7 @@ class TestAddPlugin:
 
         # When/Then
         with pytest.raises(ValueError, match="already exists"):
-            add_plugin(source, atk_home, _noop_prompt)
+            add_plugin(str(source), atk_home, _noop_prompt)
 
     def test_add_plugin_to_uninitialized_home_raises(self, tmp_path: Path) -> None:
         """Verify adding to uninitialized ATK Home raises error."""
@@ -363,7 +364,76 @@ class TestAddPlugin:
 
         # When/Then
         with pytest.raises(ValueError, match="not initialized"):
-            add_plugin(source, atk_home, _noop_prompt)
+            add_plugin(str(source), atk_home, _noop_prompt)
+
+
+
+class TestAddRegistryPlugin:
+    """Tests for adding plugins from the registry."""
+
+    def test_add_registry_plugin_copies_files_and_updates_manifest(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """Verify adding a registry plugin fetches files and records source info."""
+        # Given
+        atk_home = tmp_path / "atk-home"
+        init_atk_home(atk_home)
+        registry = create_fake_registry(tmp_path)
+        monkeypatch.setattr("atk.registry.REGISTRY_URL", registry.url)
+        plugin_name = "test-plugin"
+        expected_dir = "test-plugin"
+
+        # When
+        directory = add_plugin(plugin_name, atk_home, _noop_prompt)
+
+        # Then - plugin files copied
+        plugin_path = atk_home / "plugins" / expected_dir
+        assert plugin_path.exists()
+        assert (plugin_path / "plugin.yaml").exists()
+        assert directory == expected_dir
+
+        # Then - manifest records registry source with pinned commit hash
+        manifest = load_manifest(atk_home)
+        assert len(manifest.plugins) == 1
+        assert manifest.plugins[0].name == "Test Plugin"
+        assert manifest.plugins[0].directory == expected_dir
+        assert manifest.plugins[0].source.type == SourceType.REGISTRY
+        assert manifest.plugins[0].source.ref == registry.commit_hash
+
+    def test_add_registry_plugin_not_found_raises(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """Verify adding a nonexistent registry plugin raises PluginNotFoundError."""
+        # Given
+        atk_home = tmp_path / "atk-home"
+        init_atk_home(atk_home)
+        registry = create_fake_registry(tmp_path)
+        monkeypatch.setattr("atk.registry.REGISTRY_URL", registry.url)
+        nonexistent_name = "nonexistent-plugin"
+
+        # When/Then
+        with pytest.raises(PluginNotFoundError, match=nonexistent_name):
+            add_plugin(nonexistent_name, atk_home, _noop_prompt)
+
+    def test_add_registry_plugin_no_gitignore_exemption(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """Verify registry plugins do NOT get gitignore exemptions (only local plugins do)."""
+        # Given
+        atk_home = tmp_path / "atk-home"
+        init_atk_home(atk_home)
+        registry = create_fake_registry(tmp_path)
+        monkeypatch.setattr("atk.registry.REGISTRY_URL", registry.url)
+        plugin_name = "test-plugin"
+        expected_dir = "test-plugin"
+
+        # When
+        add_plugin(plugin_name, atk_home, _noop_prompt)
+
+        # Then - gitignore should NOT have exemption for registry plugin
+        gitignore_path = atk_home / ".gitignore"
+        gitignore_content = gitignore_path.read_text()
+        assert f"!plugins/{expected_dir}/" not in gitignore_content
 
 
 class TestAddCLI:
@@ -654,7 +724,7 @@ class TestAddEnvVarSetup:
             return api_key_value
 
         # When
-        add_plugin(source_dir, atk_home, prompt_func)
+        add_plugin(str(source_dir), atk_home, prompt_func)
 
         # Then - .env file should exist with the prompted value
         env_file = atk_home / "plugins" / "env-plugin" / ".env"
@@ -687,7 +757,7 @@ class TestAddEnvVarSetup:
             return "should-not-be-called"
 
         # When
-        add_plugin(source_dir, atk_home, prompt_func)
+        add_plugin(str(source_dir), atk_home, prompt_func)
 
         # Then - prompt should not have been called
         assert not prompt_called

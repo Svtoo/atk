@@ -12,7 +12,7 @@ import yaml
 from pydantic import BaseModel, Field, field_validator
 
 # Schema version - update when manifest schema changes
-MANIFEST_SCHEMA_VERSION = "2026-01-23"
+MANIFEST_SCHEMA_VERSION = "2026-02-06"
 
 # Directory name validation regex per atk-home-spec.md
 # Rules: lowercase, alphanumeric + hyphens, starts with letter,
@@ -27,12 +27,23 @@ class SourceType(str, Enum):
     GIT = "git"
 
 
+class SourceInfo(BaseModel):
+    """Source metadata for a plugin entry.
+
+    Tracks where a plugin came from and its pinned version.
+    """
+
+    type: SourceType = SourceType.LOCAL
+    ref: str | None = Field(default=None, description="Commit hash for version pinning")
+    url: str | None = Field(default=None, description="Git URL (for git sources)")
+
+
 class PluginEntry(BaseModel):
     """Entry for an installed plugin in the manifest."""
 
     name: str = Field(description="Display name (user-friendly, any format)")
     directory: str = Field(description="Sanitized directory name")
-    source: SourceType = SourceType.LOCAL
+    source: SourceInfo = Field(default_factory=lambda: SourceInfo())
 
     @field_validator("directory")
     @classmethod

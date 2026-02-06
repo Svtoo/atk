@@ -11,7 +11,14 @@ from atk import exit_codes
 from atk.cli import app
 from atk.git import add_gitignore_exemption
 from atk.init import GITIGNORE_CONTENT, init_atk_home
-from atk.manifest_schema import ManifestSchema, PluginEntry, load_manifest, save_manifest
+from atk.manifest_schema import (
+    ManifestSchema,
+    PluginEntry,
+    SourceInfo,
+    SourceType,
+    load_manifest,
+    save_manifest,
+)
 from atk.plugin_schema import PLUGIN_SCHEMA_VERSION, PluginSchema
 from atk.remove import remove_plugin
 from tests.conftest import write_plugin_yaml
@@ -19,7 +26,12 @@ from tests.conftest import write_plugin_yaml
 runner = CliRunner()
 
 
-def _add_plugin_to_home(atk_home: Path, name: str, directory: str, source: str = "local") -> Path:
+def _add_plugin_to_home(
+    atk_home: Path,
+    name: str,
+    directory: str,
+    source: SourceInfo | None = None,
+) -> Path:
     """Helper to manually add a plugin to ATK Home for testing.
 
     Creates a plugin directory with plugin.yaml and updates the manifest.
@@ -29,8 +41,11 @@ def _add_plugin_to_home(atk_home: Path, name: str, directory: str, source: str =
         atk_home: Path to ATK Home directory.
         name: Plugin name.
         directory: Plugin directory name.
-        source: Source type ('local', 'registry', 'git'). Defaults to 'local'.
+        source: Source metadata. Defaults to SourceInfo(type=LOCAL).
     """
+    if source is None:
+        source = SourceInfo(type=SourceType.LOCAL)
+
     # Create plugin directory
     plugin_dir = atk_home / "plugins" / directory
     plugin_dir.mkdir(parents=True)
@@ -156,8 +171,8 @@ class TestRemovePlugin:
         exemption_dir = f"!plugins/{directory}/"
         exemption_glob = f"!plugins/{directory}/**"
 
-        # Add plugin with source='local' and manually add gitignore exemption
-        plugin_dir = _add_plugin_to_home(atk_home, plugin_name, directory, source="local")
+        # Add plugin with source=local and manually add gitignore exemption
+        plugin_dir = _add_plugin_to_home(atk_home, plugin_name, directory, source=SourceInfo(type=SourceType.LOCAL))
         add_gitignore_exemption(atk_home, directory)
 
         # Verify gitignore exemption exists
@@ -184,8 +199,8 @@ class TestRemovePlugin:
         plugin_name = "Non-Local Plugin"
         directory = "non-local-plugin"
 
-        # Add plugin with source='registry' (non-local)
-        plugin_dir = _add_plugin_to_home(atk_home, plugin_name, directory, source="registry")
+        # Add plugin with source=registry (non-local)
+        plugin_dir = _add_plugin_to_home(atk_home, plugin_name, directory, source=SourceInfo(type=SourceType.REGISTRY))
 
         # Get initial gitignore content
         gitignore_path = atk_home / ".gitignore"
@@ -413,7 +428,7 @@ lifecycle:
         # And - plugin is in manifest
         manifest = load_manifest(self.atk_home)
         manifest.plugins.append(
-            PluginEntry(name="Marker Plugin", directory="marker-plugin", source="local")
+            PluginEntry(name="Marker Plugin", directory="marker-plugin")
         )
         save_manifest(manifest, self.atk_home)
 
@@ -466,7 +481,7 @@ lifecycle:
         # And - plugin is in manifest
         manifest = load_manifest(self.atk_home)
         manifest.plugins.append(
-            PluginEntry(name="Failing Stop Plugin", directory="failing-stop-plugin", source="local")
+            PluginEntry(name="Failing Stop Plugin", directory="failing-stop-plugin")
         )
         save_manifest(manifest, self.atk_home)
 

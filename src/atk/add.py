@@ -1,6 +1,6 @@
 """Plugin add functionality for ATK.
 
-Handles adding plugins from local directories or single YAML files.
+Handles adding plugins from local directories, single YAML files, or the registry.
 """
 
 import shutil
@@ -11,10 +11,13 @@ from pathlib import Path
 from atk.git import add_gitignore_exemption, git_add, git_commit
 from atk.home import validate_atk_home
 from atk.lifecycle import LifecycleCommandNotDefinedError, run_lifecycle_command
-from atk.manifest_schema import PluginEntry, SourceType, load_manifest, save_manifest
+from atk.manifest_schema import PluginEntry, SourceInfo, SourceType, load_manifest, save_manifest
 from atk.plugin import load_plugin_schema
+from atk.plugin_schema import PluginSchema
+from atk.registry import fetch_registry_plugin
 from atk.sanitize import sanitize_directory_name
 from atk.setup import run_setup
+from atk.source import resolve_source
 
 
 class InstallFailedError(Exception):
@@ -72,14 +75,14 @@ def detect_source_type(source: Path) -> AddSourceType:
 
 
 def add_plugin(
-    source: Path,
+    source: str,
     atk_home: Path,
     prompt_func: Callable[[str], str],
 ) -> str:
     """Add a plugin to ATK Home.
 
     Args:
-        source: Path to plugin source (directory or single file).
+        source: Plugin source — local path, registry name, or git URL.
         atk_home: Path to ATK Home directory.
         prompt_func: Function for prompting user input. If the plugin has env vars,
             runs interactive setup before install.
@@ -91,72 +94,125 @@ def add_plugin(
         ValueError: If ATK Home is not initialized or source is invalid.
         FileNotFoundError: If source does not exist.
         InstallFailedError: If the install lifecycle command fails.
+        PluginNotFoundError: If registry plugin name is not found.
+        NotImplementedError: If git source is used (not yet supported).
     """
-    # Validate ATK Home is initialized
     validation = validate_atk_home(atk_home)
     if not validation.is_valid:
         msg = f"ATK Home '{atk_home}' is not initialized: {', '.join(validation.errors)}"
         raise ValueError(msg)
 
-    # Detect source type and load schema
+    resolved = resolve_source(source)
+
+    if resolved.source_type == SourceType.LOCAL:
+        assert resolved.path is not None
+        return _add_local_plugin(resolved.path, atk_home, prompt_func)
+
+    if resolved.source_type == SourceType.REGISTRY:
+        assert resolved.name is not None
+        return _add_registry_plugin(resolved.name, atk_home, prompt_func)
+
+    msg = "Git source support is not yet implemented"
+    raise NotImplementedError(msg)
+
+
+def _add_local_plugin(
+    source: Path,
+    atk_home: Path,
+    prompt_func: Callable[[str], str],
+) -> str:
+    """Add a plugin from a local path (directory or single file)."""
     source_type = detect_source_type(source)
     schema = load_plugin_schema(source)
-
-    # Generate directory name from plugin name
     directory = sanitize_directory_name(schema.name)
 
-    # Fail fast: check if plugin is already in manifest
     manifest = load_manifest(atk_home)
     if any(p.directory == directory for p in manifest.plugins):
         msg = f"Plugin '{schema.name}' is already added (directory: {directory})"
         raise ValueError(msg)
 
-    # Determine target directory
     target_dir = atk_home / "plugins" / directory
 
-    # Check if source is already in the target location (plugin created directly in plugins/)
     source_resolved = source.resolve()
     target_resolved = target_dir.resolve()
     already_in_place = source_resolved == target_resolved
 
     if not already_in_place:
-        # Check for directory conflict (different source, same target name)
         if target_dir.exists():
             msg = f"Plugin directory '{directory}' already exists at {target_dir}"
             raise ValueError(msg)
 
-        # Copy files to plugins/ directory
         if source_type == AddSourceType.DIRECTORY:
             shutil.copytree(source, target_dir)
         else:
-            # Single file: create directory and copy just the yaml
             target_dir.mkdir(parents=True)
             shutil.copy2(source, target_dir / "plugin.yaml")
 
-    # Run interactive setup if plugin has env vars
+    source_info = SourceInfo(type=SourceType.LOCAL)
+    return _finalize_add(
+        schema, atk_home, target_dir, directory, source_info,
+        prompt_func, already_in_place, add_gitignore=True,
+    )
+
+
+def _add_registry_plugin(
+    name: str,
+    atk_home: Path,
+    prompt_func: Callable[[str], str],
+) -> str:
+    """Add a plugin from the registry by name."""
+    directory = sanitize_directory_name(name)
+    target_dir = atk_home / "plugins" / directory
+
+    manifest = load_manifest(atk_home)
+    if any(p.directory == directory for p in manifest.plugins):
+        msg = f"Plugin '{name}' is already added (directory: {directory})"
+        raise ValueError(msg)
+
+    if target_dir.exists():
+        msg = f"Plugin directory '{directory}' already exists at {target_dir}"
+        raise ValueError(msg)
+
+    result = fetch_registry_plugin(name=name, target_dir=target_dir)
+    schema = load_plugin_schema(target_dir)
+
+    source_info = SourceInfo(type=SourceType.REGISTRY, ref=result.commit_hash)
+    return _finalize_add(
+        schema, atk_home, target_dir, directory, source_info,
+        prompt_func, already_in_place=False, add_gitignore=False,
+    )
+
+
+def _finalize_add(
+    schema: PluginSchema,
+    atk_home: Path,
+    target_dir: Path,
+    directory: str,
+    source: SourceInfo,
+    prompt_func: Callable[[str], str],
+    already_in_place: bool,
+    add_gitignore: bool,
+) -> str:
+    """Common post-acquisition workflow for adding a plugin.
+
+    Runs setup, install lifecycle, updates manifest, and commits.
+    """
     if schema.env_vars:
         run_setup(schema, target_dir, prompt_func)
 
-    # Run install lifecycle command if defined
-    # Skip silently if not defined (unlike standalone atk install which warns)
     try:
         exit_code = run_lifecycle_command(schema, target_dir, "install")
         if exit_code != 0:
-            # Clean up on failure
             _cleanup_failed_add(atk_home, target_dir, directory, already_in_place)
             raise InstallFailedError(schema.name, exit_code)
     except LifecycleCommandNotDefinedError:
-        # Skip silently - install is optional
         pass
 
-    # Add gitignore exemption for ALL local plugins
-    add_gitignore_exemption(atk_home, directory)
+    if add_gitignore:
+        add_gitignore_exemption(atk_home, directory)
 
-    # Update manifest and get auto_commit setting
-    # All local plugins get source=LOCAL
-    auto_commit = _update_manifest(atk_home, schema.name, directory, source=SourceType.LOCAL)
+    auto_commit = _update_manifest(atk_home, schema.name, directory, source=source)
 
-    # Commit changes if auto_commit is enabled
     if auto_commit:
         git_add(atk_home)
         git_commit(atk_home, f"Add plugin '{schema.name}'")
@@ -191,14 +247,14 @@ def _cleanup_failed_add(atk_home: Path, target_dir: Path, directory: str, alread
         pass
 
 
-def _update_manifest(atk_home: Path, plugin_name: str, directory: str, source: SourceType) -> bool:
+def _update_manifest(atk_home: Path, plugin_name: str, directory: str, source: SourceInfo) -> bool:
     """Update manifest.yaml with new plugin entry.
 
     Args:
         atk_home: Path to ATK Home directory.
         plugin_name: Display name of the plugin.
         directory: Sanitized directory name.
-        source: Source type (LOCAL, REGISTRY, or GIT).
+        source: Source metadata (type, ref, url).
 
     Returns:
         True if auto_commit is enabled in config, False otherwise.

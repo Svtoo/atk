@@ -1,4 +1,4 @@
-"""Source resolution for plugin add (Phase 4.1).
+"""Source resolution for plugin add.
 
 Determines whether user input to `atk add` is a local path, git URL,
 or registry name.

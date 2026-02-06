@@ -40,6 +40,7 @@ from atk.lifecycle import (
 from atk.manifest_schema import load_manifest
 from atk.mcp import generate_mcp_config
 from atk.plugin import PluginNotFoundError, load_plugin
+from atk.registry import PluginNotFoundError as RegistryPluginNotFoundError
 from atk.remove import remove_plugin
 from atk.setup import run_setup
 
@@ -293,34 +294,35 @@ def init(
 @app.command()
 def add(
     source: Annotated[
-        Path,
+        str,
         typer.Argument(
-            help="Path to plugin directory or single plugin.yaml file.",
+            help="Plugin source: local path, registry name, or git URL.",
         ),
     ],
 ) -> None:
     """Add a plugin to ATK Home.
 
-    Copies plugin files to ATK Home and updates the manifest.
+    Accepts a local path, registry plugin name, or git URL.
     If the plugin has environment variables, prompts for configuration before install.
     """
     atk_home = require_ready_home()
-
-    # Validate source exists
-    if not source.exists():
-        cli_logger.error(f"Source path does not exist: {source}")
-        raise typer.Exit(exit_codes.PLUGIN_INVALID)
 
     try:
         directory = add_plugin(source, atk_home, _stdin_prompt)
         cli_logger.success(f"Added plugin to {atk_home}/plugins/{directory}")
         raise typer.Exit(exit_codes.SUCCESS)
+    except RegistryPluginNotFoundError as e:
+        cli_logger.error(f"Plugin not found in registry: {e}")
+        raise typer.Exit(exit_codes.PLUGIN_INVALID) from e
     except InstallFailedError as e:
         cli_logger.error(f"Install failed for plugin '{e.plugin_name}' (exit code {e.exit_code})")
         raise typer.Exit(exit_codes.DOCKER_ERROR) from e
-    except ValueError as e:
+    except (ValueError, FileNotFoundError) as e:
         cli_logger.error(f"Failed to add plugin: {e}")
         raise typer.Exit(exit_codes.PLUGIN_INVALID) from e
+    except NotImplementedError as e:
+        cli_logger.error(str(e))
+        raise typer.Exit(exit_codes.GENERAL_ERROR) from e
 
 
 @app.command()
