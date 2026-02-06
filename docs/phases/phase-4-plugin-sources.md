@@ -171,8 +171,8 @@ Registry and git URL sources for plugins, version pinning, and the upgrade comma
 ## Acceptance Criteria
 
 ### Registry Support
-- [ ] Create `atk-registry` repository with flat `plugins/` structure
-- [ ] CI generates `index.yaml` on merge to main
+- [x] Create `atk-registry` repository with flat `plugins/` structure
+- [x] CI generates `index.yaml` on merge to main
 - [ ] `atk add <name>` resolves from registry
 - [ ] Sparse checkout fetches only the plugin directory
 - [ ] Manifest records `source.type: registry` and `source.ref: <hash>`
@@ -232,9 +232,9 @@ Determine source type from user input:
 
 ### 4.2 Registry Infrastructure
 
-- Create `atk-registry` repo with `plugins/` directory
-- Add CI workflow to generate `index.yaml`
-- Implement registry fetch and plugin resolution
+- [x] Create `atk-registry` repo with `plugins/` directory
+- [x] Add CI workflow to generate `index.yaml`
+- [ ] Implement registry fetch and plugin resolution
 
 ### 4.3 Git Source Support
 
