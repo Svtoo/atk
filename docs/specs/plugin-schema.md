@@ -99,7 +99,6 @@ classDiagram
         +transport: str
         +command: str?
         +args: list[str]?
-        +working_dir: str?
         +endpoint: str?
         +env: list[str]?
     }
@@ -218,12 +217,11 @@ Configuration for MCP (Model Context Protocol) server exposure. ATK uses this co
 | `transport` | string | ❌ | Transport type: `stdio`, `sse` (default: `stdio`) |
 | `command` | string | ❌ | Command to run for stdio transport (e.g., `docker`, `npx`, `uvx`) |
 | `args` | array | ❌ | Arguments for the command |
-| `working_dir` | string | ❌ | Working directory for stdio command |
 | `endpoint` | string | ❌ | HTTP endpoint for SSE transport |
 | `env` | array | ❌ | Environment variable names to pass (references plugin's `env_vars`) |
 
 **Transport-specific requirements:**
-- `stdio`: Requires `command`. Optional: `args`, `working_dir`, `env`.
+- `stdio`: Requires `command`. Optional: `args`, `env`.
 - `sse`: Requires `endpoint`. The `command`/`args` are ignored.
 
 #### Plugin Path Resolution with `$ATK_PLUGIN_DIR`
@@ -235,7 +233,6 @@ Plugin developers often need to reference files within their plugin directory (e
 **Substitution applies to:**
 - `command` field
 - `args` array (each element)
-- `working_dir` field
 
 **Supported syntaxes:**
 - `$ATK_PLUGIN_DIR` — Shell-style variable reference
@@ -245,13 +242,12 @@ Plugin developers often need to reference files within their plugin directory (e
 ```yaml
 mcp:
   transport: stdio
-  command: $ATK_PLUGIN_DIR/mcp-server.sh
+  command: uv
   args:
-    - --config
-    - $ATK_PLUGIN_DIR/config.json
-    - --data-dir
-    - ${ATK_PLUGIN_DIR}/data
-  working_dir: $ATK_PLUGIN_DIR/vendor
+    - run
+    - --directory
+    - $ATK_PLUGIN_DIR
+    - server.py
   env:
     - API_KEY
 ```
@@ -260,14 +256,13 @@ mcp:
 ```json
 {
   "my-plugin": {
-    "command": "/Users/sasha/.atk/plugins/my-plugin/mcp-server.sh",
+    "command": "uv",
     "args": [
-      "--config",
-      "/Users/sasha/.atk/plugins/my-plugin/config.json",
-      "--data-dir",
-      "/Users/sasha/.atk/plugins/my-plugin/data"
+      "run",
+      "--directory",
+      "/Users/sasha/.atk/plugins/my-plugin",
+      "server.py"
     ],
-    "cwd": "/Users/sasha/.atk/plugins/my-plugin/vendor",
     "env": {
       "API_KEY": "..."
     }
@@ -277,7 +272,7 @@ mcp:
 
 **Benefits:**
 - **Explicit** — Plugin developers see exactly what's happening
-- **Consistent** — Same variable works across MCP command, args, and working_dir
+- **Consistent** — Same variable works across MCP command and args
 - **Debuggable** — Users can see the substitution in generated config
 - **Portable** — Plugin developers can test locally by setting `ATK_PLUGIN_DIR=$(pwd)`
 

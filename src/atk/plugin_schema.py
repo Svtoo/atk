@@ -140,10 +140,6 @@ class McpConfig(BaseModel):
         default=None,
         description="Command arguments (for stdio transport)",
     )
-    working_dir: str | None = Field(
-        default=None,
-        description="Working directory for command execution",
-    )
     endpoint: str | None = Field(
         default=None,
         description="SSE endpoint URL (for sse transport)",

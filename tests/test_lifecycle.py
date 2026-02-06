@@ -1496,7 +1496,6 @@ class TestMcpCli:
         plugin_dir_name = "piper"
         command = "$ATK_PLUGIN_DIR/mcp-server.sh"
         args = ["--config", "${ATK_PLUGIN_DIR}/config.json"]
-        working_dir = "$ATK_PLUGIN_DIR/vendor"
 
         plugin_dir = create_plugin(
             plugin_name,
@@ -1505,7 +1504,6 @@ class TestMcpCli:
                 transport="stdio",
                 command=command,
                 args=args,
-                working_dir=working_dir,
             ),
         )
 
@@ -1522,7 +1520,6 @@ class TestMcpCli:
             plugin_name: {
                 "command": f"{plugin_dir_str}/mcp-server.sh",
                 "args": ["--config", f"{plugin_dir_str}/config.json"],
-                "cwd": f"{plugin_dir_str}/vendor",
             }
         }
         assert output == expected

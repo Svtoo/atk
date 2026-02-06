@@ -317,7 +317,6 @@ class TestMcpConfig:
             "transport": "stdio",
             "command": "docker",
             "args": ["exec", "-i", "openmemory", "python", "-m", "mcp_server"],
-            "working_dir": "/app",
             "env": ["PYTHONPATH"],
         }
         self.mcp_sse_data = {
@@ -337,7 +336,6 @@ class TestMcpConfig:
         assert mcp.transport == data["transport"]
         assert mcp.command == data["command"]
         assert mcp.args == data["args"]
-        assert mcp.working_dir == data["working_dir"]
         assert mcp.env == data["env"]
         assert mcp.endpoint is None
 
@@ -369,7 +367,6 @@ class TestMcpConfig:
         assert mcp.transport == transport
         assert mcp.command == command
         assert mcp.args is None
-        assert mcp.working_dir is None
         assert mcp.env is None
 
 

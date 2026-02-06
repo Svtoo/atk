@@ -142,23 +142,5 @@ class TestGenerateMcpConfigWithSubstitution:
         ]
         assert result.config["test-plugin"]["args"] == expected_args
 
-    def test_substitutes_working_dir(self) -> None:
-        """Verify working_dir is substituted."""
-        # Given
-        command = "python"
-        working_dir = "$ATK_PLUGIN_DIR/vendor"
 
-        plugin = PluginSchema(
-            schema_version="2026-01-23",
-            name="TestPlugin",
-            description="Test plugin",
-            mcp=McpConfig(transport="stdio", command=command, working_dir=working_dir),
-        )
-
-        # When
-        result = generate_mcp_config(plugin, self.plugin_dir, "test-plugin")
-
-        # Then
-        expected_cwd = f"{self.plugin_dir.resolve()}/vendor"
-        assert result.config["test-plugin"]["cwd"] == expected_cwd
 

@@ -44,8 +44,8 @@ def generate_mcp_config(
 ) -> McpConfigResult:
     """Generate MCP config dict for a plugin.
 
-    Substitutes $ATK_PLUGIN_DIR and ${ATK_PLUGIN_DIR} in command, args, and
-    working_dir with the absolute path to the plugin directory.
+    Substitutes $ATK_PLUGIN_DIR and ${ATK_PLUGIN_DIR} in command and args
+    with the absolute path to the plugin directory.
 
     Args:
         plugin: The plugin schema.
@@ -70,8 +70,6 @@ def generate_mcp_config(
             config["command"] = substitute_plugin_dir(mcp.command, plugin_dir)
         if mcp.args:
             config["args"] = [substitute_plugin_dir(arg, plugin_dir) for arg in mcp.args]
-        if mcp.working_dir:
-            config["cwd"] = substitute_plugin_dir(mcp.working_dir, plugin_dir)
     elif mcp.transport == "sse":
         if mcp.endpoint:
             config["url"] = mcp.endpoint
