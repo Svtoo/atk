@@ -288,12 +288,12 @@ Registry and git URL sources for plugins, version pinning, and the upgrade comma
 - [x] Added `add_gitignore_exemption()` and `remove_gitignore_exemption()` to git.py
 - [x] Added `source` field to `PluginEntry` in manifest_schema.py
 
-### 4.9 Gitignore Updates
+### 4.9 Gitignore Updates ✅
 
-- Update `.gitignore` template for new pattern
-- Ensure `custom/` directories are tracked
-- Ensure plugin files (except custom/) are ignored
-- Support local plugin exemptions
+- [x] Updated `GITIGNORE_CONTENT` to match home-spec gitignore pattern
+- [x] `plugins/*/*` ignores all plugin contents by default
+- [x] `!plugins/*/custom/` and `!plugins/*/custom/**` track custom directories
+- [x] Local plugin exemptions supported via `add_gitignore_exemption()` (from 4.8)
 
 ---
 

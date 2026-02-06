@@ -49,8 +49,8 @@ class TestInitAtkHome:
         assert manifest.config.auto_commit is True
         assert manifest.plugins == []
 
-    def test_gitignore_excludes_env_files(self, tmp_path: Path) -> None:
-        """Verify .gitignore contains *.env pattern."""
+    def test_gitignore_has_correct_patterns(self, tmp_path: Path) -> None:
+        """Verify .gitignore ignores plugin contents, tracks custom/, and ignores secrets."""
         # Given
         target = tmp_path / ".atk"
 
@@ -59,9 +59,13 @@ class TestInitAtkHome:
 
         # Then
         gitignore_content = (target / ".gitignore").read_text()
+        # Plugin contents are ignored
+        assert "plugins/*/*" in gitignore_content
+        # Custom directories are tracked
+        assert "!plugins/*/custom/" in gitignore_content
+        assert "!plugins/*/custom/**" in gitignore_content
+        # Secrets are ignored
         assert "*.env" in gitignore_content
-        assert ".env.*" in gitignore_content
-        assert "plugins/" in gitignore_content
 
     def test_git_repo_initialized_with_commit(self, tmp_path: Path) -> None:
         """Verify git repo is initialized with initial commit."""

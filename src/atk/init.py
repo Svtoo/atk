@@ -33,11 +33,14 @@ def _create_initial_manifest() -> str:
 
 # Gitignore content
 GITIGNORE_CONTENT = """\
-# Plugin files (registry/git plugins are tracked via manifest only)
-# Local plugins get explicit exemptions below
-plugins/
+# Ignore all plugin contents
+plugins/*/*
 
-# Environment files with secrets
+# But keep custom directories
+!plugins/*/custom/
+!plugins/*/custom/**
+
+# Always ignore secrets
 *.env
 .env.*
 
