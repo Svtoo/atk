@@ -4,11 +4,13 @@ Handles adding plugins from local directories, single YAML files, or the registr
 """
 
 import shutil
+import tempfile
 from collections.abc import Callable
 from enum import Enum
 from pathlib import Path
 
 from atk.git import add_gitignore_exemption, git_add, git_commit
+from atk.git_source import fetch_git_plugin
 from atk.home import validate_atk_home
 from atk.lifecycle import LifecycleCommandNotDefinedError, run_lifecycle_command
 from atk.manifest_schema import PluginEntry, SourceInfo, SourceType, load_manifest, save_manifest
@@ -95,25 +97,41 @@ def add_plugin(
         FileNotFoundError: If source does not exist.
         InstallFailedError: If the install lifecycle command fails.
         PluginNotFoundError: If registry plugin name is not found.
-        NotImplementedError: If git source is used (not yet supported).
+        GitSourceError: If git clone or checkout fails.
+        GitPluginNotFoundError: If git repo has no .atk/ directory.
     """
     validation = validate_atk_home(atk_home)
     if not validation.is_valid:
-        msg = f"ATK Home '{atk_home}' is not initialized: {', '.join(validation.errors)}"
-        raise ValueError(msg)
+        raise ValueError(f"ATK Home '{atk_home}' is not initialized: {', '.join(validation.errors)}")
 
     resolved = resolve_source(source)
 
     if resolved.source_type == SourceType.LOCAL:
-        assert resolved.path is not None
+        if resolved.path is None:
+            raise ValueError(f"Source resolved as LOCAL but path is None for '{source}'")
         return _add_local_plugin(resolved.path, atk_home, prompt_func)
 
     if resolved.source_type == SourceType.REGISTRY:
-        assert resolved.name is not None
+        if resolved.name is None:
+            raise ValueError(f"Source resolved as REGISTRY but name is None for '{source}'")
         return _add_registry_plugin(resolved.name, atk_home, prompt_func)
 
-    msg = "Git source support is not yet implemented"
-    raise NotImplementedError(msg)
+    if resolved.url is None:
+        raise ValueError(f"Source resolved as GIT but url is None for '{source}'")
+    return _add_git_plugin(resolved.url, atk_home, prompt_func)
+
+
+def _check_duplicate(atk_home: Path, directory: str, plugin_name: str) -> None:
+    """Raise if a plugin with this directory is already in the manifest."""
+    manifest = load_manifest(atk_home)
+    if any(p.directory == directory for p in manifest.plugins):
+        raise ValueError(f"Plugin '{plugin_name}' is already added (directory: {directory})")
+
+
+def _check_target_available(target_dir: Path, directory: str) -> None:
+    """Raise if the target plugin directory already exists on disk."""
+    if target_dir.exists():
+        raise ValueError(f"Plugin directory '{directory}' already exists at {target_dir}")
 
 
 def _add_local_plugin(
@@ -125,23 +143,13 @@ def _add_local_plugin(
     source_type = detect_source_type(source)
     schema = load_plugin_schema(source)
     directory = sanitize_directory_name(schema.name)
-
-    manifest = load_manifest(atk_home)
-    if any(p.directory == directory for p in manifest.plugins):
-        msg = f"Plugin '{schema.name}' is already added (directory: {directory})"
-        raise ValueError(msg)
+    _check_duplicate(atk_home, directory, schema.name)
 
     target_dir = atk_home / "plugins" / directory
-
-    source_resolved = source.resolve()
-    target_resolved = target_dir.resolve()
-    already_in_place = source_resolved == target_resolved
+    already_in_place = source.resolve() == target_dir.resolve()
 
     if not already_in_place:
-        if target_dir.exists():
-            msg = f"Plugin directory '{directory}' already exists at {target_dir}"
-            raise ValueError(msg)
-
+        _check_target_available(target_dir, directory)
         if source_type == AddSourceType.DIRECTORY:
             shutil.copytree(source, target_dir)
         else:
@@ -162,24 +170,54 @@ def _add_registry_plugin(
 ) -> str:
     """Add a plugin from the registry by name."""
     directory = sanitize_directory_name(name)
+    _check_duplicate(atk_home, directory, name)
+
     target_dir = atk_home / "plugins" / directory
-
-    manifest = load_manifest(atk_home)
-    if any(p.directory == directory for p in manifest.plugins):
-        msg = f"Plugin '{name}' is already added (directory: {directory})"
-        raise ValueError(msg)
-
-    if target_dir.exists():
-        msg = f"Plugin directory '{directory}' already exists at {target_dir}"
-        raise ValueError(msg)
+    _check_target_available(target_dir, directory)
 
     result = fetch_registry_plugin(name=name, target_dir=target_dir)
     schema = load_plugin_schema(target_dir)
 
     source_info = SourceInfo(type=SourceType.REGISTRY, ref=result.commit_hash)
     return _finalize_add(
-        schema, atk_home, target_dir, directory, source_info,
-        prompt_func, already_in_place=False, add_gitignore=False,
+        schema,
+        atk_home,
+        target_dir,
+        directory,
+        source_info,
+        prompt_func,
+        already_in_place=False,
+        add_gitignore=False,
+    )
+
+
+def _add_git_plugin(
+    url: str,
+    atk_home: Path,
+    prompt_func: Callable[[str], str],
+) -> str:
+    """Add a plugin from a git repo that follows the .atk/ convention."""
+    with tempfile.TemporaryDirectory() as tmp:
+        staging_dir = Path(tmp) / "staging"
+        result = fetch_git_plugin(url=url, target_dir=staging_dir)
+        schema = load_plugin_schema(staging_dir)
+        directory = sanitize_directory_name(schema.name)
+        _check_duplicate(atk_home, directory, schema.name)
+
+        target_dir = atk_home / "plugins" / directory
+        _check_target_available(target_dir, directory)
+        shutil.copytree(staging_dir, target_dir)
+
+    source_info = SourceInfo(type=SourceType.GIT, url=url, ref=result.commit_hash)
+    return _finalize_add(
+        schema,
+        atk_home,
+        target_dir,
+        directory,
+        source_info,
+        prompt_func,
+        already_in_place=False,
+        add_gitignore=False,
     )
 
 

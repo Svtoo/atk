@@ -392,13 +392,14 @@ class TestPluginSchemaFull:
                 {
                     "name": "API",
                     "port": 8787,
-                    "configurable": True,
-                    "health_endpoint": "/health",
+                    "protocol": "http",
+                    "description": "OpenMemory API endpoint",
                 },
                 {
                     "name": "Dashboard",
                     "port": 3737,
-                    "health_endpoint": "/",
+                    "protocol": "http",
+                    "description": "OpenMemory Dashboard",
                 },
             ],
             "env_vars": [

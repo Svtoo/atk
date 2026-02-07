@@ -212,3 +212,71 @@ def create_fake_registry(tmp_path: Path) -> FakeRegistry:
     ).stdout.strip()
 
     return FakeRegistry(url=f"file://{work_dir}", commit_hash=commit_hash)
+
+
+
+class FakeGitRepo(NamedTuple):
+    """Result of creating a fake git repo for testing."""
+
+    url: str
+    commit_hash: str
+
+
+def create_fake_git_repo(
+    tmp_path: Path,
+    include_atk_dir: bool = True,
+    include_plugin_yaml: bool = True,
+) -> FakeGitRepo:
+    """Create a local git repo mimicking a third-party repo with .atk/ dir.
+
+    Args:
+        tmp_path: Base temp directory.
+        include_atk_dir: Whether to create the .atk/ directory.
+        include_plugin_yaml: Whether to include plugin.yaml in .atk/.
+
+    Returns:
+        FakeGitRepo with file:// URL and commit hash.
+    """
+    work_dir = tmp_path / "fake-repo"
+    work_dir.mkdir()
+
+    # Always create a README so the repo has at least one file
+    (work_dir / "README.md").write_text("# Fake repo\n")
+
+    if include_atk_dir:
+        atk_dir = work_dir / ".atk"
+        atk_dir.mkdir()
+
+        if include_plugin_yaml:
+            plugin_data = {
+                "schema_version": PLUGIN_SCHEMA_VERSION,
+                "name": "Echo Tool",
+                "description": "A test plugin from git",
+            }
+            (atk_dir / "plugin.yaml").write_text(yaml.dump(plugin_data))
+
+        # Add a lifecycle script to verify all files are copied
+        install_script = atk_dir / "install.sh"
+        install_script.write_text("#!/bin/bash\necho 'Installing'\n")
+        install_script.chmod(0o755)
+
+    env = {
+        **os.environ,
+        "GIT_AUTHOR_NAME": "Test",
+        "GIT_AUTHOR_EMAIL": "test@test.com",
+        "GIT_COMMITTER_NAME": "Test",
+        "GIT_COMMITTER_EMAIL": "test@test.com",
+    }
+    subprocess.run(["git", "init"], cwd=work_dir, check=True, capture_output=True)
+    subprocess.run(["git", "add", "-A"], cwd=work_dir, check=True, capture_output=True)
+    subprocess.run(
+        ["git", "commit", "-m", "Initial"],
+        cwd=work_dir, check=True, capture_output=True, env=env,
+    )
+
+    commit_hash = subprocess.run(
+        ["git", "rev-parse", "HEAD"],
+        cwd=work_dir, check=True, capture_output=True, text=True,
+    ).stdout.strip()
+
+    return FakeGitRepo(url=f"file://{work_dir}", commit_hash=commit_hash)

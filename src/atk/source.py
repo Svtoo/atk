@@ -51,6 +51,8 @@ def _is_git_url(source: str) -> bool:
 
     Recognized patterns:
     - https://host/org/repo[.git]
+    - http://host/org/repo[.git]
+    - file:///path/to/repo
     - git@host:org/repo[.git]
     - host.tld/org/repo  (shorthand, e.g. github.com/org/repo)
     """
@@ -58,8 +60,8 @@ def _is_git_url(source: str) -> bool:
     if source.startswith("git@") and ":" in source[4:]:
         return True
 
-    # HTTPS URLs
-    if source.startswith(("https://", "http://")):
+    # HTTPS / HTTP / file URLs
+    if source.startswith(("https://", "http://", "file://")):
         return True
 
     # Shorthand: contains a dot before the first slash (domain.tld/path)
@@ -83,6 +85,13 @@ def resolve_source(source: str) -> ResolvedSource:
 
     Raises:
         ValueError: If source is empty or whitespace-only.
+
+    Note:
+        The ATK registry CI (atk-registry/scripts/generate_index.py) uses this
+        function to validate that every plugin name resolves as REGISTRY.
+        Changes to the resolution logic here can silently break registry plugin
+        installability — a plugin whose name resolves as LOCAL or GIT becomes
+        unreachable via ``atk add <name>``.
     """
     source = source.strip()
     if not source:

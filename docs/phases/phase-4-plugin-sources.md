@@ -178,10 +178,10 @@ Registry and git URL sources for plugins, version pinning, and the upgrade comma
 - [x] Manifest records `source.type: registry` and `source.ref: <hash>`
 
 ### Git URL Support
-- [ ] `atk add <url>` clones and looks for `.atk/` directory
-- [ ] Supports common URL formats (github.com/org/repo, full https URLs)
-- [ ] Sparse checkout fetches only `.atk/` directory
-- [ ] Manifest records `source.type: git`, `source.url`, and `source.ref`
+- [x] `atk add <url>` clones and looks for `.atk/` directory
+- [x] Supports common URL formats (github.com/org/repo, full https URLs, git@, file://)
+- [x] Sparse checkout fetches only `.atk/` directory
+- [x] Manifest records `source.type: git`, `source.url`, and `source.ref`
 
 ### Upgrade Command
 - [ ] `atk upgrade <plugin>` fetches latest and updates
@@ -244,11 +244,15 @@ Registry and git URL sources for plugins, version pinning, and the upgrade comma
 - [x] Wired into `atk add` — `atk add <name>` works end-to-end
 - [x] CLI handles `RegistryPluginNotFoundError` with user-friendly message
 
-### 4.3 Git Source Support
+### 4.3 Git Source Support ✅
 
-- Implement sparse checkout for `.atk/` directory
-- Parse various URL formats (github.com/org/repo, https://...)
-- Handle authentication via user's git config
+- [x] `git_source.py` module with `fetch_git_plugin()`, `normalize_git_url()`, `GitFetchResult`
+- [x] Sparse clone + sparse checkout for `.atk/` directory only
+- [x] URL normalization: shorthand (`github.com/org/repo`), SSH (`git@`), `https://`, `http://`, `file://`
+- [x] `GitSourceError` and `GitPluginNotFoundError` exceptions
+- [x] Wired into `atk add` — `atk add <url>` works end-to-end
+- [x] CLI handles git errors with user-friendly messages
+- [x] Source resolution updated to recognize `file://` URLs as git
 
 ### 4.4 Upgrade Command
 
@@ -262,7 +266,7 @@ Registry and git URL sources for plugins, version pinning, and the upgrade comma
 - [x] `SourceInfo` model with `type`, `ref`, `url` fields on `PluginEntry`
 - [x] Local plugins: `source.type: local`, no ref/url
 - [x] Registry plugins: `source.type: registry`, `source.ref: <commit_hash>`
-- [ ] Git plugins: `source.type: git`, `source.url: <url>`, `source.ref: <commit_hash>`
+- [x] Git plugins: `source.type: git`, `source.url: <url>`, `source.ref: <commit_hash>`
 - [ ] Update ref on upgrade
 
 ### 4.6 Bootstrap Flow

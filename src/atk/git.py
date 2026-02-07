@@ -217,3 +217,60 @@ def remove_gitignore_exemption(path: Path, plugin_dir: str) -> None:
     # Write back
     gitignore_path.write_text("\n".join(filtered_lines))
 
+
+
+def sparse_clone(url: str, clone_dir: Path) -> None:
+    """Clone a repo with blob filtering and sparse checkout enabled.
+
+    Args:
+        url: Git URL to clone.
+        clone_dir: Target directory for the clone.
+
+    Raises:
+        subprocess.CalledProcessError: If git clone fails.
+    """
+    subprocess.run(
+        ["git", "clone", "--filter=blob:none", "--sparse", url, str(clone_dir)],
+        check=True,
+        capture_output=True,
+    )
+
+
+def sparse_checkout(clone_dir: Path, patterns: list[str]) -> None:
+    """Set sparse-checkout patterns in non-cone mode.
+
+    Args:
+        clone_dir: Path to the cloned repo.
+        patterns: Sparse checkout patterns (e.g. ["/index.yaml"]).
+
+    Raises:
+        subprocess.CalledProcessError: If git sparse-checkout fails.
+    """
+    subprocess.run(
+        ["git", "sparse-checkout", "set", "--no-cone", *patterns],
+        cwd=clone_dir,
+        check=True,
+        capture_output=True,
+    )
+
+
+def get_commit_hash(clone_dir: Path) -> str:
+    """Get the HEAD commit hash from a git repo.
+
+    Args:
+        clone_dir: Path to the git repo.
+
+    Returns:
+        The full 40-char commit hash.
+
+    Raises:
+        subprocess.CalledProcessError: If git rev-parse fails.
+    """
+    result = subprocess.run(
+        ["git", "rev-parse", "HEAD"],
+        cwd=clone_dir,
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    return result.stdout.strip()

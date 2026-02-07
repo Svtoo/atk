@@ -11,6 +11,7 @@ from pathlib import Path
 
 import yaml
 
+from atk.git import get_commit_hash, sparse_checkout, sparse_clone
 from atk.registry_schema import RegistryIndexSchema, RegistryPluginEntry
 
 REGISTRY_URL = "https://github.com/Svtoo/atk-registry"
@@ -58,9 +59,12 @@ def fetch_registry_plugin(
     with tempfile.TemporaryDirectory() as tmp:
         clone_dir = Path(tmp) / "registry"
 
-        _sparse_clone(url, clone_dir)
-
-        _sparse_checkout(clone_dir, ["/index.yaml"])
+        try:
+            sparse_clone(url, clone_dir)
+            sparse_checkout(clone_dir, ["/index.yaml"])
+        except subprocess.CalledProcessError as e:
+            msg = f"Failed to clone registry from {url}: {e.stderr.decode()}"
+            raise RegistryFetchError(msg) from e
 
         index_path = clone_dir / "index.yaml"
         if not index_path.exists():
@@ -72,61 +76,22 @@ def fetch_registry_plugin(
 
         entry = _lookup_plugin(index, name)
 
-        _sparse_checkout(clone_dir, [f"/{entry.path}/*"])
+        try:
+            sparse_checkout(clone_dir, [f"/{entry.path}/*"])
+        except subprocess.CalledProcessError as e:
+            msg = f"Failed to fetch plugin '{name}': {e.stderr.decode()}"
+            raise RegistryFetchError(msg) from e
 
         plugin_src = clone_dir / entry.path
         if not plugin_src.is_dir():
             msg = f"Plugin directory '{entry.path}' listed in index but missing from registry"
             raise RegistryFetchError(msg)
 
-        commit_hash = _get_commit_hash(clone_dir)
+        commit_hash = get_commit_hash(clone_dir)
 
         shutil.copytree(plugin_src, target_dir)
 
         return FetchResult(commit_hash=commit_hash)
-
-
-def _sparse_clone(url: str, clone_dir: Path) -> None:
-    """Clone a repo with blob filtering and sparse checkout enabled."""
-    try:
-        subprocess.run(
-            ["git", "clone", "--filter=blob:none", "--sparse", url, str(clone_dir)],
-            check=True,
-            capture_output=True,
-        )
-    except subprocess.CalledProcessError as e:
-        msg = f"Failed to clone registry from {url}: {e.stderr.decode()}"
-        raise RegistryFetchError(msg) from e
-
-
-def _sparse_checkout(clone_dir: Path, patterns: list[str]) -> None:
-    """Set sparse-checkout patterns in non-cone mode."""
-    try:
-        subprocess.run(
-            ["git", "sparse-checkout", "set", "--no-cone", *patterns],
-            cwd=clone_dir,
-            check=True,
-            capture_output=True,
-        )
-    except subprocess.CalledProcessError as e:
-        msg = f"Failed to set sparse checkout: {e.stderr.decode()}"
-        raise RegistryFetchError(msg) from e
-
-
-def _get_commit_hash(clone_dir: Path) -> str:
-    """Get the HEAD commit hash from a git repo."""
-    try:
-        result = subprocess.run(
-            ["git", "rev-parse", "HEAD"],
-            cwd=clone_dir,
-            check=True,
-            capture_output=True,
-            text=True,
-        )
-        return result.stdout.strip()
-    except subprocess.CalledProcessError as e:
-        msg = f"Failed to get commit hash: {e.stderr}"
-        raise RegistryFetchError(msg) from e
 
 
 def _lookup_plugin(index: RegistryIndexSchema, name: str) -> RegistryPluginEntry:

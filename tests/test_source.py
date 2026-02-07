@@ -115,6 +115,15 @@ class TestResolveSourceGit:
         assert result.url == url
 
 
+    def test_file_url_is_git(self) -> None:
+        """file:// URLs are treated as git (used for local repo testing)."""
+        url = "file:///tmp/some-repo"
+        result = resolve_source(url)
+
+        assert result.source_type == SourceType.GIT
+        assert result.url == url
+
+
 class TestResolveSourceRegistry:
     """Registry name detection: bare names without path separators or URL patterns."""
 

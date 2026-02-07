@@ -11,6 +11,7 @@ from atk import cli_logger, exit_codes
 from atk.add import InstallFailedError, add_plugin
 from atk.banner import print_banner
 from atk.git import is_git_available
+from atk.git_source import GitPluginNotFoundError, GitSourceError
 from atk.home import get_atk_home, validate_atk_home
 from atk.init import init_atk_home
 from atk.lifecycle import (
@@ -320,8 +321,11 @@ def add(
     except (ValueError, FileNotFoundError) as e:
         cli_logger.error(f"Failed to add plugin: {e}")
         raise typer.Exit(exit_codes.PLUGIN_INVALID) from e
-    except NotImplementedError as e:
-        cli_logger.error(str(e))
+    except GitPluginNotFoundError as e:
+        cli_logger.error(f"Git repo does not contain an ATK plugin: {e}")
+        raise typer.Exit(exit_codes.PLUGIN_INVALID) from e
+    except GitSourceError as e:
+        cli_logger.error(f"Failed to fetch from git: {e}")
         raise typer.Exit(exit_codes.GENERAL_ERROR) from e
 
 

@@ -9,6 +9,7 @@ from typer.testing import CliRunner
 from atk.add import AddSourceType, add_plugin, detect_source_type, load_plugin_schema
 from atk.cli import app
 from atk.exit_codes import DOCKER_ERROR, HOME_NOT_INITIALIZED, PLUGIN_INVALID, SUCCESS
+from atk.git_source import GitPluginNotFoundError
 from atk.init import GITIGNORE_CONTENT, init_atk_home
 from atk.manifest_schema import ManifestSchema, SourceType, load_manifest
 from atk.plugin_schema import (
@@ -18,7 +19,7 @@ from atk.plugin_schema import (
     PluginSchema,
 )
 from atk.registry import PluginNotFoundError
-from tests.conftest import create_fake_registry, write_plugin_yaml
+from tests.conftest import create_fake_git_repo, create_fake_registry, write_plugin_yaml
 
 runner = CliRunner()
 
@@ -438,6 +439,86 @@ class TestAddRegistryPlugin:
         # Then - plugin contents are ignored, custom/ is tracked
         assert "plugins/*/*" in gitignore_content
         assert "!plugins/*/custom/" in gitignore_content
+
+
+
+class TestAddGitPlugin:
+    """Tests for adding plugins from git repos with .atk/ convention."""
+
+    def test_add_git_plugin_copies_files_and_updates_manifest(
+        self, tmp_path: Path,
+    ) -> None:
+        """Verify adding a git plugin fetches .atk/ files and records source info."""
+        # Given
+        atk_home = tmp_path / "atk-home"
+        init_atk_home(atk_home)
+        repo = create_fake_git_repo(tmp_path)
+        expected_dir = "echo-tool"
+
+        # When
+        directory = add_plugin(repo.url, atk_home, _noop_prompt)
+
+        # Then - plugin files copied from .atk/
+        plugin_path = atk_home / "plugins" / expected_dir
+        assert plugin_path.exists()
+        assert (plugin_path / "plugin.yaml").exists()
+        assert (plugin_path / "install.sh").exists()
+        assert directory == expected_dir
+
+        # Then - manifest records git source with URL and pinned commit hash
+        manifest = load_manifest(atk_home)
+        assert len(manifest.plugins) == 1
+        assert manifest.plugins[0].name == "Echo Tool"
+        assert manifest.plugins[0].directory == expected_dir
+        assert manifest.plugins[0].source.type == SourceType.GIT
+        assert manifest.plugins[0].source.url == repo.url
+        assert manifest.plugins[0].source.ref == repo.commit_hash
+
+    def test_add_git_plugin_duplicate_raises(
+        self, tmp_path: Path,
+    ) -> None:
+        """Verify adding the same git plugin twice raises ValueError."""
+        # Given
+        atk_home = tmp_path / "atk-home"
+        init_atk_home(atk_home)
+        repo = create_fake_git_repo(tmp_path)
+        add_plugin(repo.url, atk_home, _noop_prompt)
+
+        # When/Then
+        with pytest.raises(ValueError, match="already added"):
+            add_plugin(repo.url, atk_home, _noop_prompt)
+
+    def test_add_git_plugin_missing_atk_dir_raises(
+        self, tmp_path: Path,
+    ) -> None:
+        """Verify adding a git repo without .atk/ raises GitPluginNotFoundError."""
+        # Given
+        atk_home = tmp_path / "atk-home"
+        init_atk_home(atk_home)
+        repo = create_fake_git_repo(tmp_path, include_atk_dir=False)
+
+        # When/Then
+        with pytest.raises(GitPluginNotFoundError, match=".atk/"):
+            add_plugin(repo.url, atk_home, _noop_prompt)
+
+    def test_add_git_plugin_no_gitignore_exemption(
+        self, tmp_path: Path,
+    ) -> None:
+        """Verify git plugins do NOT get gitignore exemptions (only local plugins do)."""
+        # Given
+        atk_home = tmp_path / "atk-home"
+        init_atk_home(atk_home)
+        repo = create_fake_git_repo(tmp_path)
+        expected_dir = "echo-tool"
+
+        # When
+        add_plugin(repo.url, atk_home, _noop_prompt)
+
+        # Then - gitignore should NOT have exemption for git plugin
+        gitignore_path = atk_home / ".gitignore"
+        gitignore_content = gitignore_path.read_text()
+        assert f"!plugins/{expected_dir}/" not in gitignore_content
+
 
 
 class TestAddCLI:
