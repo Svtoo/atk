@@ -6,6 +6,11 @@
 This document collects ideas, deferred features, and future enhancements. Items here may be promoted to `phases/` as priorities evolve.
 
 For the master plan, see `ROADMAP.md`.
+---
+
+## Git push 
+
+For .atk registries with remote repositories, enable a config parameter alongside with auto_commit and auto_push to automatically push changes to the remote. 
 
 ---
 ## Manage Agents.md and other prompts through atk
@@ -13,6 +18,12 @@ For the master plan, see `ROADMAP.md`.
 - Deploy/update Agents and skills for coding agents via atk.
 - Plugins MCPs define agents rule that are appended to global rules.
 - 
+---
+
+## Documentation, description and tags/categories for plugins
+
+Usability and quality of life is critical for this tool, so providing valuable insight into how to use the plug-in, what this plug-in is about, as well as categorizing it with tags and maybe categories explicitly should be an essential part of atk. 
+I am hesitant regarding explicit categories because those would need to have definitions. Therefore, we need to predict what the categories will be. Otherwise, it's going to be a wild west. If it is going to be wild west, I'd rather use tags which eventually can emerge into categories. 
 ---
 
 ## Deferred Commands

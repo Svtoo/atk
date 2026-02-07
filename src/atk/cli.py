@@ -466,9 +466,10 @@ def _upgrade_single_plugin(atk_home: Path, identifier: str) -> None:
     if result.new_env_vars:
         cli_logger.info(f"  New environment variables configured: {', '.join(result.new_env_vars)}")
     if result.install_failed:
-        cli_logger.warning(
+        cli_logger.error(
             f"  Install failed (exit code {result.install_exit_code})"
         )
+        raise typer.Exit(exit_codes.GENERAL_ERROR)
     raise typer.Exit(exit_codes.SUCCESS)
 
 
@@ -500,8 +501,10 @@ def _upgrade_all_plugins(atk_home: Path) -> None:
         if result.new_env_vars:
             cli_logger.info(f"  New environment variables: {', '.join(result.new_env_vars)}")
         if result.install_failed:
-            cli_logger.warning(f"  Install failed (exit code {result.install_exit_code})")
-        upgraded_count += 1
+            cli_logger.error(f"  Install failed (exit code {result.install_exit_code})")
+            failed_count += 1
+        else:
+            upgraded_count += 1
 
     # Summary
     if upgraded_count == 0 and failed_count == 0:

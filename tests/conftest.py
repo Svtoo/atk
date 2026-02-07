@@ -21,6 +21,35 @@ from atk.plugin_schema import (
     PortConfig,
 )
 
+GIT_ENV = {
+    **os.environ,
+    "GIT_AUTHOR_NAME": "Test",
+    "GIT_AUTHOR_EMAIL": "test@test.com",
+    "GIT_COMMITTER_NAME": "Test",
+    "GIT_COMMITTER_EMAIL": "test@test.com",
+}
+
+
+def noop_prompt(_text: str) -> str:
+    """No-op prompt function for tests that don't need env var input."""
+    return ""
+
+
+def git_commit_all(work_dir: Path, message: str) -> str:
+    """Stage all changes, commit, and return the new commit hash.
+
+    Uses GIT_ENV for deterministic author/committer identity.
+    """
+    subprocess.run(["git", "add", "-A"], cwd=work_dir, check=True, capture_output=True)
+    subprocess.run(
+        ["git", "commit", "-m", message],
+        cwd=work_dir, check=True, capture_output=True, env=GIT_ENV,
+    )
+    return subprocess.run(
+        ["git", "rev-parse", "HEAD"],
+        cwd=work_dir, check=True, capture_output=True, text=True,
+    ).stdout.strip()
+
 
 def serialize_plugin(plugin: PluginSchema) -> str:
     """Serialize a PluginSchema to YAML string.
@@ -192,24 +221,8 @@ def create_fake_registry(tmp_path: Path) -> FakeRegistry:
         })
     )
 
-    env = {
-        **os.environ,
-        "GIT_AUTHOR_NAME": "Test",
-        "GIT_AUTHOR_EMAIL": "test@test.com",
-        "GIT_COMMITTER_NAME": "Test",
-        "GIT_COMMITTER_EMAIL": "test@test.com",
-    }
     subprocess.run(["git", "init"], cwd=work_dir, check=True, capture_output=True)
-    subprocess.run(["git", "add", "-A"], cwd=work_dir, check=True, capture_output=True)
-    subprocess.run(
-        ["git", "commit", "-m", "Initial"],
-        cwd=work_dir, check=True, capture_output=True, env=env,
-    )
-
-    commit_hash = subprocess.run(
-        ["git", "rev-parse", "HEAD"],
-        cwd=work_dir, check=True, capture_output=True, text=True,
-    ).stdout.strip()
+    commit_hash = git_commit_all(work_dir, "Initial")
 
     return FakeRegistry(url=f"file://{work_dir}", commit_hash=commit_hash)
 
@@ -260,23 +273,30 @@ def create_fake_git_repo(
         install_script.write_text("#!/bin/bash\necho 'Installing'\n")
         install_script.chmod(0o755)
 
-    env = {
-        **os.environ,
-        "GIT_AUTHOR_NAME": "Test",
-        "GIT_AUTHOR_EMAIL": "test@test.com",
-        "GIT_COMMITTER_NAME": "Test",
-        "GIT_COMMITTER_EMAIL": "test@test.com",
-    }
     subprocess.run(["git", "init"], cwd=work_dir, check=True, capture_output=True)
-    subprocess.run(["git", "add", "-A"], cwd=work_dir, check=True, capture_output=True)
-    subprocess.run(
-        ["git", "commit", "-m", "Initial"],
-        cwd=work_dir, check=True, capture_output=True, env=env,
-    )
-
-    commit_hash = subprocess.run(
-        ["git", "rev-parse", "HEAD"],
-        cwd=work_dir, check=True, capture_output=True, text=True,
-    ).stdout.strip()
+    commit_hash = git_commit_all(work_dir, "Initial")
 
     return FakeGitRepo(url=f"file://{work_dir}", commit_hash=commit_hash)
+
+
+
+def update_fake_repo(url: str, relative_path: str, message: str = "Update plugin") -> str:
+    """Make a change to a file in a fake repo and commit it. Returns new commit hash.
+
+    Modifies the 'description' field in the YAML file at relative_path
+    to simulate a plugin update.
+
+    Args:
+        url: file:// URL of the repo.
+        relative_path: Path to the YAML file within the repo (e.g. "plugins/test-plugin/plugin.yaml").
+        message: Commit message.
+
+    Returns:
+        The new commit hash.
+    """
+    work_dir = Path(url.removeprefix("file://"))
+    yaml_path = work_dir / relative_path
+    data = yaml.safe_load(yaml_path.read_text())
+    data["description"] = f"Updated — {message}"
+    yaml_path.write_text(yaml.dump(data))
+    return git_commit_all(work_dir, message)

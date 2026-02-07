@@ -20,14 +20,14 @@ from atk.plugin_schema import (
     PluginSchema,
 )
 from atk.registry import PluginNotFoundError
-from tests.conftest import create_fake_git_repo, create_fake_registry, write_plugin_yaml
+from tests.conftest import (
+    create_fake_git_repo,
+    create_fake_registry,
+    noop_prompt,
+    write_plugin_yaml,
+)
 
 runner = CliRunner()
-
-
-def _noop_prompt(_text: str) -> str:
-    """No-op prompt function for tests that don't care about env vars."""
-    return ""
 
 
 class TestDetectSourceType:
@@ -226,7 +226,7 @@ class TestAddPlugin:
         (subdir / "setup.sh").write_text(script_content)
 
         # When
-        add_plugin(str(source_dir), atk_home, _noop_prompt)
+        add_plugin(str(source_dir), atk_home, noop_prompt)
 
         # Then - plugin directory exists with all files
         plugin_path = atk_home / "plugins" / expected_dir
@@ -272,7 +272,7 @@ class TestAddPlugin:
         write_plugin_yaml(plugin_yaml, plugin)
 
         # When
-        add_plugin(str(plugin_yaml), atk_home, _noop_prompt)
+        add_plugin(str(plugin_yaml), atk_home, noop_prompt)
 
         # Then - plugin directory exists with only plugin.yaml
         plugin_path = atk_home / "plugins" / expected_dir
@@ -315,7 +315,7 @@ class TestAddPlugin:
         (plugin_dir / "README.md").write_text("# Already here")
 
         # When - add the plugin using its current location as source
-        add_plugin(str(plugin_dir), atk_home, _noop_prompt)
+        add_plugin(str(plugin_dir), atk_home, noop_prompt)
 
         # Then - plugin directory still exists with original files
         assert plugin_dir.exists()
@@ -355,7 +355,7 @@ class TestAddPlugin:
 
         # When/Then
         with pytest.raises(ValueError, match="already exists"):
-            add_plugin(str(source), atk_home, _noop_prompt)
+            add_plugin(str(source), atk_home, noop_prompt)
 
     def test_add_plugin_to_uninitialized_home_raises(self, tmp_path: Path) -> None:
         """Verify adding to uninitialized ATK Home raises error."""
@@ -366,7 +366,7 @@ class TestAddPlugin:
 
         # When/Then
         with pytest.raises(ValueError, match="not initialized"):
-            add_plugin(str(source), atk_home, _noop_prompt)
+            add_plugin(str(source), atk_home, noop_prompt)
 
 
     def test_add_local_plugin_does_not_write_atk_ref(self, tmp_path: Path) -> None:
@@ -379,7 +379,7 @@ class TestAddPlugin:
         source = self._create_plugin_source(tmp_path, plugin_name)
 
         # When
-        add_plugin(str(source), atk_home, _noop_prompt)
+        add_plugin(str(source), atk_home, noop_prompt)
 
         # Then - .atk-ref should NOT exist for local plugins
         plugin_path = atk_home / "plugins" / expected_dir
@@ -405,7 +405,7 @@ class TestAddRegistryPlugin:
         expected_dir = "test-plugin"
 
         # When
-        directory = add_plugin(plugin_name, atk_home, _noop_prompt)
+        directory = add_plugin(plugin_name, atk_home, noop_prompt)
 
         # Then - plugin files copied
         plugin_path = atk_home / "plugins" / expected_dir
@@ -434,7 +434,7 @@ class TestAddRegistryPlugin:
 
         # When/Then
         with pytest.raises(PluginNotFoundError, match=nonexistent_name):
-            add_plugin(nonexistent_name, atk_home, _noop_prompt)
+            add_plugin(nonexistent_name, atk_home, noop_prompt)
 
     def test_add_registry_plugin_no_gitignore_exemption(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
@@ -449,7 +449,7 @@ class TestAddRegistryPlugin:
         expected_dir = "test-plugin"
 
         # When
-        add_plugin(plugin_name, atk_home, _noop_prompt)
+        add_plugin(plugin_name, atk_home, noop_prompt)
 
         # Then - gitignore should NOT have exemption for registry plugin
         gitignore_path = atk_home / ".gitignore"
@@ -474,7 +474,7 @@ class TestAddRegistryPlugin:
         expected_dir = "test-plugin"
 
         # When
-        add_plugin(plugin_name, atk_home, _noop_prompt)
+        add_plugin(plugin_name, atk_home, noop_prompt)
 
         # Then - .atk-ref exists with the registry commit hash
         plugin_path = atk_home / "plugins" / expected_dir
@@ -498,7 +498,7 @@ class TestAddGitPlugin:
         expected_dir = "echo-tool"
 
         # When
-        directory = add_plugin(repo.url, atk_home, _noop_prompt)
+        directory = add_plugin(repo.url, atk_home, noop_prompt)
 
         # Then - plugin files copied from .atk/
         plugin_path = atk_home / "plugins" / expected_dir
@@ -524,11 +524,11 @@ class TestAddGitPlugin:
         atk_home = tmp_path / "atk-home"
         init_atk_home(atk_home)
         repo = create_fake_git_repo(tmp_path)
-        add_plugin(repo.url, atk_home, _noop_prompt)
+        add_plugin(repo.url, atk_home, noop_prompt)
 
         # When/Then
         with pytest.raises(ValueError, match="already added"):
-            add_plugin(repo.url, atk_home, _noop_prompt)
+            add_plugin(repo.url, atk_home, noop_prompt)
 
     def test_add_git_plugin_missing_atk_dir_raises(
         self, tmp_path: Path,
@@ -541,7 +541,7 @@ class TestAddGitPlugin:
 
         # When/Then
         with pytest.raises(GitPluginNotFoundError, match=".atk/"):
-            add_plugin(repo.url, atk_home, _noop_prompt)
+            add_plugin(repo.url, atk_home, noop_prompt)
 
     def test_add_git_plugin_no_gitignore_exemption(
         self, tmp_path: Path,
@@ -554,7 +554,7 @@ class TestAddGitPlugin:
         expected_dir = "echo-tool"
 
         # When
-        add_plugin(repo.url, atk_home, _noop_prompt)
+        add_plugin(repo.url, atk_home, noop_prompt)
 
         # Then - gitignore should NOT have exemption for git plugin
         gitignore_path = atk_home / ".gitignore"
@@ -573,7 +573,7 @@ class TestAddGitPlugin:
         expected_dir = "echo-tool"
 
         # When
-        add_plugin(repo.url, atk_home, _noop_prompt)
+        add_plugin(repo.url, atk_home, noop_prompt)
 
         # Then - .atk-ref exists with the repo commit hash
         plugin_path = atk_home / "plugins" / expected_dir

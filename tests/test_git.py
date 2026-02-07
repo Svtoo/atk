@@ -1,6 +1,5 @@
 """Tests for git operations module."""
 
-import os
 import subprocess
 from pathlib import Path
 from unittest.mock import patch
@@ -21,6 +20,7 @@ from atk.git import (
     remove_gitignore_exemption,
     write_atk_ref,
 )
+from tests.conftest import git_commit_all
 
 
 class TestGitInit:
@@ -253,23 +253,8 @@ class TestGitLsRemote:
         repo_dir.mkdir()
         (repo_dir / "README.md").write_text("# Test\n")
 
-        env = {
-            **os.environ,
-            "GIT_AUTHOR_NAME": "Test",
-            "GIT_AUTHOR_EMAIL": "test@test.com",
-            "GIT_COMMITTER_NAME": "Test",
-            "GIT_COMMITTER_EMAIL": "test@test.com",
-        }
         subprocess.run(["git", "init"], cwd=repo_dir, check=True, capture_output=True)
-        subprocess.run(["git", "add", "-A"], cwd=repo_dir, check=True, capture_output=True)
-        subprocess.run(
-            ["git", "commit", "-m", "Initial"],
-            cwd=repo_dir, check=True, capture_output=True, env=env,
-        )
-        commit_hash = subprocess.run(
-            ["git", "rev-parse", "HEAD"],
-            cwd=repo_dir, check=True, capture_output=True, text=True,
-        ).stdout.strip()
+        commit_hash = git_commit_all(repo_dir, "Initial")
 
         return f"file://{repo_dir}", commit_hash
 
