@@ -7,7 +7,13 @@ how to install and manage AI development tools.
 from enum import Enum
 from typing import Literal
 
-from pydantic import BaseModel, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, model_validator
+
+
+class StrictModel(BaseModel):
+    """Base model that forbids extra fields."""
+
+    model_config = ConfigDict(extra="forbid")
 
 # Schema version - update when plugin schema changes
 PLUGIN_SCHEMA_VERSION = "2026-01-23"
@@ -22,7 +28,7 @@ class ServiceType(str, Enum):
     SCRIPT = "script"
 
 
-class ServiceConfig(BaseModel):
+class ServiceConfig(StrictModel):
     """Configuration for how to run the plugin's service."""
 
     type: ServiceType = Field(
@@ -39,7 +45,7 @@ class ServiceConfig(BaseModel):
     )
 
 
-class VendorConfig(BaseModel):
+class VendorConfig(StrictModel):
     """Configuration for the plugin vendor/upstream source."""
 
     name: str = Field(description="Vendor name")
@@ -53,7 +59,7 @@ class VendorConfig(BaseModel):
     )
 
 
-class PortConfig(BaseModel):
+class PortConfig(StrictModel):
     """Configuration for a network port exposed by the plugin."""
 
     port: int = Field(description="Port number")
@@ -71,7 +77,7 @@ class PortConfig(BaseModel):
     )
 
 
-class EnvVarConfig(BaseModel):
+class EnvVarConfig(StrictModel):
     """Configuration for an environment variable."""
 
     name: str = Field(description="Environment variable name")
@@ -93,7 +99,7 @@ class EnvVarConfig(BaseModel):
     )
 
 
-class LifecycleConfig(BaseModel):
+class LifecycleConfig(StrictModel):
     """Configuration for lifecycle commands."""
 
     install: str | None = Field(
@@ -126,7 +132,7 @@ class LifecycleConfig(BaseModel):
     )
 
 
-class McpConfig(BaseModel):
+class McpConfig(StrictModel):
     """Configuration for MCP (Model Context Protocol) integration."""
 
     transport: Literal["stdio", "sse"] = Field(
@@ -150,7 +156,7 @@ class McpConfig(BaseModel):
     )
 
 
-class PluginSchema(BaseModel):
+class PluginSchema(StrictModel):
     """Root schema for plugin.yaml files."""
 
     schema_version: str = Field(
