@@ -214,8 +214,8 @@ Registry and git URL sources for plugins, version pinning, and the upgrade comma
 - [x] `atk upgrade` errors for local plugins
 
 ### Customization Preservation
-- [ ] `custom/` directory is never modified by ATK
-- [ ] `.gitignore` pattern tracks only `custom/` contents
+- [x] `custom/` directory is never modified by ATK
+- [x] `.gitignore` pattern tracks only `custom/` contents
 - [ ] `custom/overrides.yaml` merged with plugin.yaml at runtime
 - [ ] User scripts in `custom/` take precedence
 

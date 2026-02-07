@@ -1,6 +1,7 @@
 """Tests for atk upgrade command."""
 
 import os
+import subprocess
 from pathlib import Path
 from typing import NamedTuple
 
@@ -132,6 +133,16 @@ class TestUpgradeGitPlugin:
         assert result.upgraded is True
         actual = yaml.safe_load((fix.plugin_dir / "plugin.yaml").read_text())
         assert actual["description"] == new_description
+
+        # And — git log shows a commit for upgrading the plugin
+        git_result = subprocess.run(
+            ["git", "log", "--oneline", "-1"],
+            cwd=fix.atk_home,
+            capture_output=True,
+            text=True,
+            check=True,
+        )
+        assert "Upgrade plugin" in git_result.stdout
 
     def test_upgrade_picks_up_new_file(self, tmp_path: Path) -> None:
         """Upgrade adds files that were added in the new version."""
