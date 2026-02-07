@@ -9,6 +9,7 @@ from typer.testing import CliRunner
 from atk.add import AddSourceType, add_plugin, detect_source_type, load_plugin_schema
 from atk.cli import app
 from atk.exit_codes import DOCKER_ERROR, HOME_NOT_INITIALIZED, PLUGIN_INVALID, SUCCESS
+from atk.git import ATK_REF_FILE, read_atk_ref
 from atk.git_source import GitPluginNotFoundError
 from atk.init import GITIGNORE_CONTENT, init_atk_home
 from atk.manifest_schema import ManifestSchema, SourceType, load_manifest
@@ -368,6 +369,25 @@ class TestAddPlugin:
             add_plugin(str(source), atk_home, _noop_prompt)
 
 
+    def test_add_local_plugin_does_not_write_atk_ref(self, tmp_path: Path) -> None:
+        """Verify adding a local plugin does NOT create .atk-ref file."""
+        # Given
+        atk_home = tmp_path / "atk-home"
+        init_atk_home(atk_home)
+        plugin_name = "Local Plugin"
+        expected_dir = "local-plugin"
+        source = self._create_plugin_source(tmp_path, plugin_name)
+
+        # When
+        add_plugin(str(source), atk_home, _noop_prompt)
+
+        # Then - .atk-ref should NOT exist for local plugins
+        plugin_path = atk_home / "plugins" / expected_dir
+        ref_path = plugin_path / ATK_REF_FILE
+        assert not ref_path.exists()
+
+
+
 
 class TestAddRegistryPlugin:
     """Tests for adding plugins from the registry."""
@@ -439,6 +459,28 @@ class TestAddRegistryPlugin:
         # Then - plugin contents are ignored, custom/ is tracked
         assert "plugins/*/*" in gitignore_content
         assert "!plugins/*/custom/" in gitignore_content
+
+
+    def test_add_registry_plugin_writes_atk_ref(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """Verify adding a registry plugin writes .atk-ref with the commit hash."""
+        # Given
+        atk_home = tmp_path / "atk-home"
+        init_atk_home(atk_home)
+        registry = create_fake_registry(tmp_path)
+        monkeypatch.setattr("atk.registry.REGISTRY_URL", registry.url)
+        plugin_name = "test-plugin"
+        expected_dir = "test-plugin"
+
+        # When
+        add_plugin(plugin_name, atk_home, _noop_prompt)
+
+        # Then - .atk-ref exists with the registry commit hash
+        plugin_path = atk_home / "plugins" / expected_dir
+        actual_ref = read_atk_ref(plugin_path)
+        assert actual_ref == registry.commit_hash
+
 
 
 
@@ -518,6 +560,26 @@ class TestAddGitPlugin:
         gitignore_path = atk_home / ".gitignore"
         gitignore_content = gitignore_path.read_text()
         assert f"!plugins/{expected_dir}/" not in gitignore_content
+
+
+    def test_add_git_plugin_writes_atk_ref(
+        self, tmp_path: Path,
+    ) -> None:
+        """Verify adding a git plugin writes .atk-ref with the commit hash."""
+        # Given
+        atk_home = tmp_path / "atk-home"
+        init_atk_home(atk_home)
+        repo = create_fake_git_repo(tmp_path)
+        expected_dir = "echo-tool"
+
+        # When
+        add_plugin(repo.url, atk_home, _noop_prompt)
+
+        # Then - .atk-ref exists with the repo commit hash
+        plugin_path = atk_home / "plugins" / expected_dir
+        actual_ref = read_atk_ref(plugin_path)
+        assert actual_ref == repo.commit_hash
+
 
 
 

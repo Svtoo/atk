@@ -1,7 +1,7 @@
 # Phase 4: Plugin Sources
 
 > **Status**: In Progress
-> **Last Updated**: 2026-02-06
+> **Last Updated**: 2026-02-07
 
 Registry and git URL sources for plugins, version pinning, and the upgrade command.
 
@@ -184,18 +184,18 @@ Registry and git URL sources for plugins, version pinning, and the upgrade comma
 - [x] Manifest records `source.type: git`, `source.url`, and `source.ref`
 
 ### Upgrade Command
-- [ ] `atk upgrade <plugin>` fetches latest and updates
-- [ ] `atk upgrade --all` upgrades all upgradeable plugins
-- [ ] Preserves `custom/` directory during upgrade
-- [ ] Prompts for new required env vars
-- [ ] Runs install lifecycle after upgrade
-- [ ] Updates manifest with new commit hash
-- [ ] Commits changes (if auto_commit enabled)
+- [x] `atk upgrade <plugin>` fetches latest and updates
+- [x] `atk upgrade --all` upgrades all upgradeable plugins
+- [x] Preserves `custom/` directory during upgrade
+- [x] Prompts for new required env vars
+- [x] Runs install lifecycle after upgrade
+- [x] Updates manifest with new commit hash
+- [x] Commits changes (if auto_commit enabled)
 
 ### Version Pinning
 - [x] Manifest stores commit hash for registry and git sources
 - [ ] `atk install --all` fetches at pinned versions (bootstrap)
-- [ ] `.atk-ref` file stores commit hash in plugin directory
+- [x] `.atk-ref` file stores commit hash in plugin directory
 - [ ] Skip fetch if `.atk-ref` matches manifest ref
 - [ ] Pinned versions enable reproducible setups
 
@@ -211,7 +211,7 @@ Registry and git URL sources for plugins, version pinning, and the upgrade comma
 - [x] Adds gitignore exemption: `!plugins/my-tool/` and `!plugins/my-tool/**` to root `.gitignore`
 - [x] `atk remove` removes the gitignore exemption for local plugins
 - [x] Local plugins are fully tracked in git (no `custom/` needed)
-- [ ] `atk upgrade` errors for local plugins
+- [x] `atk upgrade` errors for local plugins
 
 ### Customization Preservation
 - [ ] `custom/` directory is never modified by ATK
@@ -254,12 +254,21 @@ Registry and git URL sources for plugins, version pinning, and the upgrade comma
 - [x] CLI handles git errors with user-friendly messages
 - [x] Source resolution updated to recognize `file://` URLs as git
 
-### 4.4 Upgrade Command
+### 4.4 Upgrade Command ✅
 
-- Implement `atk upgrade <plugin>` command
-- Implement `atk upgrade --all` flag
-- Preserve `custom/` during file replacement
-- Detect and prompt for new required env vars
+- [x] `git_ls_remote()` in `git.py` — lightweight remote HEAD check without cloning
+- [x] `.atk-ref` file read/write helpers in `git.py` (`write_atk_ref`, `read_atk_ref`)
+- [x] `.atk-ref` written during `atk add` for registry/git plugins
+- [x] `upgrade.py` module with `upgrade_plugin()` core function
+- [x] Compares local `.atk-ref` (or manifest ref) against remote HEAD
+- [x] Fetches to staging directory, then replaces plugin files
+- [x] Preserves `custom/` directory during file replacement
+- [x] Detects new required env vars and runs setup prompts
+- [x] Runs install lifecycle after upgrade
+- [x] Updates manifest ref and writes new `.atk-ref`
+- [x] `atk upgrade <plugin>` CLI command
+- [x] `atk upgrade --all` CLI flag (skips local plugins)
+- [x] Local plugins raise `LocalPluginError`
 
 ### 4.5 Manifest Source Tracking ✅
 
@@ -267,7 +276,7 @@ Registry and git URL sources for plugins, version pinning, and the upgrade comma
 - [x] Local plugins: `source.type: local`, no ref/url
 - [x] Registry plugins: `source.type: registry`, `source.ref: <commit_hash>`
 - [x] Git plugins: `source.type: git`, `source.url: <url>`, `source.ref: <commit_hash>`
-- [ ] Update ref on upgrade
+- [x] Update ref on upgrade
 
 ### 4.6 Bootstrap Flow
 

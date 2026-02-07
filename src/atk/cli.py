@@ -38,16 +38,17 @@ from atk.lifecycle import (
     restart_all_plugins,
     run_plugin_lifecycle,
 )
-from atk.manifest_schema import load_manifest
+from atk.manifest_schema import SourceType, load_manifest
 from atk.mcp import generate_mcp_config
 from atk.plugin import PluginNotFoundError, load_plugin
 from atk.registry import PluginNotFoundError as RegistryPluginNotFoundError
 from atk.remove import remove_plugin
 from atk.setup import run_setup
+from atk.upgrade import LocalPluginError, UpgradeError, upgrade_plugin
 
 app = typer.Typer(
     name="atk",
-    help="Agent Toolkit - Manage AI development tools through a git-backed, declarative manifest.",
+    help="AI Toolkit - Manage AI development tools through a git-backed, declarative manifest.",
     no_args_is_help=True,
 )
 
@@ -257,7 +258,7 @@ def main(
         help="Show ATK version and exit.",
     ),
 ) -> None:
-    """Agent Toolkit - Manage AI development tools through a git-backed, declarative manifest."""
+    """AI Toolkit - Manage AI development tools through a git-backed, declarative manifest."""
 
 
 @app.command()
@@ -401,6 +402,115 @@ def remove(
     except ValueError as e:
         cli_logger.error(f"Failed to remove plugin: {e}")
         raise typer.Exit(exit_codes.GENERAL_ERROR) from e
+
+
+
+@app.command()
+def upgrade(
+    plugin: Annotated[
+        str | None,
+        typer.Argument(
+            help="Plugin name or directory to upgrade.",
+        ),
+    ] = None,
+    all_plugins: Annotated[
+        bool,
+        typer.Option(
+            "--all",
+            help="Upgrade all upgradeable plugins (skips local plugins).",
+        ),
+    ] = False,
+) -> None:
+    """Upgrade a plugin to the latest remote version.
+
+    Checks the remote for a newer commit, fetches if needed, preserves
+    the custom/ directory, and detects new required environment variables.
+
+    Local plugins cannot be upgraded and are skipped with --all.
+    """
+    atk_home = require_ready_home()
+
+    if all_plugins and plugin:
+        cli_logger.error("Cannot specify both plugin and --all")
+        raise typer.Exit(exit_codes.INVALID_ARGS)
+
+    if not all_plugins and not plugin:
+        cli_logger.error("Must specify plugin or --all")
+        raise typer.Exit(exit_codes.INVALID_ARGS)
+
+    if plugin:
+        _upgrade_single_plugin(atk_home, plugin)
+    else:
+        _upgrade_all_plugins(atk_home)
+
+
+def _upgrade_single_plugin(atk_home: Path, identifier: str) -> None:
+    """Upgrade a single plugin and format output."""
+    try:
+        result = upgrade_plugin(identifier, atk_home, _stdin_prompt)
+    except LocalPluginError:
+        cli_logger.error(f"Plugin '{identifier}' is a local plugin and cannot be upgraded")
+        raise typer.Exit(exit_codes.PLUGIN_INVALID) from None
+    except UpgradeError as e:
+        cli_logger.error(f"Upgrade failed: {e}")
+        raise typer.Exit(exit_codes.GENERAL_ERROR) from None
+    except GitSourceError as e:
+        cli_logger.error(f"Failed to fetch from git: {e}")
+        raise typer.Exit(exit_codes.GENERAL_ERROR) from None
+
+    if not result.upgraded:
+        cli_logger.info(f"Plugin '{result.plugin_name}' is already up to date")
+        raise typer.Exit(exit_codes.SUCCESS)
+
+    cli_logger.success(f"Upgraded plugin '{result.plugin_name}'")
+    if result.new_env_vars:
+        cli_logger.info(f"  New environment variables configured: {', '.join(result.new_env_vars)}")
+    if result.install_failed:
+        cli_logger.warning(
+            f"  Install failed (exit code {result.install_exit_code})"
+        )
+    raise typer.Exit(exit_codes.SUCCESS)
+
+
+def _upgrade_all_plugins(atk_home: Path) -> None:
+    """Upgrade all upgradeable plugins and format output."""
+    manifest = load_manifest(atk_home)
+    upgraded_count = 0
+    skipped_count = 0
+    failed_count = 0
+
+    for entry in manifest.plugins:
+        if entry.source.type == SourceType.LOCAL:
+            cli_logger.dim(f"Skipping local plugin '{entry.name}'")
+            skipped_count += 1
+            continue
+
+        try:
+            result = upgrade_plugin(entry.directory, atk_home, _stdin_prompt)
+        except (UpgradeError, GitSourceError) as e:
+            cli_logger.error(f"Failed to upgrade '{entry.name}': {e}")
+            failed_count += 1
+            continue
+
+        if not result.upgraded:
+            cli_logger.dim(f"Plugin '{result.plugin_name}' is already up to date")
+            continue
+
+        cli_logger.success(f"Upgraded plugin '{result.plugin_name}'")
+        if result.new_env_vars:
+            cli_logger.info(f"  New environment variables: {', '.join(result.new_env_vars)}")
+        if result.install_failed:
+            cli_logger.warning(f"  Install failed (exit code {result.install_exit_code})")
+        upgraded_count += 1
+
+    # Summary
+    if upgraded_count == 0 and failed_count == 0:
+        cli_logger.info("All plugins are up to date")
+    elif failed_count > 0:
+        cli_logger.error(f"Upgrade complete: {upgraded_count} upgraded, {failed_count} failed")
+        raise typer.Exit(exit_codes.GENERAL_ERROR)
+
+    raise typer.Exit(exit_codes.SUCCESS)
 
 
 @app.command()

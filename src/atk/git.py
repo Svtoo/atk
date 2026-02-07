@@ -219,6 +219,69 @@ def remove_gitignore_exemption(path: Path, plugin_dir: str) -> None:
 
 
 
+def git_ls_remote(url: str) -> str:
+    """Get the HEAD commit hash from a remote repository without cloning.
+
+    Uses ``git ls-remote`` which only contacts the remote for ref info,
+    making it much cheaper than a full clone or fetch.
+
+    Args:
+        url: Git URL of the remote repository.
+
+    Returns:
+        The full 40-char commit hash of the remote HEAD.
+
+    Raises:
+        subprocess.CalledProcessError: If the remote is unreachable or git fails.
+        ValueError: If the remote has no HEAD ref.
+    """
+    result = subprocess.run(
+        ["git", "ls-remote", url, "HEAD"],
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    # Output format: "<hash>\tHEAD\n"
+    output = result.stdout.strip()
+    if not output:
+        msg = f"Remote '{url}' returned no HEAD ref"
+        raise ValueError(msg)
+    commit_hash = output.split("\t")[0]
+    return commit_hash
+
+
+ATK_REF_FILE = ".atk-ref"
+
+
+def write_atk_ref(plugin_dir: Path, commit_hash: str) -> None:
+    """Write the commit hash to the .atk-ref file in a plugin directory.
+
+    This records which commit the on-disk plugin files correspond to,
+    enabling upgrade checks without a full fetch.
+
+    Args:
+        plugin_dir: Path to the plugin directory.
+        commit_hash: The commit hash to record.
+    """
+    ref_path = plugin_dir / ATK_REF_FILE
+    ref_path.write_text(commit_hash + "\n")
+
+
+def read_atk_ref(plugin_dir: Path) -> str | None:
+    """Read the commit hash from the .atk-ref file in a plugin directory.
+
+    Args:
+        plugin_dir: Path to the plugin directory.
+
+    Returns:
+        The commit hash string, or None if the file does not exist.
+    """
+    ref_path = plugin_dir / ATK_REF_FILE
+    if not ref_path.exists():
+        return None
+    return ref_path.read_text().strip()
+
+
 def sparse_clone(url: str, clone_dir: Path) -> None:
     """Clone a repo with blob filtering and sparse checkout enabled.
 

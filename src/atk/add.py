@@ -9,7 +9,7 @@ from collections.abc import Callable
 from enum import Enum
 from pathlib import Path
 
-from atk.git import add_gitignore_exemption, git_add, git_commit
+from atk.git import add_gitignore_exemption, git_add, git_commit, write_atk_ref
 from atk.git_source import fetch_git_plugin
 from atk.home import validate_atk_home
 from atk.lifecycle import LifecycleCommandNotDefinedError, run_lifecycle_command
@@ -248,6 +248,9 @@ def _finalize_add(
 
     if add_gitignore:
         add_gitignore_exemption(atk_home, directory)
+
+    if source.ref:
+        write_atk_ref(target_dir, source.ref)
 
     auto_commit = _update_manifest(atk_home, schema.name, directory, source=source)
 

@@ -1,4 +1,4 @@
-# ATK: Agent Toolkit Specification
+# ATK: AI Toolkit Specification
 
 > **Status**: In progress
 > **Last Updated**: 2026-01-22

@@ -1,5 +1,6 @@
 """Tests for git operations module."""
 
+import os
 import subprocess
 from pathlib import Path
 from unittest.mock import patch
@@ -7,14 +8,18 @@ from unittest.mock import patch
 import pytest
 
 from atk.git import (
+    ATK_REF_FILE,
     add_gitignore_exemption,
     git_add,
     git_commit,
     git_init,
+    git_ls_remote,
     has_staged_changes,
     is_git_available,
     is_git_repo,
+    read_atk_ref,
     remove_gitignore_exemption,
+    write_atk_ref,
 )
 
 
@@ -236,6 +241,104 @@ class TestIsGitAvailable:
 
             # Then
             assert result is False
+
+
+
+class TestGitLsRemote:
+    """Tests for git_ls_remote function."""
+
+    def _create_remote_repo(self, tmp_path: Path) -> tuple[str, str]:
+        """Create a local git repo and return (file:// URL, commit hash)."""
+        repo_dir = tmp_path / "remote-repo"
+        repo_dir.mkdir()
+        (repo_dir / "README.md").write_text("# Test\n")
+
+        env = {
+            **os.environ,
+            "GIT_AUTHOR_NAME": "Test",
+            "GIT_AUTHOR_EMAIL": "test@test.com",
+            "GIT_COMMITTER_NAME": "Test",
+            "GIT_COMMITTER_EMAIL": "test@test.com",
+        }
+        subprocess.run(["git", "init"], cwd=repo_dir, check=True, capture_output=True)
+        subprocess.run(["git", "add", "-A"], cwd=repo_dir, check=True, capture_output=True)
+        subprocess.run(
+            ["git", "commit", "-m", "Initial"],
+            cwd=repo_dir, check=True, capture_output=True, env=env,
+        )
+        commit_hash = subprocess.run(
+            ["git", "rev-parse", "HEAD"],
+            cwd=repo_dir, check=True, capture_output=True, text=True,
+        ).stdout.strip()
+
+        return f"file://{repo_dir}", commit_hash
+
+    def test_returns_head_commit_hash(self, tmp_path: Path) -> None:
+        """Verify git_ls_remote returns the correct HEAD commit hash."""
+        # Given
+        url, expected_hash = self._create_remote_repo(tmp_path)
+
+        # When
+        actual_hash = git_ls_remote(url)
+
+        # Then
+        assert actual_hash == expected_hash
+
+    def test_invalid_url_raises(self) -> None:
+        """Verify git_ls_remote raises for unreachable URL."""
+        # Given
+        url = "https://nonexistent.invalid/repo"
+
+        # When/Then
+        with pytest.raises(subprocess.CalledProcessError):
+            git_ls_remote(url)
+
+
+
+class TestAtkRef:
+    """Tests for write_atk_ref and read_atk_ref functions."""
+
+    def test_write_and_read_roundtrip(self, tmp_path: Path) -> None:
+        """Verify writing and reading .atk-ref produces the same hash."""
+        # Given
+        plugin_dir = tmp_path / "my-plugin"
+        plugin_dir.mkdir()
+        commit_hash = "abc123def456"
+
+        # When
+        write_atk_ref(plugin_dir, commit_hash)
+        actual = read_atk_ref(plugin_dir)
+
+        # Then
+        assert actual == commit_hash
+
+    def test_read_returns_none_when_missing(self, tmp_path: Path) -> None:
+        """Verify read_atk_ref returns None when .atk-ref does not exist."""
+        # Given
+        plugin_dir = tmp_path / "no-ref-plugin"
+        plugin_dir.mkdir()
+
+        # When
+        actual = read_atk_ref(plugin_dir)
+
+        # Then
+        assert actual is None
+
+    def test_write_creates_file_with_correct_name(self, tmp_path: Path) -> None:
+        """Verify write_atk_ref creates a file named .atk-ref."""
+        # Given
+        plugin_dir = tmp_path / "my-plugin"
+        plugin_dir.mkdir()
+        commit_hash = "deadbeef"
+
+        # When
+        write_atk_ref(plugin_dir, commit_hash)
+
+        # Then
+        ref_path = plugin_dir / ATK_REF_FILE
+        assert ref_path.exists()
+        assert ref_path.read_text() == commit_hash + "\n"
+
 
 
 class TestAddGitignoreExemption:
