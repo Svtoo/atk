@@ -8,8 +8,6 @@ ATK is a developer-side **toolchain and service manager for AI system developmen
 
 It helps you install, run, update, version, and reproduce the growing set of local tools modern AI-assisted development depends on — without Docker sprawl, shell scripts, or "how did I install this again?" moments.
 
----
-
 ## The problem ATK solves
 
 ATK is built for people who **develop with AI**, not only people who develop AI.
@@ -35,8 +33,6 @@ Until you:
 
 ATK exists because this setup is **real**, fragile, and constantly changing — and painful.
 
----
-
 ## Who ATK is for
 
 ATK is for developers who:
@@ -48,8 +44,6 @@ ATK is for developers who:
 * want identical setups across machines and tools
 
 ATK is not limited to people building AI models. It is for people **building software with AI systems in the loop**.
-
----
 
 ## What ATK is (and is not)
 
@@ -71,8 +65,6 @@ ATK is not limited to people building AI models. It is for people **building sof
 If you’re configuring servers, ATK is the wrong tool.
 If you’re keeping your **AI dev setup sane**, it’s the right one.
 
----
-
 ## Mental model
 
 > Think of ATK as **a control plane for your local AI toolchain**.
@@ -88,8 +80,6 @@ If you’re keeping your **AI dev setup sane**, it’s the right one.
 * Every change is **versioned**
 * Your setup can be cloned, audited, and rolled back
 
----
-
 ## A tiny example
 
 ```bash
@@ -103,12 +93,6 @@ atk init
 # add a plugin (from the registry)
 atk add openmemory
 
-# configure required env vars (interactive)
-atk setup openmemory
-
-# install / bootstrap (images, binaries, etc.)
-atk install openmemory
-
 # run it
 atk start openmemory
 atk status
@@ -120,8 +104,6 @@ atk mcp openmemory
 Your entire setup now lives in `~/.atk/` — a git repository.
 
 Push it. Clone it on another machine. Run `atk install --all`.
-
----
 
 ## Reproducibility, updates, and drift
 
@@ -142,8 +124,6 @@ ATK environments are fully reproducible:
 * the entire toolkit directory is **git-backed**
 
 Clone the repo. Run `atk sync`. You get the same toolchain — including tool versions, MCPs, and agent-facing configuration.
-
----
 
 ## ATK plugins and registry
 
@@ -178,8 +158,6 @@ Registry plugins are:
 
 Think of this as the "known good" layer.
 
----
-
 ### 2. Git repository plugins (distribution channel)
 
 Any Git repository can become an ATK plugin.
@@ -202,8 +180,6 @@ ATK will:
 
 This turns ATK into a **distribution channel** for AI tooling — without a centralized gatekeeper.
 
----
-
 ### 3. Local plugins (personal or internal tooling)
 
 You can also define plugins locally for your own use.
@@ -225,8 +201,6 @@ This is ideal for:
 ATK lives **above** package managers, Docker, and agent configs.
 It doesn’t replace them — it orchestrates them.
 
----
-
 ## Unified lifecycle
 
 ATK gives every tool the same lifecycle, regardless of how it is installed.
@@ -246,8 +220,6 @@ This works whether the tool is:
 * a Node binary
 * a custom shell-based MCP server
 
----
-
 ## Design principles
 
 | Principle   | Meaning                                               |
@@ -258,8 +230,6 @@ This works whether the tool is:
 | Transparent | Human-readable YAML; no hidden state                  |
 | AI-first    | CLI-driven, scriptable, agent-friendly                |
 | Focused     | Manages tools, doesn’t build them                     |
-
----
 
 ## Why ATK exists
 
@@ -275,8 +245,6 @@ If you’re working with:
 * hybrid stacks of Python, Node, Docker, and binaries
 
 ATK is for you.
-
----
 
 ## What ATK is evolving into
 
@@ -298,8 +266,6 @@ The long-term goal:
 
 Switching agents should feel trivial, because your setup — tools, memory, rules, MCPs — stays identical.
 
----
-
 ## Installation
 
 ```bash
@@ -312,8 +278,6 @@ pip install atk
 
 ATK is distributed via **PyPI** and installs as a single self-contained CLI.
 
----
-
 ## Roadmap (high level)
 
 * Core CLI and lifecycle management — **done**
@@ -321,8 +285,6 @@ ATK is distributed via **PyPI** and installs as a single self-contained CLI.
 * Registry and git-based distribution — **in progress**
 * Agent configuration and MCP binding — **planned**
 * ATK MCP (self-hosting control plane) — **planned**
-
----
 
 ## Status
 
