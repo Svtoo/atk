@@ -276,12 +276,12 @@ Registry and git URL sources for plugins, version pinning, and the upgrade comma
 - Fetch at pinned version from manifest
 - Handle missing plugins gracefully
 
-### 4.7 Uninstall Command
+### 4.7 Uninstall Command ✅
 
-- Implement `atk uninstall <plugin>` command
-- Update `atk remove` to call uninstall lifecycle
-- Add confirmation prompt (or `--force` flag)
-- Add schema validation: install requires uninstall
+- [x] Implement `atk uninstall <plugin>` command
+- [x] Update `atk remove` to call uninstall lifecycle
+- [x] Add confirmation prompt (or `--force` flag)
+- [x] Add schema validation: install requires uninstall
 
 ### 4.8 Local Plugin Support ✅
 
