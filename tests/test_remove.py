@@ -19,7 +19,7 @@ from atk.manifest_schema import (
     load_manifest,
     save_manifest,
 )
-from atk.plugin_schema import PLUGIN_SCHEMA_VERSION, PluginSchema
+from atk.plugin_schema import PLUGIN_SCHEMA_VERSION, LifecycleConfig, PluginSchema
 from atk.remove import remove_plugin
 from tests.conftest import write_plugin_yaml
 
@@ -216,6 +216,62 @@ class TestRemovePlugin:
         # Then - plugin directory is gone
         assert not plugin_dir.exists()
 
+    def test_remove_aborts_when_uninstall_fails_without_force(self, tmp_path: Path) -> None:
+        """Verify remove_plugin aborts when uninstall fails and force is False."""
+        # Given
+        atk_home = tmp_path / "atk-home"
+        init_atk_home(atk_home)
+        directory = "failing-uninstall"
+        failing_uninstall_cmd = "exit 1"
+        plugin_dir = _add_plugin_with_uninstall(
+            atk_home, "Failing Uninstall", directory, failing_uninstall_cmd
+        )
+
+        # When
+        result = remove_plugin(directory, atk_home, force=False)
+
+        # Then — removal was aborted
+        assert result.removed is False
+        assert result.uninstall_failed is True
+        expected_exit_code = 1
+        assert result.uninstall_exit_code == expected_exit_code
+
+        # Then — plugin directory still exists
+        assert plugin_dir.exists()
+
+        # Then — manifest still contains the plugin
+        manifest_after = load_manifest(atk_home)
+        plugin_dirs = [p.directory for p in manifest_after.plugins]
+        assert directory in plugin_dirs
+
+    def test_remove_continues_when_uninstall_fails_with_force(self, tmp_path: Path) -> None:
+        """Verify remove_plugin continues when uninstall fails and force is True."""
+        # Given
+        atk_home = tmp_path / "atk-home"
+        init_atk_home(atk_home)
+        directory = "failing-uninstall"
+        failing_uninstall_cmd = "exit 1"
+        plugin_dir = _add_plugin_with_uninstall(
+            atk_home, "Failing Uninstall", directory, failing_uninstall_cmd
+        )
+
+        # When
+        result = remove_plugin(directory, atk_home, force=True)
+
+        # Then — removal succeeded despite uninstall failure
+        assert result.removed is True
+        assert result.uninstall_failed is True
+        expected_exit_code = 1
+        assert result.uninstall_exit_code == expected_exit_code
+
+        # Then — plugin directory is gone
+        assert not plugin_dir.exists()
+
+        # Then — manifest no longer contains the plugin
+        manifest_after = load_manifest(atk_home)
+        plugin_dirs = [p.directory for p in manifest_after.plugins]
+        assert directory not in plugin_dirs
+
 
 class TestRemoveCLI:
     """Tests for atk remove CLI command."""
@@ -298,8 +354,8 @@ class TestRemoveCLI:
         assert (atk_home / "plugins" / "full-plugin").exists()
         assert (atk_home / "plugins" / "minimal-plugin").exists()
 
-        # When - remove one plugin by name
-        result = runner.invoke(app, ["remove", "Full Plugin"])
+        # When - remove one plugin by name (--force to skip confirmation since full-plugin has uninstall)
+        result = runner.invoke(app, ["remove", "Full Plugin", "--force"])
 
         # Then - removal succeeded
         assert result.exit_code == exit_codes.SUCCESS
@@ -319,6 +375,177 @@ class TestRemoveCLI:
         remaining_plugin = manifest.plugins[0]
         assert remaining_plugin.directory == "minimal-plugin"
         assert remaining_plugin.name == "Minimal Plugin"
+
+    def test_cli_remove_errors_when_uninstall_fails_without_force(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Verify CLI errors with --force guidance when uninstall fails."""
+        # Given
+        atk_home = tmp_path / "atk-home"
+        init_atk_home(atk_home)
+        monkeypatch.setenv("ATK_HOME", str(atk_home))
+        failing_uninstall_cmd = "exit 1"
+        _add_plugin_with_uninstall(atk_home, "Test Plugin", "test-plugin", failing_uninstall_cmd)
+
+        # When — remove with confirmation but uninstall fails
+        result = runner.invoke(app, ["remove", "test-plugin"], input="y\n")
+
+        # Then — command fails
+        assert result.exit_code == exit_codes.GENERAL_ERROR
+
+        # Then — error message mentions --force
+        assert "--force" in result.output
+
+        # Then — plugin still exists
+        assert (atk_home / "plugins" / "test-plugin").exists()
+
+    def test_cli_remove_succeeds_when_uninstall_fails_with_force(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Verify CLI succeeds with --force even when uninstall fails."""
+        # Given
+        atk_home = tmp_path / "atk-home"
+        init_atk_home(atk_home)
+        monkeypatch.setenv("ATK_HOME", str(atk_home))
+        failing_uninstall_cmd = "exit 1"
+        _add_plugin_with_uninstall(atk_home, "Test Plugin", "test-plugin", failing_uninstall_cmd)
+
+        # When — remove with --force
+        result = runner.invoke(app, ["remove", "test-plugin", "--force"])
+
+        # Then — command succeeds
+        assert result.exit_code == exit_codes.SUCCESS
+
+        # Then — plugin is removed
+        assert not (atk_home / "plugins" / "test-plugin").exists()
+
+        # Then — user was warned about uninstall failure
+        assert "uninstall failed" in result.output.lower() or "warning" in result.output.lower()
+
+
+def _add_plugin_with_uninstall(
+    atk_home: Path,
+    name: str,
+    directory: str,
+    uninstall_cmd: str = "echo uninstalling",
+) -> Path:
+    """Helper to add a plugin with install+uninstall lifecycle for testing confirmation."""
+    plugin_dir = atk_home / "plugins" / directory
+    plugin_dir.mkdir(parents=True)
+
+    plugin = PluginSchema(
+        schema_version=PLUGIN_SCHEMA_VERSION,
+        name=name,
+        description=f"Test plugin: {name}",
+        lifecycle=LifecycleConfig(
+            install="echo installing",
+            uninstall=uninstall_cmd,
+        ),
+    )
+    write_plugin_yaml(plugin_dir, plugin)
+
+    manifest = load_manifest(atk_home)
+    manifest.plugins.append(PluginEntry(name=name, directory=directory))
+    save_manifest(manifest, atk_home)
+
+    return plugin_dir
+
+
+class TestRemoveConfirmation:
+    """Tests for confirmation prompt in remove command."""
+
+    def test_remove_prompts_when_uninstall_defined(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Verify remove prompts for confirmation when uninstall lifecycle is defined."""
+        # Given
+        atk_home = tmp_path / "atk-home"
+        init_atk_home(atk_home)
+        monkeypatch.setenv("ATK_HOME", str(atk_home))
+        uninstall_cmd = "echo uninstalling"
+        _add_plugin_with_uninstall(atk_home, "Test Plugin", "test-plugin", uninstall_cmd)
+
+        # When - user cancels confirmation
+        result = runner.invoke(app, ["remove", "test-plugin"], input="n\n")
+
+        # Then - command exits successfully without removing
+        assert result.exit_code == exit_codes.SUCCESS
+        assert "Continue?" in result.output
+        assert "cancelled" in result.output.lower()
+        assert (atk_home / "plugins" / "test-plugin").exists()
+
+    def test_remove_proceeds_when_user_confirms(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Verify remove proceeds when user confirms."""
+        # Given
+        atk_home = tmp_path / "atk-home"
+        init_atk_home(atk_home)
+        monkeypatch.setenv("ATK_HOME", str(atk_home))
+        _add_plugin_with_uninstall(atk_home, "Test Plugin", "test-plugin")
+
+        # When - user confirms
+        result = runner.invoke(app, ["remove", "test-plugin"], input="y\n")
+
+        # Then - plugin is removed
+        assert result.exit_code == exit_codes.SUCCESS
+        assert "Removed plugin" in result.output
+        assert not (atk_home / "plugins" / "test-plugin").exists()
+
+    def test_remove_force_skips_confirmation(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Verify --force skips confirmation prompt."""
+        # Given
+        atk_home = tmp_path / "atk-home"
+        init_atk_home(atk_home)
+        monkeypatch.setenv("ATK_HOME", str(atk_home))
+        _add_plugin_with_uninstall(atk_home, "Test Plugin", "test-plugin")
+
+        # When - use --force
+        result = runner.invoke(app, ["remove", "test-plugin", "--force"])
+
+        # Then - plugin is removed without prompt
+        assert result.exit_code == exit_codes.SUCCESS
+        assert "Continue?" not in result.output
+        assert "Removed plugin" in result.output
+        assert not (atk_home / "plugins" / "test-plugin").exists()
+
+    def test_remove_no_prompt_when_no_uninstall(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Verify remove does NOT prompt when plugin has no uninstall lifecycle."""
+        # Given
+        atk_home = tmp_path / "atk-home"
+        init_atk_home(atk_home)
+        monkeypatch.setenv("ATK_HOME", str(atk_home))
+        _add_plugin_to_home(atk_home, "Test Plugin", "test-plugin")
+
+        # When - no --force needed since no uninstall lifecycle
+        result = runner.invoke(app, ["remove", "test-plugin"])
+
+        # Then - plugin is removed without prompt
+        assert result.exit_code == exit_codes.SUCCESS
+        assert "Continue?" not in result.output
+        assert "Removed plugin" in result.output
+        assert not (atk_home / "plugins" / "test-plugin").exists()
+
+    def test_remove_shows_uninstall_command_in_prompt(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Verify confirmation prompt shows the uninstall command."""
+        # Given
+        atk_home = tmp_path / "atk-home"
+        init_atk_home(atk_home)
+        monkeypatch.setenv("ATK_HOME", str(atk_home))
+        uninstall_cmd = "docker compose down -v --rmi local"
+        _add_plugin_with_uninstall(atk_home, "Test Plugin", "test-plugin", uninstall_cmd)
+
+        # When - user cancels to see prompt
+        result = runner.invoke(app, ["remove", "test-plugin"], input="n\n")
+
+        # Then - prompt shows the uninstall command
+        assert uninstall_cmd in result.output
 
 
 class TestRemoveAutoCommit:

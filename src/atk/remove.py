@@ -25,15 +25,18 @@ class RemoveResult:
     uninstall_exit_code: int | None = None
 
 
-def remove_plugin(identifier: str, atk_home: Path) -> RemoveResult:
+def remove_plugin(identifier: str, atk_home: Path, force: bool = False) -> RemoveResult:
     """Remove a plugin from ATK Home.
 
     Runs the stop and uninstall lifecycle commands before removing files (if defined).
-    Continues with removal even if stop or uninstall fails.
+    If uninstall fails and force is False, aborts without deleting files or manifest.
+    If force is True, continues with removal even if uninstall fails.
+    Stop failures never abort — stop is best-effort.
 
     Args:
         identifier: Plugin identifier - can be directory name or plugin name.
         atk_home: Path to ATK Home directory.
+        force: If True, continue with removal even if uninstall lifecycle fails.
 
     Returns:
         RemoveResult with removed status and lifecycle info.
@@ -90,6 +93,15 @@ def remove_plugin(identifier: str, atk_home: Path) -> RemoveResult:
         try:
             exit_code = run_lifecycle_command(schema, plugin_dir, "uninstall")
             if exit_code != 0:
+                if not force:
+                    # Abort: don't delete files or manifest so user can retry
+                    return RemoveResult(
+                        removed=False,
+                        stop_failed=stop_failed,
+                        stop_exit_code=stop_exit_code,
+                        uninstall_failed=True,
+                        uninstall_exit_code=exit_code,
+                    )
                 uninstall_failed = True
                 uninstall_exit_code = exit_code
         except LifecycleCommandNotDefinedError:

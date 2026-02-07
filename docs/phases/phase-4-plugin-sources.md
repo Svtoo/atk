@@ -200,11 +200,11 @@ Registry and git URL sources for plugins, version pinning, and the upgrade comma
 - [ ] Pinned versions enable reproducible setups
 
 ### Uninstall Command
-- [ ] `atk uninstall <plugin>` runs uninstall lifecycle and removes plugin
-- [ ] `atk remove <plugin>` calls uninstall lifecycle before removing
-- [ ] Both commands require confirmation (or `--force` flag)
-- [ ] Plugin schema: if `install` is defined, `uninstall` must be defined
-- [ ] Uninstall lifecycle cleans up resources (volumes, images, etc.)
+- [x] `atk uninstall <plugin>` runs stop + uninstall lifecycle (does not remove plugin)
+- [x] `atk remove <plugin>` calls uninstall lifecycle before removing
+- [x] Both commands require confirmation (or `--force` flag)
+- [x] Plugin schema: if `install` is defined, `uninstall` must be defined
+- [x] Uninstall lifecycle cleans up resources (volumes, images, etc.)
 
 ### Local Plugin Support
 - [x] `atk add ./plugins/my-tool` recognizes local source

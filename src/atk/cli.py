@@ -337,24 +337,64 @@ def remove(
             help="Plugin name or directory to remove.",
         ),
     ],
+    force: Annotated[
+        bool,
+        typer.Option(
+            "--force",
+            help="Skip confirmation prompt and continue past lifecycle failures.",
+        ),
+    ] = False,
 ) -> None:
     """Remove a plugin from ATK Home.
 
     Removes the plugin directory and updates the manifest.
-    Runs the stop lifecycle command before removal (if defined).
+    Runs stop and uninstall lifecycle commands before removal (if defined).
     Accepts either the plugin name or directory name.
     If the plugin is not found, this is a no-op.
+    Prompts for confirmation when uninstall lifecycle is defined (use --force to skip).
     """
     atk_home = require_ready_home()
 
+    # Check if plugin has uninstall lifecycle and prompt for confirmation
+    if not force:
+        try:
+            plugin_schema, _ = load_plugin(atk_home, plugin)
+            if (
+                plugin_schema.lifecycle is not None
+                and plugin_schema.lifecycle.uninstall is not None
+            ):
+                console.print(
+                    f"\n⚠️  This will run the uninstall command which may delete data:\n"
+                    f"    {plugin_schema.lifecycle.uninstall}\n",
+                    style="yellow",
+                )
+                confirm = typer.confirm("Continue?", default=False)
+                if not confirm:
+                    cli_logger.info("Remove cancelled")
+                    raise typer.Exit(exit_codes.SUCCESS)
+        except PluginNotFoundError:
+            # Plugin not in manifest — remove_plugin will handle as no-op
+            pass
+
     try:
-        result = remove_plugin(plugin, atk_home)
+        result = remove_plugin(plugin, atk_home, force=force)
         if result.removed:
             if result.stop_failed:
                 cli_logger.warning(
                     f"Warning: stop failed for '{plugin}' (exit code {result.stop_exit_code})"
                 )
+            if result.uninstall_failed:
+                cli_logger.warning(
+                    f"Warning: uninstall failed for '{plugin}' (exit code {result.uninstall_exit_code})"
+                )
             cli_logger.success(f"Removed plugin '{plugin}'")
+        elif result.uninstall_failed:
+            cli_logger.error(
+                f"Uninstall failed for '{plugin}' (exit code {result.uninstall_exit_code}). "
+                f"Plugin was NOT removed. Fix the issue and retry, "
+                f"or use --force to remove anyway."
+            )
+            raise typer.Exit(exit_codes.GENERAL_ERROR)
         else:
             cli_logger.warning(f"Plugin '{plugin}' not found (no-op)")
         raise typer.Exit(exit_codes.SUCCESS)
