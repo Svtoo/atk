@@ -3,16 +3,18 @@
 Tests fetching plugin files from the registry git repo.
 """
 
+import subprocess
 from pathlib import Path
 
 import pytest
+import yaml
 
 from atk.registry import (
     PluginNotFoundError,
     RegistryFetchError,
     fetch_registry_plugin,
 )
-from tests.conftest import create_fake_registry
+from tests.conftest import GIT_ENV, create_fake_registry
 
 
 class TestFetchRegistryPlugin:
@@ -74,5 +76,32 @@ class TestFetchRegistryPlugin:
                 name="test-plugin",
                 target_dir=target_dir,
                 registry_url="https://nonexistent.invalid/repo",
+            )
+
+    def test_invalid_index_schema_raises_registry_fetch_error(self, tmp_path: Path) -> None:
+        """Fetch raises RegistryFetchError when index.yaml has invalid schema."""
+        # Given - registry with invalid index (plugin entry missing required fields)
+        work_dir = tmp_path / "registry-work"
+        work_dir.mkdir()
+        invalid_plugin_entry = {"name": "test-plugin"}  # missing path and description
+        (work_dir / "index.yaml").write_text(
+            yaml.dump({"plugins": [invalid_plugin_entry]})
+        )
+        subprocess.run(["git", "init"], cwd=work_dir, check=True, capture_output=True)
+        subprocess.run(["git", "add", "-A"], cwd=work_dir, check=True, capture_output=True)
+        subprocess.run(
+            ["git", "commit", "-m", "Initial"],
+            cwd=work_dir, check=True, capture_output=True, env=GIT_ENV,
+        )
+        registry_url = f"file://{work_dir}"
+        target_dir = tmp_path / "target"
+
+        # When/Then
+        expected_match = "Invalid registry index"
+        with pytest.raises(RegistryFetchError, match=expected_match):
+            fetch_registry_plugin(
+                name="test-plugin",
+                target_dir=target_dir,
+                registry_url=registry_url,
             )
 

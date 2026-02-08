@@ -265,7 +265,7 @@ class TestLoadManifest:
             load_manifest(tmp_path)
 
     def test_raises_when_manifest_missing_required_field(self, tmp_path: Path) -> None:
-        """Verify load_manifest raises ValidationError when schema_version missing."""
+        """Verify load_manifest raises ValueError with formatted message when schema_version missing."""
         # Given - manifest without required schema_version
         manifest_path = tmp_path / "manifest.yaml"
         invalid_content = {
@@ -274,14 +274,13 @@ class TestLoadManifest:
         }
         manifest_path.write_text(yaml.dump(invalid_content))
 
-        # When/Then
-        from pydantic import ValidationError
-
-        with pytest.raises(ValidationError, match="schema_version"):
+        # When/Then - match on "Invalid manifest" prefix to verify formatted error
+        expected_prefix = "Invalid manifest"
+        with pytest.raises(ValueError, match=expected_prefix):
             load_manifest(tmp_path)
 
     def test_raises_when_manifest_has_invalid_plugin_directory(self, tmp_path: Path) -> None:
-        """Verify load_manifest raises ValidationError for invalid plugin directory."""
+        """Verify load_manifest raises ValueError with formatted message for invalid plugin directory."""
         # Given - manifest with invalid plugin directory (starts with number)
         manifest_path = tmp_path / "manifest.yaml"
         invalid_directory = "123-invalid"
@@ -292,10 +291,9 @@ class TestLoadManifest:
         }
         manifest_path.write_text(yaml.dump(invalid_content))
 
-        # When/Then
-        from pydantic import ValidationError
-
-        with pytest.raises(ValidationError, match="directory"):
+        # When/Then - match on "Invalid manifest" prefix to verify formatted error
+        expected_prefix = "Invalid manifest"
+        with pytest.raises(ValueError, match=expected_prefix):
             load_manifest(tmp_path)
 
 

@@ -9,7 +9,9 @@ from enum import Enum
 from pathlib import Path
 
 import yaml
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field, ValidationError, field_validator
+
+from atk.errors import format_validation_errors
 
 # Schema version - update when manifest schema changes
 MANIFEST_SCHEMA_VERSION = "2026-02-06"
@@ -95,6 +97,7 @@ def load_manifest(atk_home: Path) -> "ManifestSchema":
 
     Raises:
         FileNotFoundError: If manifest.yaml does not exist.
+        ValueError: If YAML is invalid or schema validation fails.
     """
     manifest_path = atk_home / "manifest.yaml"
     if not manifest_path.exists():
@@ -103,7 +106,12 @@ def load_manifest(atk_home: Path) -> "ManifestSchema":
 
     content = manifest_path.read_text()
     data = yaml.safe_load(content)
-    return ManifestSchema.model_validate(data)
+    try:
+        return ManifestSchema.model_validate(data)
+    except ValidationError as e:
+        clean_errors = format_validation_errors(e)
+        msg = f"Invalid manifest '{manifest_path}': {clean_errors}"
+        raise ValueError(msg) from e
 
 
 def save_manifest(manifest: "ManifestSchema", atk_home: Path) -> None:

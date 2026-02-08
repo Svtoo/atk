@@ -1,5 +1,6 @@
 """ATK CLI entry point."""
 
+import sys
 from pathlib import Path
 from typing import Annotated
 
@@ -10,6 +11,7 @@ from rich.table import Table
 from atk import cli_logger, exit_codes
 from atk.add import InstallFailedError, add_plugin
 from atk.banner import print_banner
+from atk.errors import handle_cli_error
 from atk.git import is_git_available
 from atk.git_source import GitPluginNotFoundError, GitSourceError
 from atk.home import get_atk_home, validate_atk_home
@@ -1090,6 +1092,18 @@ def _print_status_table(results: list[PluginStatusResult]) -> None:
             console.print("[dim]Note: Port checks verify if something is listening, not that it's the plugin.[/dim]")
 
 
+def main_cli() -> None:
+    """CLI entry point with top-level exception handling.
+
+    Wraps the Typer app to catch any unhandled exceptions and format them
+    as clean error messages instead of raw tracebacks.
+    """
+    try:
+        app()
+    except Exception as e:
+        sys.exit(handle_cli_error(e))
+
+
 if __name__ == "__main__":
-    app()
+    main_cli()
 

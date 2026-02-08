@@ -43,7 +43,7 @@ dev = [
 ]
 
 [project.scripts]
-atk = "atk.cli:app"
+atk = "atk.cli:main_cli"
 
 [build-system]
 requires = ["hatchling"]

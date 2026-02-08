@@ -1,5 +1,6 @@
 """Tests for error formatting utilities."""
 
+import subprocess
 from pathlib import Path
 from unittest.mock import patch
 
@@ -9,9 +10,9 @@ from click.exceptions import Exit
 from pydantic import ValidationError
 from typer.testing import CliRunner
 
-from atk import exit_codes
+from atk import cli_logger, exit_codes
 from atk.cli import app, require_git, require_initialized_home, require_ready_home
-from atk.errors import format_validation_errors
+from atk.errors import format_validation_errors, handle_cli_error
 from atk.init import init_atk_home
 from atk.plugin_schema import PluginSchema
 
@@ -261,3 +262,140 @@ class TestRequireReadyHome:
 
             # Then - should succeed because auto_commit is disabled
             assert result == atk_home
+
+
+
+class TestHandleCliError:
+    """Tests for handle_cli_error function."""
+
+    def test_handles_permission_error(self) -> None:
+        """Verify PermissionError produces clean message and GENERAL_ERROR exit code."""
+        # Given
+        filename = "/path/to/script.sh"
+        error = PermissionError(13, "Permission denied", filename)
+
+        # When
+        with patch.object(cli_logger, "error") as mock_error:
+            exit_code = handle_cli_error(error)
+
+        # Then
+        expected_exit_code = exit_codes.GENERAL_ERROR
+        assert exit_code == expected_exit_code
+        mock_error.assert_called_once()
+        call_message = mock_error.call_args[0][0]
+        assert "Permission denied" in call_message
+        assert filename in call_message
+
+    def test_handles_file_not_found_error(self) -> None:
+        """Verify FileNotFoundError produces clean message and GENERAL_ERROR exit code."""
+        # Given
+        filename = "/path/to/missing"
+        error = FileNotFoundError(2, "No such file or directory", filename)
+
+        # When
+        with patch.object(cli_logger, "error") as mock_error:
+            exit_code = handle_cli_error(error)
+
+        # Then
+        expected_exit_code = exit_codes.GENERAL_ERROR
+        assert exit_code == expected_exit_code
+        mock_error.assert_called_once()
+        call_message = mock_error.call_args[0][0]
+        assert filename in call_message
+
+    def test_handles_called_process_error(self) -> None:
+        """Verify CalledProcessError produces clean message and GENERAL_ERROR exit code."""
+        # Given
+        cmd = ["git", "clone", "https://example.com"]
+        returncode = 128
+        error = subprocess.CalledProcessError(returncode, cmd)
+
+        # When
+        with patch.object(cli_logger, "error") as mock_error:
+            exit_code = handle_cli_error(error)
+
+        # Then
+        expected_exit_code = exit_codes.GENERAL_ERROR
+        assert exit_code == expected_exit_code
+        mock_error.assert_called_once()
+        call_message = mock_error.call_args[0][0]
+        assert str(returncode) in call_message
+
+    def test_handles_validation_error(self) -> None:
+        """Verify ValidationError produces clean message and PLUGIN_INVALID exit code."""
+        # Given - create a real ValidationError
+        captured_error: ValidationError | None = None
+        try:
+            PluginSchema.model_validate({
+                "schema_version": "2026-01-23",
+                "name": "Test Plugin",
+                # description missing
+            })
+            pytest.fail("Expected ValidationError")
+        except ValidationError as e:
+            captured_error = e
+        assert captured_error is not None
+
+        # When
+        with patch.object(cli_logger, "error") as mock_error:
+            exit_code = handle_cli_error(captured_error)
+
+        # Then
+        expected_exit_code = exit_codes.PLUGIN_INVALID
+        assert exit_code == expected_exit_code
+        mock_error.assert_called_once()
+        call_message = mock_error.call_args[0][0]
+        assert "description" in call_message
+        assert "pydantic.dev" not in call_message
+
+    def test_handles_yaml_error(self) -> None:
+        """Verify yaml.YAMLError produces clean message and GENERAL_ERROR exit code."""
+        # Given
+        captured_error: yaml.YAMLError | None = None
+        try:
+            yaml.safe_load(":\n  :\n    - ][")
+        except yaml.YAMLError as e:
+            captured_error = e
+        assert captured_error is not None
+
+        # When
+        with patch.object(cli_logger, "error") as mock_error:
+            exit_code = handle_cli_error(captured_error)
+
+        # Then
+        expected_exit_code = exit_codes.GENERAL_ERROR
+        assert exit_code == expected_exit_code
+        mock_error.assert_called_once()
+
+    def test_handles_generic_exception(self) -> None:
+        """Verify generic Exception produces clean message and GENERAL_ERROR exit code."""
+        # Given
+        error_message = "Something went wrong"
+        error = RuntimeError(error_message)
+
+        # When
+        with patch.object(cli_logger, "error") as mock_error:
+            exit_code = handle_cli_error(error)
+
+        # Then
+        expected_exit_code = exit_codes.GENERAL_ERROR
+        assert exit_code == expected_exit_code
+        mock_error.assert_called_once()
+        call_message = mock_error.call_args[0][0]
+        assert error_message in call_message
+
+    def test_handles_os_error_without_filename(self) -> None:
+        """Verify OSError without filename still produces clean message."""
+        # Given
+        error = OSError("Disk full")
+
+        # When
+        with patch.object(cli_logger, "error") as mock_error:
+            exit_code = handle_cli_error(error)
+
+        # Then
+        expected_exit_code = exit_codes.GENERAL_ERROR
+        assert exit_code == expected_exit_code
+        mock_error.assert_called_once()
+        call_message = mock_error.call_args[0][0]
+        assert "Disk full" in call_message

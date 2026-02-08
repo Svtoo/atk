@@ -10,7 +10,9 @@ from dataclasses import dataclass
 from pathlib import Path
 
 import yaml
+from pydantic import ValidationError
 
+from atk.errors import format_validation_errors
 from atk.git import get_commit_hash, sparse_checkout, sparse_clone
 from atk.registry_schema import RegistryIndexSchema, RegistryPluginEntry
 
@@ -72,7 +74,12 @@ def fetch_registry_plugin(
             raise RegistryFetchError(msg)
 
         index_data = yaml.safe_load(index_path.read_text())
-        index = RegistryIndexSchema.model_validate(index_data)
+        try:
+            index = RegistryIndexSchema.model_validate(index_data)
+        except ValidationError as e:
+            clean_errors = format_validation_errors(e)
+            msg = f"Invalid registry index: {clean_errors}"
+            raise RegistryFetchError(msg) from e
 
         entry = _lookup_plugin(index, name)
 
