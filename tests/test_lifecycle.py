@@ -1,6 +1,7 @@
 """Tests for lifecycle command execution."""
 
 import json
+import os
 from collections.abc import Callable
 from pathlib import Path
 
@@ -192,6 +193,67 @@ class TestRunLifecycleCommand:
         assert exit_code == 0
         output_file = plugin_dir / "env_output.txt"
         assert output_file.read_text().strip() == env_var_value
+
+    def test_includes_compose_override_when_present(
+        self, atk_home: Path, create_plugin: PluginFactory
+    ) -> None:
+        """Compose override file is auto-included when running docker compose commands."""
+        # Given — lifecycle command uses docker compose, and override file exists
+        plugin_dir = create_plugin(
+            "TestPlugin", "test-plugin", {"start": "docker compose up -d"}
+        )
+        plugin, _ = load_plugin(atk_home, "test-plugin")
+
+        custom_dir = plugin_dir / "custom"
+        custom_dir.mkdir()
+        (custom_dir / "docker-compose.override.yml").write_text("services: {}")
+
+        # Create a fake docker script that logs the full command
+        fake_docker = plugin_dir / "docker"
+        fake_docker.write_text('#!/bin/bash\necho "$0 $@" > command_log.txt\n')
+        fake_docker.chmod(0o755)
+
+        # Prepend plugin_dir to PATH so our fake docker is found first
+        original_path = os.environ.get("PATH", "")
+        env_file = plugin_dir / ".env"
+        env_file.write_text(f"PATH={plugin_dir}:{original_path}\n")
+
+        # When
+        exit_code = run_lifecycle_command(plugin, plugin_dir, "start")
+
+        # Then
+        assert exit_code == 0
+        command_log = (plugin_dir / "command_log.txt").read_text().strip()
+        override_path = "custom/docker-compose.override.yml"
+        assert "-f docker-compose.yml" in command_log
+        assert f"-f {override_path}" in command_log
+
+    def test_compose_command_unchanged_when_no_override(
+        self, atk_home: Path, create_plugin: PluginFactory
+    ) -> None:
+        """Compose command is not modified when no override file exists."""
+        # Given — lifecycle command uses docker compose, but no override file
+        plugin_dir = create_plugin(
+            "TestPlugin", "test-plugin", {"start": "docker compose up -d"}
+        )
+        plugin, _ = load_plugin(atk_home, "test-plugin")
+
+        # Create a fake docker script that logs the full command
+        fake_docker = plugin_dir / "docker"
+        fake_docker.write_text('#!/bin/bash\necho "$0 $@" > command_log.txt\n')
+        fake_docker.chmod(0o755)
+
+        original_path = os.environ.get("PATH", "")
+        env_file = plugin_dir / ".env"
+        env_file.write_text(f"PATH={plugin_dir}:{original_path}\n")
+
+        # When
+        exit_code = run_lifecycle_command(plugin, plugin_dir, "start")
+
+        # Then — command should NOT have -f flags injected
+        assert exit_code == 0
+        command_log = (plugin_dir / "command_log.txt").read_text().strip()
+        assert "-f" not in command_log
 
 
 # =============================================================================
@@ -1282,6 +1344,67 @@ class TestRunCli:
 
         result = cli_runner.invoke(app, ["run", "test-plugin"])
         assert result.exit_code != exit_codes.SUCCESS
+
+    def test_cli_run_prefers_custom_script_over_root(
+        self, create_plugin: PluginFactory, cli_runner
+    ) -> None:
+        """Script in custom/ takes precedence over same script in plugin root."""
+        # Given - script exists in both custom/ and root, with different behavior
+        plugin_dir = create_plugin("TestPlugin", "test-plugin", None)
+        root_script = plugin_dir / "my-script.sh"
+        root_script.write_text("#!/bin/bash\ntouch root_ran.txt")
+        root_script.chmod(0o755)
+
+        custom_dir = plugin_dir / "custom"
+        custom_dir.mkdir()
+        custom_script = custom_dir / "my-script.sh"
+        custom_script.write_text("#!/bin/bash\ntouch custom_ran.txt")
+        custom_script.chmod(0o755)
+
+        # When
+        result = cli_runner.invoke(app, ["run", "test-plugin", "my-script.sh"])
+
+        # Then - custom/ version ran, not root version
+        assert result.exit_code == exit_codes.SUCCESS
+        assert (plugin_dir / "custom_ran.txt").exists()
+        assert not (plugin_dir / "root_ran.txt").exists()
+
+    def test_cli_run_falls_back_to_root_when_not_in_custom(
+        self, create_plugin: PluginFactory, cli_runner
+    ) -> None:
+        """Script only in root still works when custom/ exists but doesn't have it."""
+        # Given - script only in root, custom/ directory exists but empty
+        plugin_dir = create_plugin("TestPlugin", "test-plugin", None)
+        root_script = plugin_dir / "my-script.sh"
+        root_script.write_text("#!/bin/bash\ntouch root_ran.txt")
+        root_script.chmod(0o755)
+        (plugin_dir / "custom").mkdir()
+
+        # When
+        result = cli_runner.invoke(app, ["run", "test-plugin", "my-script.sh"])
+
+        # Then - root version ran
+        assert result.exit_code == exit_codes.SUCCESS
+        assert (plugin_dir / "root_ran.txt").exists()
+
+    def test_cli_run_finds_script_only_in_custom(
+        self, create_plugin: PluginFactory, cli_runner
+    ) -> None:
+        """Script only in custom/ is found and executed."""
+        # Given - script only in custom/, not in root
+        plugin_dir = create_plugin("TestPlugin", "test-plugin", None)
+        custom_dir = plugin_dir / "custom"
+        custom_dir.mkdir()
+        custom_script = custom_dir / "my-script.sh"
+        custom_script.write_text("#!/bin/bash\ntouch custom_only_ran.txt")
+        custom_script.chmod(0o755)
+
+        # When
+        result = cli_runner.invoke(app, ["run", "test-plugin", "my-script.sh"])
+
+        # Then - custom/ version ran
+        assert result.exit_code == exit_codes.SUCCESS
+        assert (plugin_dir / "custom_only_ran.txt").exists()
 
 
 @pytest.mark.usefixtures("atk_home")

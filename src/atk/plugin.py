@@ -4,6 +4,7 @@ Handles loading plugins from ATK Home by name or directory.
 """
 
 from pathlib import Path
+from typing import Any
 
 import yaml
 from pydantic import ValidationError
@@ -12,9 +13,34 @@ from atk.errors import format_validation_errors
 from atk.manifest_schema import load_manifest
 from atk.plugin_schema import PluginSchema
 
+CUSTOM_DIR = "custom"
+OVERRIDES_FILE = "overrides.yaml"
+
+
+def _deep_merge(base: dict[str, Any], overrides: dict[str, Any]) -> dict[str, Any]:
+    """Deep-merge overrides into base dict.
+
+    Objects (dicts) are deep-merged with override values winning.
+    Arrays (lists) are replaced entirely, not concatenated.
+    Scalar values are replaced by overrides.
+    """
+    result = dict(base)
+    for key, override_value in overrides.items():
+        base_value = result.get(key)
+        if isinstance(base_value, dict) and isinstance(override_value, dict):
+            result[key] = _deep_merge(base_value, override_value)
+        else:
+            result[key] = override_value
+    return result
+
 
 def load_plugin_schema(source: Path) -> PluginSchema:
     """Load and validate plugin.yaml from source.
+
+    If source is a directory containing custom/overrides.yaml,
+    the overrides are deep-merged into the upstream plugin.yaml
+    before validation. Objects are deep-merged (user values win),
+    arrays are replaced entirely.
 
     Args:
         source: Path to plugin directory or single plugin.yaml file.
@@ -52,6 +78,18 @@ def load_plugin_schema(source: Path) -> PluginSchema:
     if data is None:
         msg = f"Invalid YAML in '{plugin_yaml}': empty file"
         raise ValueError(msg)
+
+    # Merge custom/overrides.yaml if present
+    if source.is_dir():
+        overrides_path = source / CUSTOM_DIR / OVERRIDES_FILE
+        if overrides_path.exists():
+            try:
+                overrides_data = yaml.safe_load(overrides_path.read_text())
+            except yaml.YAMLError as e:
+                msg = f"Invalid YAML in '{overrides_path}': {e}"
+                raise ValueError(msg) from e
+            if isinstance(overrides_data, dict):
+                data = _deep_merge(data, overrides_data)
 
     # Validate against schema
     try:

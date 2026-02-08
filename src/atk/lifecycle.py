@@ -12,7 +12,7 @@ from typing import Literal
 
 from atk.env import check_required_env_vars, get_env_status, load_env_file
 from atk.manifest_schema import load_manifest
-from atk.plugin import PluginNotFoundError, load_plugin
+from atk.plugin import CUSTOM_DIR, PluginNotFoundError, load_plugin
 from atk.plugin_schema import PluginSchema
 
 LifecycleCommand = Literal["install", "uninstall", "start", "stop", "logs", "status"]
@@ -208,6 +208,28 @@ class LifecycleResult:
         return len(self.failed) == 0
 
 
+COMPOSE_OVERRIDE_FILE = "docker-compose.override.yml"
+
+
+def _inject_compose_override(command: str, plugin_dir: Path) -> str:
+    """Inject compose override file flags into a docker compose command.
+
+    When custom/docker-compose.override.yml exists and the command starts with
+    'docker compose', injects -f flags to include both the base and override files.
+    """
+    override_path = plugin_dir / CUSTOM_DIR / COMPOSE_OVERRIDE_FILE
+    if not override_path.exists():
+        return command
+
+    if not command.startswith("docker compose"):
+        return command
+
+    # Split: "docker compose" + rest (e.g., " up -d")
+    rest = command[len("docker compose"):]
+    override_rel = f"{CUSTOM_DIR}/{COMPOSE_OVERRIDE_FILE}"
+    return f"docker compose -f docker-compose.yml -f {override_rel}{rest}"
+
+
 def run_lifecycle_command(
     plugin: PluginSchema, plugin_dir: Path, command_name: LifecycleCommand
 ) -> int:
@@ -231,6 +253,8 @@ def run_lifecycle_command(
 
     if command is None:
         raise LifecycleCommandNotDefinedError(command_name, plugin.name)
+
+    command = _inject_compose_override(command, plugin_dir)
 
     env_file = plugin_dir / ".env"
     env_from_file = load_env_file(env_file)

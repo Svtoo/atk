@@ -40,7 +40,7 @@ from atk.lifecycle import (
 )
 from atk.manifest_schema import SourceType, load_manifest
 from atk.mcp import generate_mcp_config
-from atk.plugin import PluginNotFoundError, load_plugin
+from atk.plugin import CUSTOM_DIR, PluginNotFoundError, load_plugin
 from atk.registry import PluginNotFoundError as RegistryPluginNotFoundError
 from atk.remove import remove_plugin
 from atk.setup import run_setup
@@ -921,6 +921,30 @@ def logs(
         raise typer.Exit(exit_codes.SUCCESS) from None
 
 
+
+def _resolve_script(plugin_dir: Path, script: str) -> Path | None:
+    """Resolve a script path, checking custom/ directory first.
+
+    Resolution order:
+    1. plugins/<plugin>/custom/<script>
+    2. plugins/<plugin>/custom/<script>.sh
+    3. plugins/<plugin>/<script>
+    4. plugins/<plugin>/<script>.sh
+    """
+    custom_dir = plugin_dir / CUSTOM_DIR
+    candidates = [
+        custom_dir / script,
+        custom_dir / f"{script}.sh",
+        plugin_dir / script,
+        plugin_dir / f"{script}.sh",
+    ]
+    for candidate in candidates:
+        if candidate.exists():
+            return candidate
+    return None
+
+
+
 @app.command()
 def run(
     plugin: Annotated[
@@ -951,14 +975,10 @@ def run(
         cli_logger.error(f"Plugin '{plugin}' not found in manifest")
         raise typer.Exit(exit_codes.PLUGIN_NOT_FOUND) from None
 
-    script_path = plugin_dir / script
-    if not script_path.exists():
-        script_path_with_ext = plugin_dir / f"{script}.sh"
-        if script_path_with_ext.exists():
-            script_path = script_path_with_ext
-        else:
-            cli_logger.error(f"Script '{script}' not found in plugin directory")
-            raise typer.Exit(exit_codes.GENERAL_ERROR)
+    script_path = _resolve_script(plugin_dir, script)
+    if script_path is None:
+        cli_logger.error(f"Script '{script}' not found in plugin directory")
+        raise typer.Exit(exit_codes.GENERAL_ERROR)
 
     result = subprocess.run(
         [str(script_path)],

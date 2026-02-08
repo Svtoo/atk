@@ -17,7 +17,7 @@ from atk.git_source import fetch_git_plugin, normalize_git_url
 from atk.home import validate_atk_home
 from atk.lifecycle import LifecycleCommandNotDefinedError, run_lifecycle_command
 from atk.manifest_schema import SourceType, load_manifest, save_manifest
-from atk.plugin import load_plugin_schema
+from atk.plugin import CUSTOM_DIR, load_plugin_schema
 from atk.plugin_schema import PluginSchema
 from atk.setup import run_setup
 
@@ -73,7 +73,7 @@ def _build_filtered_schema(schema: PluginSchema, var_names: list[str]) -> Plugin
     return schema.model_copy(update={"env_vars": filtered_vars})
 
 
-CUSTOM_DIR = "custom"
+
 
 
 def _preserve_custom(plugin_dir: Path, backup_dir: Path) -> bool:

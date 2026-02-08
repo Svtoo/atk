@@ -216,8 +216,9 @@ Registry and git URL sources for plugins, version pinning, and the upgrade comma
 ### Customization Preservation
 - [x] `custom/` directory is never modified by ATK
 - [x] `.gitignore` pattern tracks only `custom/` contents
-- [ ] `custom/overrides.yaml` merged with plugin.yaml at runtime
-- [ ] User scripts in `custom/` take precedence
+- [x] `custom/overrides.yaml` merged with plugin.yaml at runtime
+- [x] User scripts in `custom/` take precedence
+- [x] Docker Compose override files auto-included for compose commands
 
 ---
 
