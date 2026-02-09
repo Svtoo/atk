@@ -18,9 +18,9 @@
 | 1     | Core CLI             | ✅      | init, add, remove, git integration          |
 | 2     | Service Lifecycle    | ✅      | start, stop, restart, status, logs, run     |
 | 3     | Configuration        | ✅      | .env management, port conflicts, MCP config |
-| 4     | Plugin Sources       | 🔄      | Registry, git URL sources, upgrade command  |
+| 4     | Plugin Sources       | ✅      | Registry, git URL sources, upgrade command  |
 | 5     | Polish               | ⏳      | Error messages, help text, documentation    |
-| 6     | Community            | ⏳      | PyPI, contribution guide, CI/CD             |
+| 6     | Community            | 🔄     | PyPI, contribution guide, CI/CD             |
 | 7     | AI Agent Integration | ⏳      | MCP server, agent-friendly output           |
 | 8     | MCP Management       | ⏳      | Auto-install to Claude Code, Codex, etc.    |
 | 9     | Data Backup          | ⏳      | Backup/restore plugin data                  |
@@ -50,7 +50,8 @@ MCP client config generation.
 
 ### Phase 4: Plugin Sources 🔄
 
-Registry and git URL sources. `atk upgrade` command. Version pinning via commit hash. User customizations in `custom/` directory.
+Registry and git URL sources. `atk upgrade` command. Version pinning via commit hash. User customizations in `custom/`
+directory.
 
 ### Phase 5: Polish ⏳
 

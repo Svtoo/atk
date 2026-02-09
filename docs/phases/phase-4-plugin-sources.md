@@ -281,10 +281,10 @@ Registry and git URL sources for plugins, version pinning, and the upgrade comma
 
 ### 4.6 Bootstrap Flow
 
-- Update `atk install --all` to fetch missing plugins
-- Check `.atk-ref` file before fetching (skip if hash matches)
-- Fetch at pinned version from manifest
-- Handle missing plugins gracefully
+- [x] Update `atk install --all` to fetch missing plugins
+- [x] Check `.atk-ref` file before fetching (skip if hash matches)
+- [x] Fetch at pinned version from manifest
+- [x] Handle missing plugins gracefully
 
 ### 4.7 Uninstall Command ✅
 
