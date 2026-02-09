@@ -194,9 +194,9 @@ Registry and git URL sources for plugins, version pinning, and the upgrade comma
 
 ### Version Pinning
 - [x] Manifest stores commit hash for registry and git sources
-- [ ] `atk install --all` fetches at pinned versions (bootstrap)
+- [x] `atk install --all` fetches at pinned versions (bootstrap)
 - [x] `.atk-ref` file stores commit hash in plugin directory
-- [ ] Skip fetch if `.atk-ref` matches manifest ref
+- [x] Skip fetch if `.atk-ref` matches manifest ref
 - [ ] Pinned versions enable reproducible setups
 
 ### Uninstall Command

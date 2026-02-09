@@ -20,6 +20,7 @@ from atk.plugin_schema import (
     PluginSchema,
     PortConfig,
 )
+from atk.registry_schema import REGISTRY_SCHEMA_VERSION, RegistryIndexSchema, RegistryPluginEntry
 
 GIT_ENV = {
     **os.environ,
@@ -200,25 +201,25 @@ def create_fake_registry(tmp_path: Path) -> FakeRegistry:
     plugins_dir.mkdir(parents=True)
 
     (plugins_dir / "plugin.yaml").write_text(
-        yaml.dump({
-            "schema_version": PLUGIN_SCHEMA_VERSION,
-            "name": "Test Plugin",
-            "description": "A test plugin from registry",
-        })
+        yaml.dump(PluginSchema(
+            schema_version=PLUGIN_SCHEMA_VERSION,
+            name="Test Plugin",
+            description="A test plugin from registry",
+        ).model_dump(exclude_none=True))
     )
     (plugins_dir / "docker-compose.yml").write_text("version: '3'\n")
 
     (work_dir / "index.yaml").write_text(
-        yaml.dump({
-            "schema_version": PLUGIN_SCHEMA_VERSION,
-            "plugins": [
-                {
-                    "name": "test-plugin",
-                    "path": "plugins/test-plugin",
-                    "description": "A test plugin",
-                }
+        yaml.dump(RegistryIndexSchema(
+            schema_version=REGISTRY_SCHEMA_VERSION,
+            plugins=[
+                RegistryPluginEntry(
+                    name="test-plugin",
+                    path="plugins/test-plugin",
+                    description="A test plugin",
+                )
             ],
-        })
+        ).model_dump(exclude_none=True))
     )
 
     subprocess.run(["git", "init"], cwd=work_dir, check=True, capture_output=True)

@@ -59,18 +59,20 @@ def normalize_git_url(url: str) -> str:
 def fetch_git_plugin(
     url: str,
     target_dir: Path,
+    ref: str,
 ) -> GitFetchResult:
     """Fetch a plugin from a git repo that follows the .atk/ convention.
 
-    Sparse-clones the repo (no blobs), checks out only the ``.atk/`` directory,
-    copies its contents to *target_dir*, and returns the commit hash.
+    Sparse-clones the repo at the given ref, checks out only the ``.atk/``
+    directory, copies its contents to *target_dir*, and returns the commit hash.
 
     Args:
         url: Git URL (may be shorthand — will be normalized).
         target_dir: Where to copy the plugin files.
+        ref: Commit hash to check out.
 
     Returns:
-        GitFetchResult with the commit hash of the repo HEAD.
+        GitFetchResult with the commit hash of the checked-out revision.
 
     Raises:
         GitPluginNotFoundError: If the repo has no ``.atk/`` directory.
@@ -82,7 +84,7 @@ def fetch_git_plugin(
         clone_dir = Path(tmp) / "repo"
 
         try:
-            sparse_clone(clone_url, clone_dir)
+            sparse_clone(clone_url, clone_dir, ref)
             sparse_checkout(clone_dir, [f"/{ATK_DIR}"])
         except subprocess.CalledProcessError as e:
             msg = f"Failed to fetch from {clone_url}: {e.stderr.decode()}"

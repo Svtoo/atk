@@ -37,21 +37,23 @@ class FetchResult:
 def fetch_registry_plugin(
     name: str,
     target_dir: Path,
+    ref: str,
     registry_url: str | None = None,
 ) -> FetchResult:
     """Fetch a plugin by name from the registry using sparse checkout.
 
-    Sparse-clones the registry (no blobs), checks out only index.yaml to
-    look up the plugin, then checks out only the plugin directory.
+    Sparse-clones the registry at the given ref, checks out only index.yaml
+    to look up the plugin, then checks out only the plugin directory.
     Copies the plugin files to target_dir and returns the commit hash.
 
     Args:
         name: Plugin name to fetch (e.g., "piper").
         target_dir: Where to copy the plugin files.
+        ref: Commit hash to check out.
         registry_url: Git URL of the registry repo. Defaults to REGISTRY_URL.
 
     Returns:
-        FetchResult with the commit hash of the registry HEAD.
+        FetchResult with the commit hash of the checked-out revision.
 
     Raises:
         PluginNotFoundError: If the plugin name is not in the registry index.
@@ -62,7 +64,7 @@ def fetch_registry_plugin(
         clone_dir = Path(tmp) / "registry"
 
         try:
-            sparse_clone(url, clone_dir)
+            sparse_clone(url, clone_dir, ref)
             sparse_checkout(clone_dir, ["/index.yaml"])
         except subprocess.CalledProcessError as e:
             msg = f"Failed to clone registry from {url}: {e.stderr.decode()}"

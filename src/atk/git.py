@@ -282,18 +282,28 @@ def read_atk_ref(plugin_dir: Path) -> str | None:
     return ref_path.read_text().strip()
 
 
-def sparse_clone(url: str, clone_dir: Path) -> None:
-    """Clone a repo with blob filtering and sparse checkout enabled.
+def sparse_clone(url: str, clone_dir: Path, ref: str) -> None:
+    """Clone a repo at a specific ref with blob filtering and sparse checkout enabled.
+
+    Clones with --filter=blob:none (fetches commit graph but no file content),
+    then checks out the requested ref before any sparse_checkout materializes blobs.
 
     Args:
         url: Git URL to clone.
         clone_dir: Target directory for the clone.
+        ref: Commit hash to check out after cloning.
 
     Raises:
-        subprocess.CalledProcessError: If git clone fails.
+        subprocess.CalledProcessError: If git clone or checkout fails.
     """
     subprocess.run(
         ["git", "clone", "--filter=blob:none", "--sparse", url, str(clone_dir)],
+        check=True,
+        capture_output=True,
+    )
+    subprocess.run(
+        ["git", "checkout", ref],
+        cwd=clone_dir,
         check=True,
         capture_output=True,
     )

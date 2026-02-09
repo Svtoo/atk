@@ -134,14 +134,13 @@ def _format_missing_env_vars(plugin_name: str, missing_vars: list[str]) -> None:
     cli_logger.error(f"Missing required environment variables for '{plugin_name}':")
     for var in missing_vars:
         cli_logger.error(f"  • {var}")
-    cli_logger.info(f"Run 'atk setup {plugin_name}' to configure.")
+    cli_logger.info(f"Run 'atk setup \"{plugin_name}\"' to configure.")
 
 
 def _run_lifecycle_cli(
     command_name: LifecycleCommand,
     plugin: str | None,
     all_plugins: bool,
-    *,
     reverse: bool = False,
 ) -> None:
     """Run a lifecycle command from CLI with proper output and exit codes."""
@@ -1002,7 +1001,7 @@ def _format_port(port_status: PortStatus) -> str:
         return f"[red]{port_status.port} ✗[/red]"
 
 
-def _format_env_status(
+def format_env_status(
     missing_required_vars: list[str], unset_optional_count: int, total_env_vars: int
 ) -> str:
     """Format environment variable status for display.
@@ -1060,7 +1059,7 @@ def _print_status_table(results: list[PluginStatusResult]) -> None:
         ports_str = ", ".join(_format_port(p) for p in result.ports) if result.ports else "-"
 
         # Format ENV column
-        env_str = _format_env_status(
+        env_str = format_env_status(
             result.missing_required_vars, result.unset_optional_count, result.total_env_vars
         )
 

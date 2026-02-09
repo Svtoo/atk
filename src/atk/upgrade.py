@@ -12,8 +12,9 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 import atk.registry as registry_mod
+from atk.fetch import fetch_plugin_source
 from atk.git import git_add, git_commit, git_ls_remote, read_atk_ref, write_atk_ref
-from atk.git_source import fetch_git_plugin, normalize_git_url
+from atk.git_source import normalize_git_url
 from atk.home import validate_atk_home
 from atk.lifecycle import LifecycleCommandNotDefinedError, run_lifecycle_command
 from atk.manifest_schema import SourceType, load_manifest, save_manifest
@@ -121,20 +122,20 @@ def _fetch_to_staging(
     source_url: str,
     directory: str,
     staging_dir: Path,
+    ref: str,
 ) -> str:
-    """Fetch the latest plugin version to a staging directory.
+    """Fetch a specific plugin version to a staging directory.
 
     For registry plugins, directory is the registry slug name.
-    Returns the new commit hash.
+    Returns the commit hash of the fetched version.
     """
-    if source_type == SourceType.REGISTRY:
-        registry_result = registry_mod.fetch_registry_plugin(
-            name=directory, target_dir=staging_dir,
-        )
-        return registry_result.commit_hash
-
-    git_result = fetch_git_plugin(url=source_url, target_dir=staging_dir)
-    return git_result.commit_hash
+    return fetch_plugin_source(
+        source_type=source_type,
+        directory=directory,
+        target_dir=staging_dir,
+        ref=ref,
+        source_url=source_url,
+    )
 
 
 def _replace_plugin_files(plugin_dir: Path, staging_dir: Path) -> None:
@@ -216,6 +217,7 @@ def upgrade_plugin(
             source_url,
             plugin_entry.directory,
             staging_dir,
+            ref=latest_ref,
         )
 
         if not _plugin_content_changed(plugin_dir, staging_dir):

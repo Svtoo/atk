@@ -10,6 +10,7 @@ from enum import Enum
 from pathlib import Path
 from typing import Literal
 
+from atk.bootstrap import fetch_missing_plugin
 from atk.env import check_required_env_vars, get_env_status, load_env_file
 from atk.manifest_schema import load_manifest
 from atk.plugin import CUSTOM_DIR, PluginNotFoundError, load_plugin
@@ -291,6 +292,22 @@ def run_plugin_lifecycle(
     return run_lifecycle_command(plugin, plugin_dir, command_name)
 
 
+
+def _bootstrap_single_plugin(atk_home: Path, identifier: str) -> None:
+    """Look up a plugin entry by identifier and fetch if missing.
+
+    Silently returns if the plugin is not in the manifest (PluginNotFoundError
+    will be raised later by load_plugin).
+    """
+    manifest = load_manifest(atk_home)
+    plugin_entry = next(
+        (p for p in manifest.plugins if p.directory == identifier or p.name == identifier),
+        None,
+    )
+    if plugin_entry is not None:
+        fetch_missing_plugin(plugin_entry, atk_home)
+
+
 def execute_lifecycle(
     atk_home: Path, identifier: str, command_name: LifecycleCommand
 ) -> SinglePluginResult:
@@ -310,6 +327,9 @@ def execute_lifecycle(
     Returns:
         A SinglePluginResult indicating success or the specific failure reason.
     """
+    if command_name == "install":
+        _bootstrap_single_plugin(atk_home, identifier)
+
     try:
         plugin, plugin_dir = load_plugin(atk_home, identifier)
     except PluginNotFoundError:
@@ -396,6 +416,10 @@ def execute_all_lifecycle(
     plugins = manifest.plugins
     if reverse:
         plugins = list(reversed(plugins))
+
+    if command_name == "install":
+        for plugin_entry in plugins:
+            fetch_missing_plugin(plugin_entry, atk_home)
 
     if command_name in ("start", "install"):
         for plugin_entry in plugins:

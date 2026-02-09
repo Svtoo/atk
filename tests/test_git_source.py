@@ -57,7 +57,7 @@ class TestFetchGitPlugin:
         target_dir = tmp_path / "target"
 
         # When
-        result = fetch_git_plugin(url=repo.url, target_dir=target_dir)
+        result = fetch_git_plugin(url=repo.url, target_dir=target_dir, ref=repo.commit_hash)
 
         # Then — plugin files are copied
         assert target_dir.exists()
@@ -72,7 +72,7 @@ class TestFetchGitPlugin:
         target_dir = tmp_path / "target"
 
         # When
-        result = fetch_git_plugin(url=repo.url, target_dir=target_dir)
+        result = fetch_git_plugin(url=repo.url, target_dir=target_dir, ref=repo.commit_hash)
 
         # Then
         assert result.commit_hash == repo.commit_hash
@@ -85,7 +85,7 @@ class TestFetchGitPlugin:
 
         # When/Then
         with pytest.raises(GitPluginNotFoundError, match=".atk/"):
-            fetch_git_plugin(url=repo.url, target_dir=target_dir)
+            fetch_git_plugin(url=repo.url, target_dir=target_dir, ref=repo.commit_hash)
 
     def test_missing_plugin_yaml_raises(self, tmp_path: Path) -> None:
         """Fetch raises GitPluginNotFoundError when .atk/ has no plugin.yaml."""
@@ -95,7 +95,7 @@ class TestFetchGitPlugin:
 
         # When/Then
         with pytest.raises(GitPluginNotFoundError, match="plugin.yaml"):
-            fetch_git_plugin(url=repo.url, target_dir=target_dir)
+            fetch_git_plugin(url=repo.url, target_dir=target_dir, ref=repo.commit_hash)
 
     def test_invalid_url_raises(self, tmp_path: Path) -> None:
         """Fetch raises GitSourceError when URL is unreachable."""
@@ -107,5 +107,6 @@ class TestFetchGitPlugin:
             fetch_git_plugin(
                 url="https://nonexistent.invalid/repo",
                 target_dir=target_dir,
+                ref="deadbeef" * 5,
             )
 

@@ -9,14 +9,14 @@ from collections.abc import Callable
 from enum import Enum
 from pathlib import Path
 
-from atk.git import add_gitignore_exemption, git_add, git_commit, write_atk_ref
-from atk.git_source import fetch_git_plugin
+import atk.registry as registry_mod
+from atk.git import add_gitignore_exemption, git_add, git_commit, git_ls_remote, write_atk_ref
+from atk.git_source import fetch_git_plugin, normalize_git_url
 from atk.home import validate_atk_home
 from atk.lifecycle import LifecycleCommandNotDefinedError, run_lifecycle_command
 from atk.manifest_schema import PluginEntry, SourceInfo, SourceType, load_manifest, save_manifest
 from atk.plugin import load_plugin_schema
 from atk.plugin_schema import PluginSchema
-from atk.registry import fetch_registry_plugin
 from atk.sanitize import sanitize_directory_name
 from atk.setup import run_setup
 from atk.source import resolve_source
@@ -175,7 +175,8 @@ def _add_registry_plugin(
     target_dir = atk_home / "plugins" / directory
     _check_target_available(target_dir, directory)
 
-    result = fetch_registry_plugin(name=name, target_dir=target_dir)
+    ref = git_ls_remote(registry_mod.REGISTRY_URL)
+    result = registry_mod.fetch_registry_plugin(name=name, target_dir=target_dir, ref=ref)
     schema = load_plugin_schema(target_dir)
 
     source_info = SourceInfo(type=SourceType.REGISTRY, ref=result.commit_hash)
@@ -199,7 +200,8 @@ def _add_git_plugin(
     """Add a plugin from a git repo that follows the .atk/ convention."""
     with tempfile.TemporaryDirectory() as tmp:
         staging_dir = Path(tmp) / "staging"
-        result = fetch_git_plugin(url=url, target_dir=staging_dir)
+        ref = git_ls_remote(normalize_git_url(url))
+        result = fetch_git_plugin(url=url, target_dir=staging_dir, ref=ref)
         schema = load_plugin_schema(staging_dir)
         directory = sanitize_directory_name(schema.name)
         _check_duplicate(atk_home, directory, schema.name)

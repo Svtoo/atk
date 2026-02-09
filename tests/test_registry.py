@@ -14,7 +14,7 @@ from atk.registry import (
     RegistryFetchError,
     fetch_registry_plugin,
 )
-from tests.conftest import GIT_ENV, create_fake_registry
+from tests.conftest import create_fake_registry, git_commit_all
 
 
 class TestFetchRegistryPlugin:
@@ -33,6 +33,7 @@ class TestFetchRegistryPlugin:
         result = fetch_registry_plugin(
             name=plugin_name,
             target_dir=target_dir,
+            ref=registry.commit_hash,
             registry_url=registry.url,
         )
 
@@ -49,6 +50,7 @@ class TestFetchRegistryPlugin:
         result = fetch_registry_plugin(
             name="test-plugin",
             target_dir=target_dir,
+            ref=registry.commit_hash,
             registry_url=registry.url,
         )
 
@@ -64,6 +66,7 @@ class TestFetchRegistryPlugin:
             fetch_registry_plugin(
                 name=nonexistent_name,
                 target_dir=target_dir,
+                ref=registry.commit_hash,
                 registry_url=registry.url,
             )
 
@@ -75,6 +78,7 @@ class TestFetchRegistryPlugin:
             fetch_registry_plugin(
                 name="test-plugin",
                 target_dir=target_dir,
+                ref="deadbeef" * 5,
                 registry_url="https://nonexistent.invalid/repo",
             )
 
@@ -88,11 +92,7 @@ class TestFetchRegistryPlugin:
             yaml.dump({"plugins": [invalid_plugin_entry]})
         )
         subprocess.run(["git", "init"], cwd=work_dir, check=True, capture_output=True)
-        subprocess.run(["git", "add", "-A"], cwd=work_dir, check=True, capture_output=True)
-        subprocess.run(
-            ["git", "commit", "-m", "Initial"],
-            cwd=work_dir, check=True, capture_output=True, env=GIT_ENV,
-        )
+        commit_hash = git_commit_all(work_dir, "Initial")
         registry_url = f"file://{work_dir}"
         target_dir = tmp_path / "target"
 
@@ -102,6 +102,7 @@ class TestFetchRegistryPlugin:
             fetch_registry_plugin(
                 name="test-plugin",
                 target_dir=target_dir,
+                ref=commit_hash,
                 registry_url=registry_url,
             )
 

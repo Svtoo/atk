@@ -4,19 +4,20 @@ import json
 import os
 from collections.abc import Callable
 from pathlib import Path
+from unittest.mock import patch
 
 import pytest
 import yaml
 
 from atk import exit_codes
-from atk.cli import _format_env_status, app
+from atk.cli import app, format_env_status
 from atk.lifecycle import (
     LifecycleCommandNotDefinedError,
     get_plugin_status,
     restart_all_plugins,
     run_lifecycle_command,
 )
-from atk.manifest_schema import PluginEntry, load_manifest, save_manifest
+from atk.manifest_schema import PluginEntry, SourceInfo, SourceType, load_manifest, save_manifest
 from atk.plugin import load_plugin
 from atk.plugin_schema import (
     PLUGIN_SCHEMA_VERSION,
@@ -25,7 +26,8 @@ from atk.plugin_schema import (
     McpConfig,
     PluginSchema,
 )
-from tests.conftest import write_plugin_yaml
+from atk.git import read_atk_ref
+from tests.conftest import create_fake_git_repo, create_fake_registry, update_fake_repo, write_plugin_yaml
 
 # Type alias for the plugin factory fixture
 PluginFactory = Callable[..., Path]
@@ -559,6 +561,198 @@ class TestInstallCli:
         assert required_var in result.output
         assert "Missing required" in result.output
 
+    def test_cli_install_pulls_plugin_from_registry(
+        self, atk_home: Path, cli_runner, tmp_path: Path
+    ) -> None:
+        """Verify CLI pulls pinned (older) commit from registry, not latest."""
+
+        # Given - registry with two commits; manifest pins to the first (older) one
+        fake_registry = create_fake_registry(tmp_path)
+        first_commit = fake_registry.commit_hash
+        original_description = "A test plugin from registry"
+        update_fake_repo(fake_registry.url, "plugins/test-plugin/plugin.yaml", "v2")
+
+        plugin_name = "Test Plugin"
+        plugin_dir_name = "test-plugin"
+
+        manifest = load_manifest(atk_home)
+        manifest.plugins.append(
+            PluginEntry(
+                name=plugin_name,
+                directory=plugin_dir_name,
+                source=SourceInfo(type=SourceType.REGISTRY, ref=first_commit),
+            )
+        )
+        save_manifest(manifest, atk_home)
+
+        plugin_dir = atk_home / "plugins" / plugin_dir_name
+        assert not plugin_dir.exists()
+
+        # When
+        with patch("atk.registry.REGISTRY_URL", fake_registry.url):
+            result = cli_runner.invoke(app, ["install", plugin_dir_name])
+
+        # Then - plugin files match the older commit, not latest
+        assert result.exit_code == exit_codes.SUCCESS, f"Output: {result.output}"
+        assert plugin_dir.exists()
+        fetched_data = yaml.safe_load((plugin_dir / "plugin.yaml").read_text())
+        assert fetched_data["description"] == original_description
+        assert read_atk_ref(plugin_dir) == first_commit
+
+    def test_cli_install_pulls_plugin_from_git(
+        self, atk_home: Path, cli_runner, tmp_path: Path
+    ) -> None:
+        """Verify CLI pulls pinned (latest) commit from git, matching updated content."""
+
+        # Given - git repo with two commits; manifest pins to the second (latest) one
+        fake_git = create_fake_git_repo(tmp_path)
+        update_message = "v2"
+        second_commit = update_fake_repo(fake_git.url, ".atk/plugin.yaml", update_message)
+        updated_description = f"Updated — {update_message}"
+        plugin_dir_name = "echo-tool"
+
+        manifest = load_manifest(atk_home)
+        manifest.plugins.append(
+            PluginEntry(
+                name="Echo Tool",
+                directory=plugin_dir_name,
+                source=SourceInfo(type=SourceType.GIT, url=fake_git.url, ref=second_commit),
+            )
+        )
+        save_manifest(manifest, atk_home)
+
+        plugin_dir = atk_home / "plugins" / plugin_dir_name
+        assert not plugin_dir.exists()
+
+        # When
+        result = cli_runner.invoke(app, ["install", plugin_dir_name])
+
+        # Then - plugin files match the latest commit
+        assert result.exit_code == exit_codes.SUCCESS, f"Output: {result.output}"
+        assert plugin_dir.exists()
+        fetched_data = yaml.safe_load((plugin_dir / "plugin.yaml").read_text())
+        assert fetched_data["description"] == updated_description
+        assert read_atk_ref(plugin_dir) == second_commit
+
+    def test_cli_install_pulls_plugin_and_preserves_custom_dir(
+        self, atk_home: Path, cli_runner, tmp_path: Path
+    ) -> None:
+        """Verify CLI pulls pinned (older) commit and preserves custom/ directory."""
+        # Given - registry with two commits; manifest pins to the first (older) one
+        fake_registry = create_fake_registry(tmp_path)
+        first_commit = fake_registry.commit_hash
+        original_description = "A test plugin from registry"
+        update_fake_repo(fake_registry.url, "plugins/test-plugin/plugin.yaml", "v2")
+        plugin_dir_name = "test-plugin"
+
+        # And - plugin directory exists with custom/ directory containing user files
+        plugin_dir = atk_home / "plugins" / plugin_dir_name
+        plugin_dir.mkdir(parents=True)
+        custom_dir = plugin_dir / "custom"
+        custom_dir.mkdir()
+        custom_file = custom_dir / "my-override.yaml"
+        custom_content = "user: customization"
+        custom_file.write_text(custom_content)
+
+        # And - plugin is in manifest but files not pulled (bootstrap scenario)
+        manifest = load_manifest(atk_home)
+        manifest.plugins.append(
+            PluginEntry(
+                name="Test Plugin",
+                directory=plugin_dir_name,
+                source=SourceInfo(type=SourceType.REGISTRY, ref=first_commit),
+            )
+        )
+        save_manifest(manifest, atk_home)
+
+        assert not (plugin_dir / "plugin.yaml").exists()
+        assert custom_file.exists()
+
+        # When
+        with patch("atk.registry.REGISTRY_URL", fake_registry.url):
+            result = cli_runner.invoke(app, ["install", plugin_dir_name])
+
+        # Then - plugin files match the older commit
+        assert result.exit_code == exit_codes.SUCCESS, f"Output: {result.output}"
+        fetched_data = yaml.safe_load((plugin_dir / "plugin.yaml").read_text())
+        assert fetched_data["description"] == original_description
+        assert read_atk_ref(plugin_dir) == first_commit
+
+        # And - custom/ directory is preserved
+        assert custom_file.exists()
+        assert custom_file.read_text() == custom_content
+
+    def test_cli_install_all_pulls_all_missing_plugins(
+        self, atk_home: Path, cli_runner, tmp_path: Path, create_plugin) -> None:
+        """Verify install --all: registry pinned to older commit, git pinned to latest."""
+
+        # Given - registry with two commits; pin to older
+        fake_registry = create_fake_registry(tmp_path)
+        registry_first_commit = fake_registry.commit_hash
+        registry_original_desc = "A test plugin from registry"
+        update_fake_repo(fake_registry.url, "plugins/test-plugin/plugin.yaml", "reg-v2")
+        registry_plugin_dir = "test-plugin"
+
+        # And - git repo with two commits; pin to latest
+        git_tmp = tmp_path / "git-repo"
+        git_tmp.mkdir()
+        fake_git = create_fake_git_repo(git_tmp)
+        git_update_msg = "git-v2"
+        git_second_commit = update_fake_repo(fake_git.url, ".atk/plugin.yaml", git_update_msg)
+        git_updated_desc = f"Updated — {git_update_msg}"
+        git_plugin_dir = "echo-tool"
+
+        # And - local plugin (already exists)
+        local_plugin_dir = create_plugin(
+            "Local Plugin",
+            "local-plugin",
+            {"install": "touch installed.txt", "uninstall": "echo uninstall"},
+        )
+
+        manifest = load_manifest(atk_home)
+        manifest.plugins = [
+            PluginEntry(
+                name="Test Plugin",
+                directory=registry_plugin_dir,
+                source=SourceInfo(type=SourceType.REGISTRY, ref=registry_first_commit),
+            ),
+            PluginEntry(
+                name="Echo Tool",
+                directory=git_plugin_dir,
+                source=SourceInfo(type=SourceType.GIT, url=fake_git.url, ref=git_second_commit),
+            ),
+            PluginEntry(
+                name="Local Plugin",
+                directory="local-plugin",
+                source=SourceInfo(type=SourceType.LOCAL),
+            ),
+        ]
+        save_manifest(manifest, atk_home)
+
+        registry_dir = atk_home / "plugins" / registry_plugin_dir
+        git_dir = atk_home / "plugins" / git_plugin_dir
+        assert not registry_dir.exists()
+        assert not git_dir.exists()
+        assert local_plugin_dir.exists()
+
+        # When
+        with patch("atk.registry.REGISTRY_URL", fake_registry.url):
+            result = cli_runner.invoke(app, ["install", "--all"])
+
+        # Then - registry plugin has older content
+        assert result.exit_code == exit_codes.SUCCESS, f"Output: {result.output}"
+        reg_data = yaml.safe_load((registry_dir / "plugin.yaml").read_text())
+        assert reg_data["description"] == registry_original_desc
+        assert read_atk_ref(registry_dir) == registry_first_commit
+
+        # And - git plugin has latest content
+        git_data = yaml.safe_load((git_dir / "plugin.yaml").read_text())
+        assert git_data["description"] == git_updated_desc
+        assert read_atk_ref(git_dir) == git_second_commit
+
+        # And - local plugin ran its install script
+        assert (local_plugin_dir / "installed.txt").exists()
+
 
 @pytest.mark.usefixtures("atk_home")
 class TestUninstallCli:
@@ -1017,7 +1211,7 @@ class TestGetPluginStatus:
 
 
 class TestFormatEnvStatus:
-    """Tests for _format_env_status helper function."""
+    """Tests for format_env_status helper function."""
 
     def test_shows_checkmark_when_all_required_set_with_unset_optional(self) -> None:
         """Verify checkmark shown when all required vars set (even with unset optional vars).
@@ -1032,7 +1226,7 @@ class TestFormatEnvStatus:
         expected_result = "[green]✓[/green]"
 
         # When
-        result = _format_env_status(missing_required_vars, unset_optional_count, total_env_vars)
+        result = format_env_status(missing_required_vars, unset_optional_count, total_env_vars)
 
         # Then
         assert result == expected_result
@@ -1046,7 +1240,7 @@ class TestFormatEnvStatus:
         expected_result = "[green]✓[/green]"
 
         # When
-        result = _format_env_status(missing_required_vars, unset_optional_count, total_env_vars)
+        result = format_env_status(missing_required_vars, unset_optional_count, total_env_vars)
 
         # Then
         assert result == expected_result
@@ -1060,7 +1254,7 @@ class TestFormatEnvStatus:
         expected_result = "-"
 
         # When
-        result = _format_env_status(missing_required_vars, unset_optional_count, total_env_vars)
+        result = format_env_status(missing_required_vars, unset_optional_count, total_env_vars)
 
         # Then
         assert result == expected_result
@@ -1076,7 +1270,7 @@ class TestFormatEnvStatus:
         expected_result = f"[red]! {var1_name}, {var2_name}[/red]"
 
         # When
-        result = _format_env_status(missing_required_vars, unset_optional_count, total_env_vars)
+        result = format_env_status(missing_required_vars, unset_optional_count, total_env_vars)
 
         # Then
         assert result == expected_result
@@ -1091,7 +1285,7 @@ class TestFormatEnvStatus:
         expected_result = f"[red]! {var_name}[/red] [dim](+{unset_optional_count} optional)[/dim]"
 
         # When
-        result = _format_env_status(missing_required_vars, unset_optional_count, total_env_vars)
+        result = format_env_status(missing_required_vars, unset_optional_count, total_env_vars)
 
         # Then
         assert result == expected_result
