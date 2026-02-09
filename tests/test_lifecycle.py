@@ -11,6 +11,7 @@ import yaml
 
 from atk import exit_codes
 from atk.cli import app, format_env_status
+from atk.git import read_atk_ref
 from atk.lifecycle import (
     LifecycleCommandNotDefinedError,
     get_plugin_status,
@@ -26,8 +27,12 @@ from atk.plugin_schema import (
     McpConfig,
     PluginSchema,
 )
-from atk.git import read_atk_ref
-from tests.conftest import create_fake_git_repo, create_fake_registry, update_fake_repo, write_plugin_yaml
+from tests.conftest import (
+    create_fake_git_repo,
+    create_fake_registry,
+    update_fake_repo,
+    write_plugin_yaml,
+)
 
 # Type alias for the plugin factory fixture
 PluginFactory = Callable[..., Path]

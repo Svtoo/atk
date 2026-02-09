@@ -53,6 +53,6 @@ def fetch_plugin_source(
         msg = f"Git plugin '{directory}' has no source URL in manifest"
         raise FetchError(msg)
 
-    result = fetch_git_plugin(url=source_url, target_dir=target_dir, ref=ref)
-    return result.commit_hash
+    git_result = fetch_git_plugin(url=source_url, target_dir=target_dir, ref=ref)
+    return git_result.commit_hash
 
