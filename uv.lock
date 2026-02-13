@@ -12,7 +12,7 @@ wheels = [
 ]
 
 [[package]]
-name = "atk"
+name = "atk-cli"
 version = "0.1.0"
 source = { editable = "." }
 dependencies = [
