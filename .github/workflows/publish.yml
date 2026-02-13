@@ -12,7 +12,6 @@ jobs:
   publish:
     name: Build and publish to PyPI
     runs-on: ubuntu-latest
-    environment: pypi  # This must match the "Environment name" in PyPI trusted publisher form
     permissions:
       id-token: write  # REQUIRED for trusted publishing
 
