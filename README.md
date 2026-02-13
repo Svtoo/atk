@@ -84,8 +84,8 @@ If you’re keeping your **AI dev setup sane**, it’s the right one.
 
 ```bash
 # install ATK
-uv tool install atk      # recommended
-# or: pip install atk
+uv tool install atk-cli      # recommended
+# or: pip install atk-cli
 
 # initialize ATK Home (defaults to ~/.atk)
 atk init
@@ -270,10 +270,10 @@ Switching agents should feel trivial, because your setup — tools, memory, rule
 
 ```bash
 # Recommended
-uv tool install atk
+uv tool install atk-cli
 
 # Alternative
-pip install atk
+pip install atk-cli
 ```
 
 ATK is distributed via **PyPI** and installs as a single self-contained CLI.

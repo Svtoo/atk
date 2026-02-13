@@ -1,12 +1,12 @@
 [project]
-name = "atk"
+name = "atk-cli"
 version = "0.1.0"
 description = "AI Toolkit - Manage AI development tools through a git-backed, declarative manifest"
 readme = "README.md"
 license = { text = "Apache-2.0" }
 requires-python = ">=3.11"
 authors = [
-    { name = "Oleksandr (Sasha) Antoshchenko" }
+    { name = "Oleksandr (Sasha) Antoshchenko", email = "sasha@svtoo.com" }
 ]
 keywords = ["cli", "ai", "tools", "mcp", "agent", "devtools"]
 classifiers = [
@@ -31,6 +31,11 @@ dependencies = [
     "rich>=13.0",
     "python-dotenv>=1.2.1",
 ]
+
+[project.urls]
+Homepage = "https://github.com/Svtoo/atk"
+Repository = "https://github.com/Svtoo/atk"
+Issues = "https://github.com/Svtoo/atk/issues"
 
 [dependency-groups]
 dev = [
