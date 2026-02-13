@@ -66,6 +66,8 @@ class TestInitAtkHome:
         assert "!plugins/*/custom/**" in gitignore_content
         # Secrets are ignored
         assert "*.env" in gitignore_content
+        # Update check cache is ignored
+        assert ".update-cache.yaml" in gitignore_content
 
     def test_git_repo_initialized_with_commit(self, tmp_path: Path) -> None:
         """Verify git repo is initialized with initial commit."""

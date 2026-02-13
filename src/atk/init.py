@@ -44,6 +44,9 @@ plugins/*/*
 *.env
 .env.*
 
+# Update check cache
+.update-cache.yaml
+
 # Local development
 .DS_Store
 """

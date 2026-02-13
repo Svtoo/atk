@@ -8,7 +8,7 @@ import typer
 from rich.console import Console
 from rich.table import Table
 
-from atk import cli_logger, exit_codes
+from atk import __version__, cli_logger, exit_codes
 from atk.add import InstallFailedError, add_plugin
 from atk.banner import print_banner
 from atk.errors import handle_cli_error
@@ -46,6 +46,7 @@ from atk.plugin import CUSTOM_DIR, PluginNotFoundError, load_plugin
 from atk.registry import PluginNotFoundError as RegistryPluginNotFoundError
 from atk.remove import remove_plugin
 from atk.setup import run_setup
+from atk.update_check import get_update_notice
 from atk.upgrade import LocalPluginError, UpgradeError, upgrade_plugin
 
 app = typer.Typer(
@@ -1091,6 +1092,22 @@ def _print_status_table(results: list[PluginStatusResult]) -> None:
             console.print("[dim]Note: Port checks verify if something is listening, not that it's the plugin.[/dim]")
 
 
+def _show_update_notice() -> None:
+    """Show update notice if a newer version is available on PyPI.
+
+    Suppressed when stderr is not a TTY (piped output).
+    Errors are silently ignored — update check must never crash the CLI.
+    """
+    if not sys.stderr.isatty():
+        return
+    try:
+        notice = get_update_notice(__version__, get_atk_home())
+    except (OSError, ValueError, KeyError):
+        return
+    if notice is not None:
+        cli_logger.warning(notice)
+
+
 def main_cli() -> None:
     """CLI entry point with top-level exception handling.
 
@@ -1101,6 +1118,8 @@ def main_cli() -> None:
         app()
     except Exception as e:
         sys.exit(handle_cli_error(e))
+    finally:
+        _show_update_notice()
 
 
 if __name__ == "__main__":
