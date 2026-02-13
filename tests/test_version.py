@@ -12,7 +12,7 @@ class TestVersion:
 
     def setup_method(self) -> None:
         """Set up test fixtures."""
-        self.expected_version = "0.1.0"
+        self.expected_version = "0.0.1"
         self.runner = CliRunner()
 
     def test_version_is_defined(self) -> None:
