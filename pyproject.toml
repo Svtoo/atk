@@ -1,6 +1,6 @@
 [project]
 name = "atk-cli"
-version = "0.0.1"
+version = "0.0.2"
 description = "AI Toolkit - Manage AI development tools through a git-backed, declarative manifest"
 readme = "README.md"
 license = { text = "Apache-2.0" }
