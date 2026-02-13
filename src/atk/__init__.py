@@ -3,5 +3,7 @@
 Manage AI development tools through a git-backed, declarative manifest.
 """
 
-__version__ = "0.0.1"
+from importlib.metadata import version
+
+__version__ = version("atk-cli")
 

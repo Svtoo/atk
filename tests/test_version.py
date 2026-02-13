@@ -1,5 +1,7 @@
 """Test ATK version and basic imports."""
 
+from importlib.metadata import version
+
 from typer.testing import CliRunner
 
 from atk import __version__
@@ -12,13 +14,12 @@ class TestVersion:
 
     def setup_method(self) -> None:
         """Set up test fixtures."""
-        self.expected_version = "0.0.1"
         self.runner = CliRunner()
 
     def test_version_is_defined(self) -> None:
-        """Verify that __version__ is defined and matches expected value."""
-        # Given
-        expected = self.expected_version
+        """Verify that __version__ is defined and matches pyproject.toml."""
+        # Given - version from pyproject.toml via package metadata
+        expected = version("atk-cli")
 
         # When
         actual = __version__
@@ -37,7 +38,7 @@ class TestVersion:
     def test_version_flag_shows_banner(self) -> None:
         """Verify that --version flag outputs the banner with version."""
         # Given
-        version = self.expected_version
+        pkg_version = version("atk-cli")
 
         # When
         result = self.runner.invoke(app, ["--version"])
@@ -45,7 +46,7 @@ class TestVersion:
         # Then
         assert result.exit_code == 0
         # Banner contains version info
-        assert f"v{version}" in result.output
+        assert f"v{pkg_version}" in result.output
         assert "atk" in result.output
         assert "AI Toolkit" in result.output
 
