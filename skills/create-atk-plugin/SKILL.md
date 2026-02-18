@@ -15,6 +15,90 @@ declarative YAML manifest. Users install plugins with `atk add`, configure with 
 - **Plugin directory**: `~/.atk/plugins/<name>/` — contains `plugin.yaml`, `.env`, lifecycle scripts.
 - **Install**: `uv tool install atk-cli`
 
+## The Zero-Friction Principle
+
+ATK exists so users can run `atk add <name>` and have a working tool — no debugging, no manual setup, no guesswork.
+Every plugin you create must uphold this contract:
+
+### If ATK says "installed", it works
+
+When `install.sh` exits 0, the service must be fully operational. Not "mostly working", not "working if you also
+install X" — **fully working**. If any dependency is missing or any step fails, the script must exit non-zero with a
+clear error message. ATK interprets exit 0 as success. Lying about success leaves the user with a broken service and
+no idea why.
+
+### Fail fast with clear errors
+
+Do not print warnings and continue. Do not silently skip failed steps. If something is wrong, **stop immediately** and
+tell the user exactly:
+1. What is missing or broken
+2. How to fix it (specific commands, not vague suggestions)
+3. What to run after fixing it (e.g., "then run `atk install <name>` again")
+
+Bad:
+```bash
+# DON'T: warn and continue — user gets a broken service
+if ! command -v ollama &>/dev/null; then
+  echo "Warning: Ollama not found, embeddings may not work"
+fi
+```
+
+Good:
+```bash
+# DO: fail fast with actionable instructions
+if ! command -v ollama &>/dev/null; then
+  echo "ERROR: Ollama is required but not installed."
+  echo ""
+  echo "Install Ollama:"
+  echo "  macOS:  brew install ollama"
+  echo "  Linux:  curl -fsSL https://ollama.com/install.sh | sh"
+  echo "  Other:  https://ollama.com/download"
+  echo ""
+  echo "Then run: atk install <name>"
+  exit 1
+fi
+```
+
+### Check every dependency before doing work
+
+Before cloning repos, building images, or starting services, verify that all prerequisites are met:
+- **External tools** (e.g., Ollama, Node.js, Python): check they are installed and running if needed
+- **Models or data** (e.g., ML models): check if already available, download if not, fail if download fails
+- **Ports**: ATK checks port conflicts before `start`, but `install.sh` should verify service-specific requirements
+- **Network**: if the install needs to download something, verify connectivity
+
+### Be specific about what's happening
+
+Tell the user what each step is doing, especially slow operations:
+```bash
+echo "  Pulling model 'mxbai-embed-large' (~669MB)..."
+echo "  ✓ Model already available — skipping download"
+echo "  Building Docker images (this may take a few minutes)..."
+echo "  ✅ API: http://localhost:8787"
+```
+
+### Health checks must actually verify the service
+
+Do not `sleep 5` and hope for the best. Use retry loops that actually hit the service endpoint:
+```bash
+for i in $(seq 1 15); do
+  if curl -sf http://localhost:8787/ >/dev/null 2>&1; then
+    echo "  ✅ API: http://localhost:8787"
+    break
+  fi
+  [ "$i" -eq 15 ] && { echo "  ❌ API failed to start"; exit 1; }
+  sleep 2
+done
+```
+
+The same applies to `start.sh` — if it exits 0, the service must be up and healthy.
+
+### The user's time is sacred
+
+Every minute a user spends debugging a broken install is a failure of the plugin author. Front-load the work:
+validate dependencies, pull models, check connectivity — all before the expensive operations (cloning, building,
+starting). If something will fail, fail early.
+
 ## Plugin Sources (How Users Add Plugins)
 
 | Method   | Command                       | What Happens                                  |
@@ -139,7 +223,8 @@ If the plugin exposes an MCP server, configure the `mcp` section:
 5. **Install/uninstall symmetry**: If `install` is defined, `uninstall` MUST also be defined (schema validation enforces
    this)
 6. **No restart command**: ATK runs `stop` then `start` for restart
-7. You don't have to declare explicit scripts. You can if it's a one-liner bash; you can directly put it in plugin.yaml file. 
+7. You don't have to declare explicit scripts. You can if it's a one-liner bash; you can directly put it in plugin.yaml
+   file.
 
 ### install — The Most Critical Script
 
@@ -181,3 +266,95 @@ consumer — either a lifecycle script that reads `$VAR_NAME` or application cod
 
 **Install-time vs runtime vars**: Some vars are only used during install (e.g., to write config files). These should be
 in `env_vars` but NOT in `mcp.env`. Only vars the MCP server reads from `os.environ` at runtime belong in `mcp.env`.
+
+## Registry Plugins vs In-Repo Plugins
+
+There are two contexts for creating plugins:
+
+| Context      | Directory                      | Added via                                         | Who uses it                                               |
+|--------------|--------------------------------|---------------------------------------------------|-----------------------------------------------------------|
+| **In-repo**  | `project-root/.atk/`           | `atk add github.com/org/repo` or `atk add ./path` | Project authors adding ATK support to their own tool      |
+| **Registry** | `atk-registry/plugins/<name>/` | `atk add <name>`                                  | Curators packaging third-party tools for the ATK registry |
+
+### Registry Plugin Rules
+
+- Plugin files live directly in `atk-registry/plugins/<name>/` (no `.atk/` subdirectory)
+- **`index.yaml` is auto-generated by CI** — never edit it manually. CI runs `scripts/generate_index.py` on push.
+- When ATK fetches a registry plugin, it sparse-checkouts `plugins/<name>/` and copies its contents to
+  `~/.atk/plugins/<name>/`
+- Registry plugins must be self-contained: all lifecycle scripts, compose files, Dockerfiles, and config files must be
+  inside the plugin directory
+
+### Build-from-Source Plugins
+
+When a plugin builds from upstream source (not pre-built images):
+
+- **Pin to a specific tag or commit** — never use `main` or `latest`. Upstream breaking changes will silently break
+  your plugin.
+- `install.sh` should `rm -rf vendor/` then `git clone --depth 1 --branch <tag>` — idempotent, always fresh.
+- `uninstall.sh` should remove the vendor clone, built images, and volumes.
+- Reference vendor files via relative paths from the plugin directory (e.g., `./vendor/Repo/backend`).
+
+## Testing Your Plugin
+
+**Always test through ATK itself.** Do not just validate YAML — run the full lifecycle.
+
+### Testing Workflow
+
+```bash
+# 1. Add the plugin locally (from the registry repo root)
+cd atk-registry
+atk add ./plugins/<name>
+
+# 2. Verify status
+atk status
+
+# 3. Test stop/start cycle
+atk stop <name>
+atk status              # should show stopped
+atk start <name>
+atk status              # should show running, ports healthy
+
+# 4. Test MCP output
+atk mcp <name>          # verify JSON is correct
+
+# 5. Test uninstall/install cycle (idempotency)
+atk uninstall <name> --force
+# verify: no containers, no volumes, no vendor clone
+atk install <name>
+atk status              # should show running again
+
+# 6. Clean up when done
+atk remove <name> --force
+```
+
+### What to Verify at Each Step
+
+| Command         | Check                                                               |
+|-----------------|---------------------------------------------------------------------|
+| `atk add`       | Exit 0, env var prompts work, install completes, health checks pass |
+| `atk status`    | Shows `running`, all ports marked `✓`, ENV `✓`                      |
+| `atk stop`      | Exit 0, containers actually removed                                 |
+| `atk start`     | Exit 0, containers restart cleanly                                  |
+| `atk mcp`       | Correct JSON: transport, command, args, env all match plugin.yaml   |
+| `atk uninstall` | Exit 0, all resources cleaned up (containers, volumes, vendor)      |
+| `atk install`   | Exit 0, full re-setup from scratch works (idempotency)              |
+
+### `atk uninstall` vs `atk remove`
+
+- `atk uninstall` — runs stop + uninstall lifecycle but **keeps the plugin in the manifest**. The plugin directory
+  and manifest entry remain.
+- `atk remove` — runs stop + uninstall + **deletes the plugin directory and manifest entry**. Full cleanup.
+
+Use `atk uninstall` → `atk install` to test idempotency. Use `atk remove` for final cleanup.
+
+## Practical Notes
+
+- **Port conflicts**: Before testing, check that no other containers are using the same ports. Stale containers from
+  previous manual setups are a common cause of install failures.
+- **Health checks take time**: Docker compose health checks may need 5-30 seconds. Install scripts should include
+  a wait loop with retries (e.g., `curl --retry 10 --retry-delay 2`).
+- **`set -e` in scripts**: Use `set -e` in `install.sh` (fail fast on errors). Do NOT use `set -e` in `stop.sh` or
+  `uninstall.sh` (partial cleanup is better than no cleanup).
+- **Lifecycle one-liners**: For simple commands (e.g., `docker compose up -d`), put them directly in `plugin.yaml`
+  instead of creating separate shell scripts. Only create scripts when the logic is non-trivial.
