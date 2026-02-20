@@ -1,5 +1,6 @@
 """ATK CLI entry point."""
 
+import os
 import sys
 from pathlib import Path
 from typing import Annotated
@@ -11,6 +12,7 @@ from rich.table import Table
 from atk import __version__, cli_logger, exit_codes
 from atk.add import InstallFailedError, add_plugin
 from atk.banner import print_banner
+from atk.env import load_env_file
 from atk.errors import handle_cli_error
 from atk.git import is_git_available
 from atk.git_source import GitPluginNotFoundError, GitSourceError
@@ -982,9 +984,12 @@ def run(
         cli_logger.error(f"Script '{script}' not found in plugin directory")
         raise typer.Exit(exit_codes.GENERAL_ERROR)
 
+    env_file = plugin_dir / ".env"
+    merged_env = {**os.environ, **load_env_file(env_file)}
     result = subprocess.run(
         [str(script_path)],
         cwd=plugin_dir,
+        env=merged_env,
     )
     raise typer.Exit(result.returncode)
 
