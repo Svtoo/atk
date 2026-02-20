@@ -81,6 +81,14 @@ If you’re keeping your **AI dev setup sane**, it’s the right one.
 * Your setup can be cloned, audited, and rolled back
 
 ## A tiny example
+<details>
+<summary><strong>Install uv</strong></summary>
+
+**Install uv** (The modern Python manager):
+- **macOS:** `brew install uv`
+- **Windows/Linux/Other:** [Official Install Guide](https://docs.astral.sh/uv/getting-started/installation/)
+
+</details>
 
 ```bash
 # install ATK
@@ -94,7 +102,6 @@ atk init
 atk add openmemory
 
 # run it
-atk start openmemory
 atk status
 
 # generate MCP config JSON for your agent
