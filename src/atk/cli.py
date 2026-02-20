@@ -1064,7 +1064,9 @@ def _print_status_table(results: list[PluginStatusResult]) -> None:
             result.missing_required_vars, result.unset_optional_count, result.total_env_vars
         )
 
-        table.add_row(result.name, status_str, ports_str, env_str)
+        name = f"{result.name} ({result.directory})"
+
+        table.add_row(name, status_str, ports_str, env_str)
 
     console.print(table)
 

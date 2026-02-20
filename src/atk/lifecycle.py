@@ -558,6 +558,7 @@ class PluginStatusResult:
     """Result of checking a plugin's status."""
 
     name: str
+    directory: str
     status: PluginStatus
     ports: list[PortStatus]
     missing_required_vars: list[str]  # Names of missing required env vars
@@ -592,6 +593,7 @@ def get_plugin_status(atk_home: Path, identifier: str) -> PluginStatusResult:
         ports = [PortStatus(port=p, listening=None) for p in raw_ports]
         return PluginStatusResult(
             name=plugin.name,
+            directory=plugin_dir.name,
             status=PluginStatus.UNKNOWN,
             ports=ports,
             missing_required_vars=missing_required_vars,
@@ -615,6 +617,7 @@ def get_plugin_status(atk_home: Path, identifier: str) -> PluginStatusResult:
 
     return PluginStatusResult(
         name=plugin.name,
+        directory=plugin_dir.name,
         status=status,
         ports=ports,
         missing_required_vars=missing_required_vars,
