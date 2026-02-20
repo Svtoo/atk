@@ -16,7 +16,7 @@ class TestRunCommand:
     """Tests for `atk run <plugin> <script>`."""
 
     def test_injects_env_vars_from_env_file(
-        self, atk_home: Path, create_plugin: PluginFactory, cli_runner
+        self, create_plugin: PluginFactory, cli_runner
     ) -> None:
         """Regression test: .env vars must be visible to scripts run via `atk run`.
 
@@ -46,7 +46,7 @@ class TestRunCommand:
         assert output_file.read_text().strip() == env_var_value
 
     def test_env_file_vars_override_system_env(
-        self, atk_home: Path, create_plugin: PluginFactory, cli_runner, monkeypatch: pytest.MonkeyPatch
+        self, create_plugin: PluginFactory, cli_runner, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         """Verify .env file vars take precedence over system environment."""
         # Given
