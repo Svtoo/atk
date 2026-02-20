@@ -11,7 +11,7 @@ For the master plan, see `ROADMAP.md`.
 ## Git push 
 
 For .atk registries with remote repositories, enable a config parameter alongside with auto_commit and auto_push to automatically push changes to the remote. 
-
+also add command to pull changes from the remote. just a proxy for git, but useful so that the user does not need to navigate to the .atk directory to pull/push changes.
 ---
 ## Manage Agents.md and other prompts through atk
 
