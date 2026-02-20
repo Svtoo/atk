@@ -1,6 +1,6 @@
 [project]
 name = "atk-cli"
-version = "0.0.2"
+dynamic = ["version"]
 description = "AI Toolkit - Manage AI development tools through a git-backed, declarative manifest"
 readme = "README.md"
 license = { text = "Apache-2.0" }
@@ -51,8 +51,11 @@ dev = [
 atk = "atk.cli:main_cli"
 
 [build-system]
-requires = ["hatchling"]
+requires = ["hatchling", "hatch-vcs"]
 build-backend = "hatchling.build"
+
+[tool.hatch.version]
+source = "vcs"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/atk"]
