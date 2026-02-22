@@ -101,7 +101,6 @@ atk init
 # add a plugin (from the registry)
 atk add openmemory
 
-# run it
 atk status
 
 # generate MCP config JSON for your agent

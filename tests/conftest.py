@@ -82,15 +82,18 @@ def cli_runner() -> CliRunner:
 
 
 @pytest.fixture
-def atk_home(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
-    """Create and initialize an ATK home directory.
+def configure_atk_home(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    _path: Path | None = None
 
-    Sets ATK_HOME environment variable and initializes the directory structure.
-    Returns the path to the ATK home directory.
-    """
-    monkeypatch.setenv("ATK_HOME", str(tmp_path))
-    init_atk_home(tmp_path)
-    return tmp_path
+    def _configure() -> Path:
+        nonlocal _path
+        if _path is None:
+            monkeypatch.setenv("ATK_HOME", str(tmp_path))
+            init_atk_home(tmp_path)
+            _path = tmp_path
+        return _path
+
+    return _configure
 
 
 # Type alias for the plugin factory function
@@ -98,7 +101,7 @@ PluginFactory = Callable[..., Path]
 
 
 @pytest.fixture
-def create_plugin(atk_home: Path) -> PluginFactory:
+def create_plugin(configure_atk_home) -> PluginFactory:
     """Factory fixture that returns a function to create plugins.
 
     Supports two calling patterns:
@@ -121,6 +124,7 @@ def create_plugin(atk_home: Path) -> PluginFactory:
 
     The directory parameter is required in both patterns.
     """
+    atk_home = configure_atk_home()
 
     def _create(
         name: str | None = None,

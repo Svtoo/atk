@@ -106,8 +106,9 @@ class TestRunCommand:
         # Then
         assert result.exit_code == expected_code
 
-    def test_plugin_not_found_returns_error(self, cli_runner) -> None:
+    def test_plugin_not_found_returns_error(self, configure_atk_home, cli_runner) -> None:
         """Verify error when plugin does not exist."""
+        configure_atk_home()
         result = cli_runner.invoke(app, ["run", "nonexistent-plugin", "backup"])
 
         assert result.exit_code == exit_codes.PLUGIN_NOT_FOUND

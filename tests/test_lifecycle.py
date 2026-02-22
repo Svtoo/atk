@@ -41,9 +41,10 @@ PluginFactory = Callable[..., Path]
 class TestRunLifecycleCommand:
     """Tests for run_lifecycle_command function."""
 
-    def test_runs_install_command(self, atk_home: Path, create_plugin: PluginFactory) -> None:
+    def test_runs_install_command(self, configure_atk_home, create_plugin: PluginFactory) -> None:
         """Verify run_lifecycle_command executes install command."""
         # Given
+        atk_home = configure_atk_home()
         plugin_dir = create_plugin("TestPlugin", "test-plugin", {"install": "touch installed.txt"})
         plugin, _ = load_plugin(atk_home, "test-plugin")
 
@@ -54,9 +55,10 @@ class TestRunLifecycleCommand:
         assert exit_code == 0
         assert (plugin_dir / "installed.txt").exists()
 
-    def test_runs_command_in_plugin_directory(self, atk_home: Path, create_plugin: PluginFactory) -> None:
+    def test_runs_command_in_plugin_directory(self, configure_atk_home, create_plugin: PluginFactory) -> None:
         """Verify command runs with plugin directory as cwd."""
         # Given
+        atk_home = configure_atk_home()
         plugin_dir = create_plugin("TestPlugin", "test-plugin", {"install": "pwd > cwd.txt"})
         plugin, _ = load_plugin(atk_home, "test-plugin")
 
@@ -68,9 +70,10 @@ class TestRunLifecycleCommand:
         cwd_content = (plugin_dir / "cwd.txt").read_text().strip()
         assert cwd_content == str(plugin_dir)
 
-    def test_returns_command_exit_code(self, atk_home: Path, create_plugin: PluginFactory) -> None:
+    def test_returns_command_exit_code(self, configure_atk_home, create_plugin: PluginFactory) -> None:
         """Verify run_lifecycle_command returns command's exit code."""
         # Given
+        atk_home = configure_atk_home()
         expected_exit_code = 42
         plugin_dir = create_plugin("TestPlugin", "test-plugin", {"install": f"exit {expected_exit_code}"})
         plugin, _ = load_plugin(atk_home, "test-plugin")
@@ -81,9 +84,10 @@ class TestRunLifecycleCommand:
         # Then
         assert exit_code == expected_exit_code
 
-    def test_raises_when_command_not_defined(self, atk_home: Path, create_plugin: PluginFactory) -> None:
+    def test_raises_when_command_not_defined(self, configure_atk_home, create_plugin: PluginFactory) -> None:
         """Verify raises LifecycleCommandNotDefinedError when command missing."""
         # Given
+        atk_home = configure_atk_home()
         plugin_dir = create_plugin("TestPlugin", "test-plugin", {"install": "echo hello"})
         plugin, _ = load_plugin(atk_home, "test-plugin")
 
@@ -91,9 +95,10 @@ class TestRunLifecycleCommand:
         with pytest.raises(LifecycleCommandNotDefinedError, match="start"):
             run_lifecycle_command(plugin, plugin_dir, "start")
 
-    def test_raises_when_lifecycle_section_missing(self, atk_home: Path) -> None:
+    def test_raises_when_lifecycle_section_missing(self, configure_atk_home) -> None:
         """Verify raises error when plugin has no lifecycle section."""
         # Given - plugin without lifecycle section (manual creation)
+        atk_home = configure_atk_home()
         plugin_dir = atk_home / "plugins" / "test-plugin"
         plugin_dir.mkdir(parents=True)
 
@@ -114,9 +119,10 @@ class TestRunLifecycleCommand:
         with pytest.raises(LifecycleCommandNotDefinedError, match="install"):
             run_lifecycle_command(plugin, plugin_dir, "install")
 
-    def test_runs_start_command(self, atk_home: Path, create_plugin: PluginFactory) -> None:
+    def test_runs_start_command(self, configure_atk_home, create_plugin: PluginFactory) -> None:
         """Verify run_lifecycle_command executes start command."""
         # Given
+        atk_home = configure_atk_home()
         plugin_dir = create_plugin("TestPlugin", "test-plugin", {"start": "touch started.txt"})
         plugin, _ = load_plugin(atk_home, "test-plugin")
 
@@ -128,10 +134,11 @@ class TestRunLifecycleCommand:
         assert (plugin_dir / "started.txt").exists()
 
     def test_injects_env_vars_from_env_file(
-        self, atk_home: Path, create_plugin: PluginFactory
+        self, configure_atk_home, create_plugin: PluginFactory
     ) -> None:
         """Verify run_lifecycle_command injects env vars from .env file."""
         # Given
+        atk_home = configure_atk_home()
         env_var_name = "MY_TEST_VAR"
         env_var_value = "test_value_123"
         plugin_dir = create_plugin(
@@ -153,10 +160,11 @@ class TestRunLifecycleCommand:
         assert output_file.read_text().strip() == env_var_value
 
     def test_env_file_vars_override_system_env(
-        self, atk_home: Path, create_plugin: PluginFactory, monkeypatch
+        self, configure_atk_home, create_plugin: PluginFactory, monkeypatch
     ) -> None:
         """Verify .env file vars take precedence over system environment."""
         # Given
+        atk_home = configure_atk_home()
         env_var_name = "OVERRIDE_TEST_VAR"
         system_value = "from_system"
         file_value = "from_file"
@@ -179,10 +187,11 @@ class TestRunLifecycleCommand:
         assert output_file.read_text().strip() == file_value
 
     def test_system_env_available_when_no_env_file(
-        self, atk_home: Path, create_plugin: PluginFactory, monkeypatch
+        self, configure_atk_home, create_plugin: PluginFactory, monkeypatch
     ) -> None:
         """Verify system environment is available when no .env file exists."""
         # Given
+        atk_home = configure_atk_home()
         env_var_name = "SYSTEM_ONLY_VAR"
         env_var_value = "system_value"
         monkeypatch.setenv(env_var_name, env_var_value)
@@ -202,10 +211,11 @@ class TestRunLifecycleCommand:
         assert output_file.read_text().strip() == env_var_value
 
     def test_includes_compose_override_when_present(
-        self, atk_home: Path, create_plugin: PluginFactory
+        self, configure_atk_home, create_plugin: PluginFactory
     ) -> None:
         """Compose override file is auto-included when running docker compose commands."""
         # Given — lifecycle command uses docker compose, and override file exists
+        atk_home = configure_atk_home()
         plugin_dir = create_plugin(
             "TestPlugin", "test-plugin", {"start": "docker compose up -d"}
         )
@@ -236,10 +246,11 @@ class TestRunLifecycleCommand:
         assert f"-f {override_path}" in command_log
 
     def test_compose_command_unchanged_when_no_override(
-        self, atk_home: Path, create_plugin: PluginFactory
+        self, configure_atk_home, create_plugin: PluginFactory
     ) -> None:
         """Compose command is not modified when no override file exists."""
         # Given — lifecycle command uses docker compose, but no override file
+        atk_home = configure_atk_home()
         plugin_dir = create_plugin(
             "TestPlugin", "test-plugin", {"start": "docker compose up -d"}
         )
@@ -268,7 +279,6 @@ class TestRunLifecycleCommand:
 # =============================================================================
 
 
-@pytest.mark.usefixtures("atk_home")
 class TestStartCli:
     """Tests for atk start CLI command."""
 
@@ -284,8 +294,9 @@ class TestStartCli:
         assert "Started plugin" in result.output
         assert (plugin_dir / "started.txt").exists()
 
-    def test_cli_start_plugin_not_found(self, cli_runner) -> None:
+    def test_cli_start_plugin_not_found(self, configure_atk_home, cli_runner) -> None:
         """Verify CLI reports error when plugin not found."""
+        configure_atk_home()
         result = cli_runner.invoke(app, ["start", "nonexistent"])
 
         assert result.exit_code == exit_codes.PLUGIN_NOT_FOUND
@@ -303,9 +314,10 @@ class TestStartCli:
         assert "no start command defined" in result.output
 
     def test_cli_start_fails_with_missing_required_env_vars(
-        self, atk_home: Path, cli_runner
+        self, configure_atk_home, cli_runner
     ) -> None:
         """Verify CLI fails with exit code 8 when required env vars are missing."""
+        atk_home = configure_atk_home()
         plugin_name = "TestPlugin"
         plugin_dir_name = "test-plugin"
         required_var = "REQUIRED_API_KEY"
@@ -330,9 +342,10 @@ class TestStartCli:
         assert "Missing required" in result.output
 
     def test_cli_start_succeeds_when_required_env_var_in_env_file(
-        self, atk_home: Path, cli_runner
+        self, configure_atk_home, cli_runner
     ) -> None:
         """Verify CLI succeeds when required env var is set in .env file."""
+        atk_home = configure_atk_home()
         plugin_name = "TestPlugin"
         plugin_dir_name = "test-plugin"
         required_var = "REQUIRED_API_KEY"
@@ -357,9 +370,10 @@ class TestStartCli:
         assert "Started plugin" in result.output
 
     def test_cli_start_succeeds_when_required_env_var_in_system_env(
-        self, atk_home: Path, cli_runner, monkeypatch
+        self, configure_atk_home, cli_runner, monkeypatch
     ) -> None:
         """Verify CLI succeeds when required env var is set in system environment."""
+        atk_home = configure_atk_home()
         plugin_name = "TestPlugin"
         plugin_dir_name = "test-plugin"
         required_var = "REQUIRED_API_KEY"
@@ -384,10 +398,11 @@ class TestStartCli:
         assert "Started plugin" in result.output
 
     def test_cli_start_fails_with_port_conflict(
-        self, atk_home: Path, cli_runner
+        self, configure_atk_home, cli_runner
     ) -> None:
         """Verify CLI fails with exit code 9 when a declared port is already in use."""
         import socket
+        atk_home = configure_atk_home()
 
         plugin_name = "TestPlugin"
         plugin_dir_name = "test-plugin"
@@ -423,9 +438,10 @@ class TestStartCli:
             sock.close()
 
     def test_cli_start_succeeds_when_port_is_free(
-        self, atk_home: Path, cli_runner
+        self, configure_atk_home, cli_runner
     ) -> None:
         """Verify CLI succeeds when declared port is not in use."""
+        atk_home = configure_atk_home()
         plugin_name = "TestPlugin"
         plugin_dir_name = "test-plugin"
         free_port = 19877
@@ -450,7 +466,6 @@ class TestStartCli:
         assert "Started plugin" in result.output
 
 
-@pytest.mark.usefixtures("atk_home")
 class TestStopCli:
     """Tests for atk stop CLI command."""
 
@@ -466,8 +481,9 @@ class TestStopCli:
         assert "Stopped plugin" in result.output
         assert (plugin_dir / "stopped.txt").exists()
 
-    def test_cli_stop_plugin_not_found(self, cli_runner) -> None:
+    def test_cli_stop_plugin_not_found(self, configure_atk_home, cli_runner) -> None:
         """Verify CLI reports error when plugin not found."""
+        configure_atk_home()
         result = cli_runner.invoke(app, ["stop", "nonexistent"])
 
         assert result.exit_code == exit_codes.PLUGIN_NOT_FOUND
@@ -485,7 +501,6 @@ class TestStopCli:
         assert "no stop command defined" in result.output
 
 
-@pytest.mark.usefixtures("atk_home")
 class TestInstallCli:
     """Tests for atk install CLI command."""
 
@@ -500,8 +515,9 @@ class TestInstallCli:
         assert result.exit_code == exit_codes.SUCCESS
         assert (plugin_dir / "installed.txt").exists()
 
-    def test_cli_install_plugin_not_found(self, cli_runner) -> None:
+    def test_cli_install_plugin_not_found(self, configure_atk_home, cli_runner) -> None:
         """Verify CLI returns PLUGIN_NOT_FOUND for unknown plugin."""
+        configure_atk_home()
         result = cli_runner.invoke(app, ["install", "nonexistent"])
 
         assert result.exit_code == exit_codes.PLUGIN_NOT_FOUND
@@ -534,10 +550,11 @@ class TestInstallCli:
         assert "failed" in result.output.lower()
 
     def test_cli_install_fails_with_missing_required_env_vars(
-        self, atk_home: Path, cli_runner
+        self, configure_atk_home, cli_runner
     ) -> None:
         """Verify CLI fails with exit code 8 when required env vars are missing."""
         # Given - plugin with required env var
+        atk_home = configure_atk_home()
         plugin_name = "TestPlugin"
         plugin_dir_name = "test-plugin"
         required_var = "REQUIRED_API_KEY"
@@ -567,11 +584,12 @@ class TestInstallCli:
         assert "Missing required" in result.output
 
     def test_cli_install_pulls_plugin_from_registry(
-        self, atk_home: Path, cli_runner, tmp_path: Path
+        self, configure_atk_home, cli_runner, tmp_path: Path
     ) -> None:
         """Verify CLI pulls pinned (older) commit from registry, not latest."""
 
         # Given - registry with two commits; manifest pins to the first (older) one
+        atk_home = configure_atk_home()
         fake_registry = create_fake_registry(tmp_path)
         first_commit = fake_registry.commit_hash
         original_description = "A test plugin from registry"
@@ -605,11 +623,12 @@ class TestInstallCli:
         assert read_atk_ref(plugin_dir) == first_commit
 
     def test_cli_install_pulls_plugin_from_git(
-        self, atk_home: Path, cli_runner, tmp_path: Path
+        self, configure_atk_home, cli_runner, tmp_path: Path
     ) -> None:
         """Verify CLI pulls pinned (latest) commit from git, matching updated content."""
 
         # Given - git repo with two commits; manifest pins to the second (latest) one
+        atk_home = configure_atk_home()
         fake_git = create_fake_git_repo(tmp_path)
         update_message = "v2"
         second_commit = update_fake_repo(fake_git.url, ".atk/plugin.yaml", update_message)
@@ -640,10 +659,11 @@ class TestInstallCli:
         assert read_atk_ref(plugin_dir) == second_commit
 
     def test_cli_install_pulls_plugin_and_preserves_custom_dir(
-        self, atk_home: Path, cli_runner, tmp_path: Path
+        self, configure_atk_home, cli_runner, tmp_path: Path
     ) -> None:
         """Verify CLI pulls pinned (older) commit and preserves custom/ directory."""
         # Given - registry with two commits; manifest pins to the first (older) one
+        atk_home = configure_atk_home()
         fake_registry = create_fake_registry(tmp_path)
         first_commit = fake_registry.commit_hash
         original_description = "A test plugin from registry"
@@ -688,10 +708,11 @@ class TestInstallCli:
         assert custom_file.read_text() == custom_content
 
     def test_cli_install_all_pulls_all_missing_plugins(
-        self, atk_home: Path, cli_runner, tmp_path: Path, create_plugin) -> None:
+        self, configure_atk_home, cli_runner, tmp_path: Path, create_plugin) -> None:
         """Verify install --all: registry pinned to older commit, git pinned to latest."""
 
         # Given - registry with two commits; pin to older
+        atk_home = configure_atk_home()
         fake_registry = create_fake_registry(tmp_path)
         registry_first_commit = fake_registry.commit_hash
         registry_original_desc = "A test plugin from registry"
@@ -759,7 +780,6 @@ class TestInstallCli:
         assert (local_plugin_dir / "installed.txt").exists()
 
 
-@pytest.mark.usefixtures("atk_home")
 class TestUninstallCli:
     """Tests for atk uninstall CLI command."""
 
@@ -782,8 +802,9 @@ class TestUninstallCli:
         assert "Uninstalled" in result.output
         assert (plugin_dir / "uninstalled.txt").exists()
 
-    def test_cli_uninstall_plugin_not_found(self, cli_runner) -> None:
+    def test_cli_uninstall_plugin_not_found(self, configure_atk_home, cli_runner) -> None:
         """Verify CLI returns PLUGIN_NOT_FOUND for unknown plugin."""
+        configure_atk_home()
         # Given - no plugin installed
 
         # When
@@ -808,10 +829,11 @@ class TestUninstallCli:
         assert "no uninstall command defined" in result.output
 
     def test_cli_uninstall_runs_stop_before_uninstall(
-        self, atk_home: Path, create_plugin: PluginFactory, cli_runner
+        self, configure_atk_home, create_plugin: PluginFactory, cli_runner
     ) -> None:
         """Verify uninstall runs stop lifecycle before uninstall."""
         # Given - plugin with stop and uninstall lifecycles that write to order file
+        atk_home = configure_atk_home()
         order_file = atk_home / "order.txt"
         expected_order = ["stop", "uninstall"]
         create_plugin(
@@ -896,8 +918,9 @@ class TestUninstallCli:
 class TestRestartAll:
     """Tests for restart_all_plugins function."""
 
-    def test_restart_all_stops_then_starts(self, atk_home: Path, create_plugin: PluginFactory) -> None:
+    def test_restart_all_stops_then_starts(self, configure_atk_home, create_plugin: PluginFactory) -> None:
         """Verify restart_all_plugins stops all (reverse), then starts all (forward)."""
+        atk_home = configure_atk_home()
         order_file = atk_home / "order.txt"
         create_plugin("Plugin1", "plugin1", {
             "stop": f"echo stop1 >> {order_file}",
@@ -914,8 +937,9 @@ class TestRestartAll:
         assert order == ["stop2", "stop1", "start1", "start2"]
         assert result.all_succeeded is True
 
-    def test_restart_all_stops_even_when_start_missing(self, atk_home: Path, create_plugin: PluginFactory) -> None:
+    def test_restart_all_stops_even_when_start_missing(self, configure_atk_home, create_plugin: PluginFactory) -> None:
         """Verify restart_all stops plugins even if they have no start command."""
+        atk_home = configure_atk_home()
         order_file = atk_home / "order.txt"
         create_plugin("Plugin1", "plugin1", {
             "stop": f"echo stop1 >> {order_file}",
@@ -929,8 +953,9 @@ class TestRestartAll:
         assert order == ["stop2", "stop1", "start1"]
         assert "Plugin2" in result.start_skipped
 
-    def test_restart_all_aborts_start_phase_on_stop_failure(self, atk_home: Path, create_plugin: PluginFactory) -> None:
+    def test_restart_all_aborts_start_phase_on_stop_failure(self, configure_atk_home, create_plugin: PluginFactory) -> None:
         """Verify restart_all aborts start phase if stop phase has failures."""
+        atk_home = configure_atk_home()
         create_plugin("Plugin1", "plugin1", {"stop": "exit 1", "start": "touch started.txt"})
 
         result = restart_all_plugins(atk_home)
@@ -939,21 +964,22 @@ class TestRestartAll:
         assert len(result.stop_failed) == 1
 
 
-@pytest.mark.usefixtures("atk_home")
 class TestRestartCli:
     """Tests for atk restart CLI command."""
 
-    def test_cli_restart_plugin_not_found(self, cli_runner) -> None:
+    def test_cli_restart_plugin_not_found(self, configure_atk_home, cli_runner) -> None:
         """Verify CLI reports error when plugin not found."""
+        configure_atk_home()
         result = cli_runner.invoke(app, ["restart", "nonexistent"])
 
         assert result.exit_code == exit_codes.PLUGIN_NOT_FOUND
         assert "not found" in result.output
 
     def test_cli_restart_all_stops_then_starts(
-        self, atk_home: Path, create_plugin: PluginFactory, cli_runner
+        self, configure_atk_home, create_plugin: PluginFactory, cli_runner
     ) -> None:
         """Verify CLI restart --all stops all then starts all."""
+        atk_home = configure_atk_home()
         order_file = atk_home / "order.txt"
         create_plugin("Plugin1", "plugin1", {
             "stop": f"echo stop1 >> {order_file}",
@@ -985,13 +1011,14 @@ class TestRestartCli:
         assert "Started plugin" not in result.output
 
     def test_cli_restart_single_plugin_uses_stop_then_start(
-        self, atk_home: Path, create_plugin: PluginFactory, cli_runner
+        self, configure_atk_home, create_plugin: PluginFactory, cli_runner
     ) -> None:
         """Verify CLI restart <plugin> executes stop then start (not restart command).
 
         Per Phase 3 spec: There is no restart lifecycle command. The atk restart
         command always executes stop then start in sequence.
         """
+        atk_home = configure_atk_home()
         order_file = atk_home / "order.txt"
         stop_cmd = f"echo stop >> {order_file}"
         start_cmd = f"echo start >> {order_file}"
@@ -1016,11 +1043,12 @@ class TestGetPluginStatus:
     """Tests for get_plugin_status function."""
 
     def test_returns_running_when_exit_code_zero(
-        self, atk_home: Path, create_plugin: PluginFactory
+        self, configure_atk_home, create_plugin: PluginFactory
     ) -> None:
         """Verify status is RUNNING when status command exits 0."""
         from atk.lifecycle import PluginStatus, get_plugin_status
 
+        atk_home = configure_atk_home()
         create_plugin("TestPlugin", "test-plugin", {"status": "exit 0"})
 
         result = get_plugin_status(atk_home, "test-plugin")
@@ -1028,11 +1056,12 @@ class TestGetPluginStatus:
         assert result.status == PluginStatus.RUNNING
 
     def test_returns_stopped_when_exit_code_nonzero(
-        self, atk_home: Path, create_plugin: PluginFactory
+        self, configure_atk_home, create_plugin: PluginFactory
     ) -> None:
         """Verify status is STOPPED when status command exits non-zero."""
         from atk.lifecycle import PluginStatus, get_plugin_status
 
+        atk_home = configure_atk_home()
         create_plugin("TestPlugin", "test-plugin", {"status": "exit 1"})
 
         result = get_plugin_status(atk_home, "test-plugin")
@@ -1040,11 +1069,12 @@ class TestGetPluginStatus:
         assert result.status == PluginStatus.STOPPED
 
     def test_returns_unknown_when_status_not_defined(
-        self, atk_home: Path, create_plugin: PluginFactory
+        self, configure_atk_home, create_plugin: PluginFactory
     ) -> None:
         """Verify status is UNKNOWN when no status command defined."""
         from atk.lifecycle import PluginStatus, get_plugin_status
 
+        atk_home = configure_atk_home()
         create_plugin("TestPlugin", "test-plugin", {"start": "echo start"})
 
         result = get_plugin_status(atk_home, "test-plugin")
@@ -1052,11 +1082,12 @@ class TestGetPluginStatus:
         assert result.status == PluginStatus.UNKNOWN
 
     def test_includes_plugin_name(
-        self, atk_home: Path, create_plugin: PluginFactory
+        self, configure_atk_home, create_plugin: PluginFactory
     ) -> None:
         """Verify result includes plugin name."""
         from atk.lifecycle import get_plugin_status
 
+        atk_home = configure_atk_home()
         plugin_name = "TestPlugin"
         create_plugin(plugin_name, "test-plugin", {"status": "exit 0"})
 
@@ -1065,12 +1096,13 @@ class TestGetPluginStatus:
         assert result.name == plugin_name
 
     def test_includes_ports_from_plugin(
-        self, atk_home: Path
+        self, configure_atk_home
     ) -> None:
         """Verify result includes ports from plugin.yaml."""
         from atk.lifecycle import PortStatus, get_plugin_status
         from atk.manifest_schema import PluginEntry, load_manifest, save_manifest
 
+        atk_home = configure_atk_home()
         plugin_dir = atk_home / "plugins" / "test-plugin"
         plugin_dir.mkdir(parents=True)
 
@@ -1100,11 +1132,12 @@ class TestGetPluginStatus:
         assert all(isinstance(p, PortStatus) for p in result.ports)
 
     def test_port_listening_checked_when_running(
-        self, atk_home: Path, create_plugin: PluginFactory
+        self, configure_atk_home, create_plugin: PluginFactory
     ) -> None:
         """Verify port listening is checked when status is RUNNING."""
         from atk.lifecycle import PluginStatus, get_plugin_status
 
+        atk_home = configure_atk_home()
         create_plugin(
             "TestPlugin",
             "test-plugin",
@@ -1120,11 +1153,12 @@ class TestGetPluginStatus:
         assert result.ports[0].listening is not None
 
     def test_port_listening_not_checked_when_stopped(
-        self, atk_home: Path, create_plugin: PluginFactory
+        self, configure_atk_home, create_plugin: PluginFactory
     ) -> None:
         """Verify port listening is NOT checked when status is STOPPED."""
         from atk.lifecycle import PluginStatus, get_plugin_status
 
+        atk_home = configure_atk_home()
         create_plugin(
             "TestPlugin",
             "test-plugin",
@@ -1140,10 +1174,11 @@ class TestGetPluginStatus:
         assert result.ports[0].listening is None
 
     def test_env_status_all_required_set(
-        self, atk_home: Path, create_plugin: PluginFactory
+        self, configure_atk_home, create_plugin: PluginFactory
     ) -> None:
         """Verify env_status shows all required vars set."""
         # Given
+        atk_home = configure_atk_home()
         plugin_dir = create_plugin(
             "TestPlugin",
             "test-plugin",
@@ -1168,10 +1203,11 @@ class TestGetPluginStatus:
         assert result.total_env_vars == expected_total_env_vars
 
     def test_env_status_missing_required_vars(
-        self, atk_home: Path, create_plugin: PluginFactory
+        self, configure_atk_home, create_plugin: PluginFactory
     ) -> None:
         """Verify env_status shows missing required vars by name."""
         # Given
+        atk_home = configure_atk_home()
         var1_name = "API_KEY"
         var2_name = "SECRET_KEY"
         create_plugin(
@@ -1197,10 +1233,11 @@ class TestGetPluginStatus:
         assert result.total_env_vars == expected_total_env_vars
 
     def test_env_status_no_env_vars_defined(
-        self, atk_home: Path, create_plugin: PluginFactory
+        self, configure_atk_home, create_plugin: PluginFactory
     ) -> None:
         """Verify env_status when plugin has no env vars."""
         # Given
+        atk_home = configure_atk_home()
         create_plugin("TestPlugin", "test-plugin", {"status": "exit 0"})
         expected_missing_required = []
         expected_unset_optional = 0
@@ -1300,11 +1337,12 @@ class TestGetAllPluginsStatus:
     """Tests for get_all_plugins_status function."""
 
     def test_returns_status_for_all_plugins(
-        self, atk_home: Path, create_plugin: PluginFactory
+        self, configure_atk_home, create_plugin: PluginFactory
     ) -> None:
         """Verify returns status for each plugin in manifest."""
         from atk.lifecycle import PluginStatus, get_all_plugins_status
 
+        atk_home = configure_atk_home()
         create_plugin("Plugin1", "plugin1", {"status": "exit 0"})
         create_plugin("Plugin2", "plugin2", {"status": "exit 1"})
 
@@ -1317,17 +1355,17 @@ class TestGetAllPluginsStatus:
         assert results[1].status == PluginStatus.STOPPED
 
     def test_returns_empty_list_when_no_plugins(
-        self, atk_home: Path
+        self, configure_atk_home
     ) -> None:
         """Verify returns empty list when manifest has no plugins."""
         from atk.lifecycle import get_all_plugins_status
 
+        atk_home = configure_atk_home()
         results = get_all_plugins_status(atk_home)
 
         assert results == []
 
 
-@pytest.mark.usefixtures("atk_home")
 class TestStatusCli:
     """Tests for atk status CLI command."""
 
@@ -1366,11 +1404,12 @@ class TestStatusCli:
         assert "unknown" in result.output.lower()
 
     def test_cli_status_shows_ports(
-        self, atk_home: Path, cli_runner
+        self, configure_atk_home, cli_runner
     ) -> None:
         """Verify CLI status shows ports column."""
         from atk.manifest_schema import PluginEntry, load_manifest, save_manifest
 
+        atk_home = configure_atk_home()
         plugin_dir = atk_home / "plugins" / "test-plugin"
         plugin_dir.mkdir(parents=True)
         plugin_yaml = {
@@ -1405,25 +1444,26 @@ class TestStatusCli:
         assert "OtherPlugin" not in result.output
 
     def test_cli_status_plugin_not_found(
-        self, cli_runner
+        self, configure_atk_home, cli_runner
     ) -> None:
         """Verify CLI returns error when plugin not found."""
+        configure_atk_home()
         result = cli_runner.invoke(app, ["status", "nonexistent"])
 
         assert result.exit_code == exit_codes.PLUGIN_NOT_FOUND
         assert "not found" in result.output.lower()
 
     def test_cli_status_no_plugins_message(
-        self, cli_runner
+        self, configure_atk_home, cli_runner
     ) -> None:
         """Verify CLI shows message when no plugins installed."""
+        configure_atk_home()
         result = cli_runner.invoke(app, ["status"])
 
         assert result.exit_code == exit_codes.SUCCESS
         assert "no plugins" in result.output.lower()
 
 
-@pytest.mark.usefixtures("atk_home")
 class TestLogsCli:
     """Tests for atk logs CLI command."""
 
@@ -1441,9 +1481,10 @@ class TestLogsCli:
         assert (plugin_dir / "logs_ran.txt").exists()
 
     def test_cli_logs_plugin_not_found(
-        self, cli_runner
+        self, configure_atk_home, cli_runner
     ) -> None:
         """Verify CLI returns error when plugin not found."""
+        configure_atk_home()
         result = cli_runner.invoke(app, ["logs", "nonexistent"])
 
         assert result.exit_code == exit_codes.PLUGIN_NOT_FOUND
@@ -1461,15 +1502,15 @@ class TestLogsCli:
         assert "no logs command" in result.output.lower()
 
     def test_cli_logs_requires_plugin_argument(
-        self, cli_runner
+        self, configure_atk_home, cli_runner
     ) -> None:
         """Verify CLI requires plugin argument."""
+        configure_atk_home()
         result = cli_runner.invoke(app, ["logs"])
 
         assert result.exit_code != exit_codes.SUCCESS
 
 
-@pytest.mark.usefixtures("atk_home")
 class TestRunCli:
     """Tests for atk run CLI command."""
 
@@ -1515,9 +1556,10 @@ class TestRunCli:
         assert result.exit_code == 42
 
     def test_cli_run_plugin_not_found(
-        self, cli_runner
+        self, configure_atk_home, cli_runner
     ) -> None:
         """Verify CLI returns error when plugin not found."""
+        configure_atk_home()
         result = cli_runner.invoke(app, ["run", "nonexistent", "script.sh"])
 
         assert result.exit_code == exit_codes.PLUGIN_NOT_FOUND
@@ -1535,9 +1577,10 @@ class TestRunCli:
         assert "not found" in result.output.lower()
 
     def test_cli_run_requires_both_arguments(
-        self, cli_runner
+        self, configure_atk_home, cli_runner
     ) -> None:
         """Verify CLI requires both plugin and script arguments."""
+        configure_atk_home()
         result = cli_runner.invoke(app, ["run"])
         assert result.exit_code != exit_codes.SUCCESS
 
@@ -1606,7 +1649,6 @@ class TestRunCli:
         assert (plugin_dir / "custom_only_ran.txt").exists()
 
 
-@pytest.mark.usefixtures("atk_home")
 class TestSetupCli:
     """Tests for atk setup CLI command."""
 
@@ -1639,8 +1681,9 @@ class TestSetupCli:
         content = env_file.read_text()
         assert content == f"{var1_name}={var1_value}\n{var2_name}={var2_value}\n"
 
-    def test_cli_setup_plugin_not_found(self, cli_runner) -> None:
+    def test_cli_setup_plugin_not_found(self, configure_atk_home, cli_runner) -> None:
         """Verify atk setup fails when plugin not found."""
+        configure_atk_home()
         result = cli_runner.invoke(app, ["setup", "nonexistent"])
 
         assert result.exit_code == exit_codes.PLUGIN_NOT_FOUND
@@ -1698,7 +1741,6 @@ class TestSetupCli:
         assert not (plugin_without_vars_dir / ".env").exists()
 
 
-@pytest.mark.usefixtures("atk_home")
 class TestMcpCli:
     """Tests for atk mcp CLI command."""
 
