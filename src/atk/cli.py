@@ -43,7 +43,7 @@ from atk.lifecycle import (
     run_plugin_lifecycle,
 )
 from atk.manifest_schema import SourceType, load_manifest
-from atk.mcp import generate_mcp_config
+from atk.mcp import format_mcp_plaintext, generate_mcp_config
 from atk.plugin import CUSTOM_DIR, PluginNotFoundError, load_plugin
 from atk.registry import PluginNotFoundError as RegistryPluginNotFoundError
 from atk.remove import remove_plugin
@@ -586,8 +586,12 @@ def mcp(
             help="Plugin name or directory to get MCP config for.",
         ),
     ],
+    json_output: Annotated[
+        bool,
+        typer.Option("--json", help="Output as JSON instead of plaintext."),
+    ] = False,
 ) -> None:
-    """Output MCP configuration JSON for a plugin.
+    """Output MCP configuration for a plugin.
 
     Reads the MCP config from plugin.yaml and resolves environment variables
     from the plugin's .env file. Output can be copied into IDE/tool configurations.
@@ -612,7 +616,11 @@ def mcp(
         for var in result.missing_vars:
             cli_logger.warning(f"Environment variable '{var}' is not set")
 
-    print(json.dumps(result.config, indent=2))
+    if json_output:
+        print(json.dumps(result.config, indent=2))
+    else:
+        console.print(format_mcp_plaintext(result))
+
     raise typer.Exit(exit_codes.SUCCESS)
 
 

@@ -10,6 +10,7 @@ from atk.plugin_schema import PluginSchema
 # Environment variable name for plugin directory
 ATK_PLUGIN_DIR = "ATK_PLUGIN_DIR"
 
+
 @dataclass
 class McpConfigResult:
     """Result of generating MCP config."""
@@ -17,6 +18,7 @@ class McpConfigResult:
     plugin_name: str
     config: dict[str, Any]
     missing_vars: list[str]
+    transport: str
 
 
 def substitute_plugin_dir(value: str, plugin_dir: Path) -> str:
@@ -75,9 +77,11 @@ def generate_mcp_config(
             config["url"] = mcp.endpoint
 
     if mcp.env:
+        # Build a lookup of default values declared in the plugin's env_vars section.
+        env_var_defaults = {ev.name: ev.default for ev in plugin.env_vars if ev.default is not None}
         env_dict: dict[str, str] = {}
         for var_name in mcp.env:
-            value = env_values.get(var_name)
+            value = env_values.get(var_name) or env_var_defaults.get(var_name)
             if value:
                 env_dict[var_name] = value
             else:
@@ -90,5 +94,47 @@ def generate_mcp_config(
         plugin_name=plugin.name,
         config={plugin_identifier: config},
         missing_vars=missing_vars,
+        transport=mcp.transport,
     )
+
+
+def format_mcp_plaintext(result: McpConfigResult) -> str:
+    """Format MCP config as human-readable plaintext with Rich markup.
+
+    Renders sections appropriate to the transport type:
+    - stdio: Name, Command (command + args joined), Environment Variables
+    - sse:   Name, URL, Environment Variables
+
+    Args:
+        result: The MCP config result to format.
+
+    Returns:
+        A string containing Rich markup ready for console.print().
+    """
+    inner = next(iter(result.config.values()))
+    lines: list[str] = []
+
+    lines.append(f"[bold]Name:[/bold]    {result.plugin_name}")
+
+    if result.transport == "stdio":
+        command_parts: list[str] = []
+        if command := inner.get("command"):
+            command_parts.append(command)
+        command_parts.extend(inner.get("args") or [])
+        lines.append(f"[bold]Command:[/bold]  {' '.join(command_parts)}")
+
+    elif result.transport == "sse":
+        if url := inner.get("url"):
+            lines.append(f"[bold]URL:[/bold]     {url}")
+
+    if env := inner.get("env"):
+        lines.append("")
+        lines.append("[bold]Environment Variables:[/bold]")
+        for key, val in env.items():
+            if val == "<NOT_SET>":
+                lines.append(f"  {key}=[red]{val}[/red]")
+            else:
+                lines.append(f"  {key}=[dim]{val}[/dim]")
+
+    return "\n".join(lines)
 

@@ -1769,7 +1769,7 @@ class TestMcpCli:
         (plugin_dir / ".env").write_text(f"{var_name}={var_value}\n")
 
         # When
-        result = cli_runner.invoke(app, ["mcp", plugin_dir_name])
+        result = cli_runner.invoke(app, ["mcp", plugin_dir_name, "--json"])
 
         # Then
         assert result.exit_code == exit_codes.SUCCESS
@@ -1815,7 +1815,7 @@ class TestMcpCli:
         )
 
         # When
-        result = cli_runner.invoke(app, ["mcp", plugin_dir_name])
+        result = cli_runner.invoke(app, ["mcp", plugin_dir_name, "--json"])
 
         # Then
         assert result.exit_code == exit_codes.SUCCESS
@@ -1841,7 +1841,7 @@ class TestMcpCli:
         )
 
         # When
-        result = cli_runner.invoke(app, ["mcp", plugin_dir_name])
+        result = cli_runner.invoke(app, ["mcp", plugin_dir_name, "--json"])
 
         # Then
         assert result.exit_code == exit_codes.SUCCESS
@@ -1872,7 +1872,7 @@ class TestMcpCli:
         )
 
         # When
-        result = cli_runner.invoke(app, ["mcp", plugin_dir_name])
+        result = cli_runner.invoke(app, ["mcp", plugin_dir_name, "--json"])
 
         # Then
         assert result.exit_code == exit_codes.SUCCESS
