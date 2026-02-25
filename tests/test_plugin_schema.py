@@ -6,7 +6,7 @@ import yaml
 from atk.plugin_schema import (
     EnvVarConfig,
     LifecycleConfig,
-    McpConfig,
+    McpPluginConfig,
     PluginSchema,
     PortConfig,
     ServiceConfig,
@@ -308,7 +308,7 @@ class TestLifecycleConfig:
         assert lifecycle.health_endpoint is None
 
 
-class TestMcpConfig:
+class TestMcpPluginConfig:
     """Tests for MCP integration configuration."""
 
     def setup_method(self) -> None:
@@ -330,7 +330,7 @@ class TestMcpConfig:
         data = self.mcp_stdio_data
 
         # When
-        mcp = McpConfig.model_validate(data)
+        mcp = McpPluginConfig.model_validate(data)
 
         # Then
         assert mcp.transport == data["transport"]
@@ -345,7 +345,7 @@ class TestMcpConfig:
         data = self.mcp_sse_data
 
         # When
-        mcp = McpConfig.model_validate(data)
+        mcp = McpPluginConfig.model_validate(data)
 
         # Then
         assert mcp.transport == data["transport"]
@@ -361,7 +361,7 @@ class TestMcpConfig:
         data = {"transport": transport, "command": command}
 
         # When
-        mcp = McpConfig.model_validate(data)
+        mcp = McpPluginConfig.model_validate(data)
 
         # Then
         assert mcp.transport == transport

@@ -617,7 +617,7 @@ def mcp(
             cli_logger.warning(f"Environment variable '{var}' is not set")
 
     if json_output:
-        print(json.dumps(result.config, indent=2))
+        print(json.dumps(result.to_mcp_dict(), indent=2))
     else:
         console.print(format_mcp_plaintext(result))
 

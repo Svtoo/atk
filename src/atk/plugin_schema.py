@@ -132,8 +132,8 @@ class LifecycleConfig(StrictModel):
     )
 
 
-class McpConfig(StrictModel):
-    """Configuration for MCP (Model Context Protocol) integration."""
+class McpPluginConfig(StrictModel):
+    """MCP integration declared in a plugin's plugin.yaml."""
 
     transport: Literal["stdio", "sse"] = Field(
         description="Transport type: stdio (command-based) or sse (URL-based)",
@@ -185,7 +185,7 @@ class PluginSchema(StrictModel):
         default=None,
         description="Lifecycle commands",
     )
-    mcp: McpConfig | None = Field(
+    mcp: McpPluginConfig | None = Field(
         default=None,
         description="MCP integration configuration",
     )

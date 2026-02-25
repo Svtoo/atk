@@ -1,5 +1,6 @@
 """MCP (Model Context Protocol) configuration generation."""
 
+from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -10,15 +11,61 @@ from atk.plugin_schema import PluginSchema
 # Environment variable name for plugin directory
 ATK_PLUGIN_DIR = "ATK_PLUGIN_DIR"
 
+# Sentinel written into env when a variable has no resolved value.
+# Single authoritative definition — import from here everywhere else.
+NOT_SET = "<NOT_SET>"
+
 
 @dataclass
-class McpConfigResult:
-    """Result of generating MCP config."""
+class McpConfig(ABC):
+    """Resolved MCP server configuration for a plugin.
 
-    plugin_name: str
-    config: dict[str, Any]
-    missing_vars: list[str]
-    transport: str
+    Produced by generate_mcp_config() after substituting environment variables
+    and $ATK_PLUGIN_DIR placeholders.  Use StdioMcpConfig or SseMcpConfig
+    directly; this base class is never instantiated on its own.
+    """
+
+    identifier: str       # Key used in MCP JSON output and agent CLI commands
+    plugin_name: str      # Display name from the plugin schema
+    env: dict[str, str]   # Resolved env vars; NOT_SET sentinel for missing ones
+    missing_vars: list[str]  # Names of variables that could not be resolved
+
+    @abstractmethod
+    def to_mcp_dict(self) -> dict[str, Any]:
+        """Serialize to the standard MCP JSON config structure.
+
+        The returned dict has the identifier as the single top-level key,
+        matching what MCP clients expect in their configuration files.
+        """
+
+
+@dataclass
+class StdioMcpConfig(McpConfig):
+    """Resolved MCP config for a stdio (command-based) server."""
+
+    command: str
+    args: list[str]
+
+    def to_mcp_dict(self) -> dict[str, Any]:
+        inner: dict[str, Any] = {"command": self.command}
+        if self.args:
+            inner["args"] = self.args
+        if self.env:
+            inner["env"] = self.env
+        return {self.identifier: inner}
+
+
+@dataclass
+class SseMcpConfig(McpConfig):
+    """Resolved MCP config for an SSE (URL-based) server."""
+
+    url: str
+
+    def to_mcp_dict(self) -> dict[str, Any]:
+        inner: dict[str, Any] = {"url": self.url}
+        if self.env:
+            inner["env"] = self.env
+        return {self.identifier: inner}
 
 
 def substitute_plugin_dir(value: str, plugin_dir: Path) -> str:
@@ -43,19 +90,20 @@ def generate_mcp_config(
     plugin: PluginSchema,
     plugin_dir: Path,
     plugin_identifier: str,
-) -> McpConfigResult:
-    """Generate MCP config dict for a plugin.
+) -> McpConfig:
+    """Resolve and return the MCP config for a plugin.
 
-    Substitutes $ATK_PLUGIN_DIR and ${ATK_PLUGIN_DIR} in command and args
-    with the absolute path to the plugin directory.
+    Substitutes $ATK_PLUGIN_DIR and ${ATK_PLUGIN_DIR} in command and args.
+    Resolves environment variables from the plugin's .env file and declared
+    defaults; marks unresolvable variables with NOT_SET.
 
     Args:
         plugin: The plugin schema.
         plugin_dir: Path to the plugin directory.
-        plugin_identifier: The identifier to use as the key in the output.
+        plugin_identifier: The identifier used as the key in MCP JSON output.
 
     Returns:
-        McpConfigResult with the config dict and list of missing env vars.
+        StdioMcpConfig for stdio transport, SseMcpConfig for SSE transport.
     """
     if plugin.mcp is None:
         raise ValueError(f"Plugin '{plugin.name}' has no MCP configuration")
@@ -64,74 +112,74 @@ def generate_mcp_config(
     env_file = plugin_dir / ".env"
     env_values = load_env_file(env_file) if env_file.exists() else {}
 
-    config: dict[str, Any] = {}
+    env: dict[str, str] = {}
     missing_vars: list[str] = []
-
-    if mcp.transport == "stdio":
-        if mcp.command:
-            config["command"] = substitute_plugin_dir(mcp.command, plugin_dir)
-        if mcp.args:
-            config["args"] = [substitute_plugin_dir(arg, plugin_dir) for arg in mcp.args]
-    elif mcp.transport == "sse":
-        if mcp.endpoint:
-            config["url"] = mcp.endpoint
-
     if mcp.env:
-        # Build a lookup of default values declared in the plugin's env_vars section.
         env_var_defaults = {ev.name: ev.default for ev in plugin.env_vars if ev.default is not None}
-        env_dict: dict[str, str] = {}
         for var_name in mcp.env:
             value = env_values.get(var_name) or env_var_defaults.get(var_name)
             if value:
-                env_dict[var_name] = value
+                env[var_name] = value
             else:
-                env_dict[var_name] = "<NOT_SET>"
+                env[var_name] = NOT_SET
                 missing_vars.append(var_name)
-        if env_dict:
-            config["env"] = env_dict
 
-    return McpConfigResult(
+    if mcp.transport == "stdio":
+        if not mcp.command:
+            raise ValueError(
+                f"Plugin '{plugin.name}' has transport 'stdio' but no command defined."
+            )
+        return StdioMcpConfig(
+            identifier=plugin_identifier,
+            plugin_name=plugin.name,
+            command=substitute_plugin_dir(mcp.command, plugin_dir),
+            args=[substitute_plugin_dir(a, plugin_dir) for a in (mcp.args or [])],
+            env=env,
+            missing_vars=missing_vars,
+        )
+
+    # sse
+    if not mcp.endpoint:
+        raise ValueError(
+            f"Plugin '{plugin.name}' has transport 'sse' but no endpoint defined."
+        )
+    return SseMcpConfig(
+        identifier=plugin_identifier,
         plugin_name=plugin.name,
-        config={plugin_identifier: config},
+        url=mcp.endpoint,
+        env=env,
         missing_vars=missing_vars,
-        transport=mcp.transport,
     )
 
 
-def format_mcp_plaintext(result: McpConfigResult) -> str:
+def format_mcp_plaintext(config: McpConfig) -> str:
     """Format MCP config as human-readable plaintext with Rich markup.
 
     Renders sections appropriate to the transport type:
-    - stdio: Name, Command (command + args joined), Environment Variables
-    - sse:   Name, URL, Environment Variables
+    - StdioMcpConfig: Name, Command (command + args joined), Environment Variables
+    - SseMcpConfig:   Name, URL, Environment Variables
 
     Args:
-        result: The MCP config result to format.
+        config: The resolved MCP config.
 
     Returns:
         A string containing Rich markup ready for console.print().
     """
-    inner = next(iter(result.config.values()))
     lines: list[str] = []
 
-    lines.append(f"[bold]Name:[/bold]    {result.plugin_name}")
+    lines.append(f"[bold]Name:[/bold]    {config.plugin_name}")
 
-    if result.transport == "stdio":
-        command_parts: list[str] = []
-        if command := inner.get("command"):
-            command_parts.append(command)
-        command_parts.extend(inner.get("args") or [])
+    if isinstance(config, StdioMcpConfig):
+        command_parts = [config.command, *config.args]
         lines.append(f"[bold]Command:[/bold]  {' '.join(command_parts)}")
+    elif isinstance(config, SseMcpConfig):
+        lines.append(f"[bold]URL:[/bold]     {config.url}")
 
-    elif result.transport == "sse":
-        if url := inner.get("url"):
-            lines.append(f"[bold]URL:[/bold]     {url}")
-
-    if env := inner.get("env"):
+    if config.env:
         lines.append("")
         lines.append("[bold]Environment Variables:[/bold]")
-        for key, val in env.items():
-            if val == "<NOT_SET>":
+        for key, val in config.env.items():
+            if val == NOT_SET:
                 lines.append(f"  {key}=[red]{val}[/red]")
             else:
                 lines.append(f"  {key}=[dim]{val}[/dim]")

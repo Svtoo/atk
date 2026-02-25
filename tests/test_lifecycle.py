@@ -24,7 +24,7 @@ from atk.plugin_schema import (
     PLUGIN_SCHEMA_VERSION,
     EnvVarConfig,
     LifecycleConfig,
-    McpConfig,
+    McpPluginConfig,
     PluginSchema,
 )
 from tests.conftest import (
@@ -1759,7 +1759,7 @@ class TestMcpCli:
         plugin_dir = create_plugin(
             plugin_name,
             plugin_dir_name,
-            mcp=McpConfig(
+            mcp=McpPluginConfig(
                 transport="stdio",
                 command=mcp_command,
                 args=mcp_args,
@@ -1811,7 +1811,7 @@ class TestMcpCli:
         create_plugin(
             plugin_name,
             plugin_dir_name,
-            mcp=McpConfig(transport="stdio", command="echo", env=[var_name]),
+            mcp=McpPluginConfig(transport="stdio", command="echo", env=[var_name]),
         )
 
         # When
@@ -1837,7 +1837,7 @@ class TestMcpCli:
         create_plugin(
             plugin_name,
             plugin_dir_name,
-            mcp=McpConfig(transport="sse", endpoint=endpoint_url),
+            mcp=McpPluginConfig(transport="sse", endpoint=endpoint_url),
         )
 
         # When
@@ -1864,7 +1864,7 @@ class TestMcpCli:
         plugin_dir = create_plugin(
             plugin_name,
             plugin_dir_name,
-            mcp=McpConfig(
+            mcp=McpPluginConfig(
                 transport="stdio",
                 command=command,
                 args=args,

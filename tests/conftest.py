@@ -16,7 +16,7 @@ from atk.plugin_schema import (
     PLUGIN_SCHEMA_VERSION,
     EnvVarConfig,
     LifecycleConfig,
-    McpConfig,
+    McpPluginConfig,
     PluginSchema,
     PortConfig,
 )
@@ -132,7 +132,7 @@ def create_plugin(configure_atk_home) -> PluginFactory:
         lifecycle: LifecycleConfig | dict | None = None,
         ports: list[PortConfig] | None = None,
         env_vars: list[EnvVarConfig] | None = None,
-        mcp: McpConfig | None = None,
+        mcp: McpPluginConfig | None = None,
         *,
         plugin: PluginSchema | None = None,
     ) -> Path:

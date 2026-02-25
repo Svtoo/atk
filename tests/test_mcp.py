@@ -9,12 +9,14 @@ from rich.console import Console
 from atk import exit_codes
 from atk.cli import app
 from atk.mcp import (
-    McpConfigResult,
+    McpConfig,
+    StdioMcpConfig,
     format_mcp_plaintext,
     generate_mcp_config,
     substitute_plugin_dir,
 )
-from atk.plugin_schema import PLUGIN_SCHEMA_VERSION, EnvVarConfig, McpConfig, PluginSchema
+from atk.mcp_agents import build_claude_mcp_config
+from atk.plugin_schema import PLUGIN_SCHEMA_VERSION, EnvVarConfig, McpPluginConfig, PluginSchema
 
 
 class TestSubstitutePluginDir:
@@ -115,7 +117,7 @@ class TestGenerateMcpConfigWithSubstitution:
             schema_version="2026-01-23",
             name="TestPlugin",
             description="Test plugin",
-            mcp=McpConfig(transport="stdio", command=command),
+            mcp=McpPluginConfig(transport="stdio", command=command),
         )
 
         # When
@@ -123,7 +125,8 @@ class TestGenerateMcpConfigWithSubstitution:
 
         # Then
         expected_command = f"{self.plugin_dir.resolve()}/mcp-server.sh"
-        assert result.config["test-plugin"]["command"] == expected_command
+        assert isinstance(result, StdioMcpConfig)
+        assert result.command == expected_command
 
     def test_substitutes_args(self) -> None:
         """Verify args are substituted."""
@@ -135,7 +138,7 @@ class TestGenerateMcpConfigWithSubstitution:
             schema_version="2026-01-23",
             name="TestPlugin",
             description="Test plugin",
-            mcp=McpConfig(transport="stdio", command=command, args=args),
+            mcp=McpPluginConfig(transport="stdio", command=command, args=args),
         )
 
         # When
@@ -149,7 +152,8 @@ class TestGenerateMcpConfigWithSubstitution:
             "--data-dir",
             f"{plugin_dir_str}/data",
         ]
-        assert result.config["test-plugin"]["args"] == expected_args
+        assert isinstance(result, StdioMcpConfig)
+        assert result.args == expected_args
 
 
 # ---------------------------------------------------------------------------
@@ -169,7 +173,7 @@ def _make_stdio_plugin(
         schema_version=PLUGIN_SCHEMA_VERSION,
         name=name,
         description="Test plugin",
-        mcp=McpConfig(transport="stdio", command=command, args=args, env=mcp_env),
+        mcp=McpPluginConfig(transport="stdio", command=command, args=args, env=mcp_env),
         env_vars=env_vars or [],
     )
 
@@ -186,7 +190,7 @@ def _make_sse_plugin(
         schema_version=PLUGIN_SCHEMA_VERSION,
         name=name,
         description="Test plugin",
-        mcp=McpConfig(transport="sse", endpoint=endpoint, env=mcp_env),
+        mcp=McpPluginConfig(transport="sse", endpoint=endpoint, env=mcp_env),
         env_vars=env_vars or [],
     )
 
@@ -199,7 +203,7 @@ def _write_env_file(plugin_dir: Path, values: dict[str, str]) -> None:
     )
 
 
-def _render_plaintext(result: McpConfigResult) -> str:
+def _render_plaintext(result: McpConfig) -> str:
     """Render format_mcp_plaintext() output as plain text (markup stripped)."""
     sio = StringIO()
     console = Console(file=sio, no_color=True, highlight=False, markup=True, width=1000)
@@ -213,9 +217,9 @@ def _render_plaintext(result: McpConfigResult) -> str:
 
 def test_generate_mcp_config_uses_env_var_default_when_not_in_dotenv(tmp_path: Path) -> None:
     """When a var is missing from .env but has a default in env_vars, use the default."""
+    # Given
     var_name = "MODEL_PATH"
     default_value = "/opt/models/kokoro"
-
     plugin = _make_stdio_plugin(
         mcp_env=[var_name],
         env_vars=[EnvVarConfig(name=var_name, default=default_value)],
@@ -224,18 +228,20 @@ def test_generate_mcp_config_uses_env_var_default_when_not_in_dotenv(tmp_path: P
     plugin_dir.mkdir()
     # No .env file written — var is absent
 
+    # When
     result = generate_mcp_config(plugin, plugin_dir, "test-plugin")
 
-    assert result.config["test-plugin"]["env"][var_name] == default_value
+    # Then
+    assert result.env[var_name] == default_value
     assert var_name not in result.missing_vars
 
 
 def test_generate_mcp_config_dotenv_value_takes_precedence_over_default(tmp_path: Path) -> None:
     """A value present in .env overrides the declared default in env_vars."""
+    # Given
     var_name = "MODEL_PATH"
     default_value = "/opt/models/default"
     dotenv_value = "/home/user/custom-model"
-
     plugin = _make_stdio_plugin(
         mcp_env=[var_name],
         env_vars=[EnvVarConfig(name=var_name, default=default_value)],
@@ -243,16 +249,18 @@ def test_generate_mcp_config_dotenv_value_takes_precedence_over_default(tmp_path
     plugin_dir = tmp_path / "test-plugin"
     _write_env_file(plugin_dir, {var_name: dotenv_value})
 
+    # When
     result = generate_mcp_config(plugin, plugin_dir, "test-plugin")
 
-    assert result.config["test-plugin"]["env"][var_name] == dotenv_value
+    # Then
+    assert result.env[var_name] == dotenv_value
     assert var_name not in result.missing_vars
 
 
 def test_generate_mcp_config_marks_not_set_when_no_value_and_no_default(tmp_path: Path) -> None:
     """A var with no .env value and no declared default is marked <NOT_SET>."""
+    # Given
     var_name = "API_KEY"
-
     plugin = _make_stdio_plugin(
         mcp_env=[var_name],
         env_vars=[EnvVarConfig(name=var_name)],  # no default
@@ -260,9 +268,11 @@ def test_generate_mcp_config_marks_not_set_when_no_value_and_no_default(tmp_path
     plugin_dir = tmp_path / "test-plugin"
     plugin_dir.mkdir()
 
+    # When
     result = generate_mcp_config(plugin, plugin_dir, "test-plugin")
 
-    assert result.config["test-plugin"]["env"][var_name] == "<NOT_SET>"
+    # Then
+    assert result.env[var_name] == "<NOT_SET>"
     assert var_name in result.missing_vars
 
 
@@ -272,18 +282,20 @@ def test_generate_mcp_config_marks_not_set_when_no_value_and_no_default(tmp_path
 
 def test_format_mcp_plaintext_stdio(tmp_path: Path) -> None:
     """stdio plugin: exact rendered output with Name, Command, and Environment Variables."""
+    # Given
     command = "uv"
     args = ["run", "--directory", str(tmp_path / "plugin"), "server.py"]
     var_name = "API_KEY"
     var_value = "my-secret"
-
     plugin = _make_stdio_plugin(command=command, args=args, mcp_env=[var_name])
     plugin_dir = tmp_path / "plugin"
     _write_env_file(plugin_dir, {var_name: var_value})
+    mcp_config = generate_mcp_config(plugin, plugin_dir, "test-plugin")
 
-    result = generate_mcp_config(plugin, plugin_dir, "test-plugin")
-    rendered = _render_plaintext(result)
+    # When
+    rendered = _render_plaintext(mcp_config)
 
+    # Then
     expected = (
         f"Name:    {plugin.name}\n"
         f"Command:  {command} {' '.join(args)}\n"
@@ -296,15 +308,17 @@ def test_format_mcp_plaintext_stdio(tmp_path: Path) -> None:
 
 def test_format_mcp_plaintext_sse(tmp_path: Path) -> None:
     """SSE plugin: exact rendered output with Name and URL; no Environment Variables section."""
+    # Given
     endpoint = "http://localhost:8080/mcp"
-
     plugin = _make_sse_plugin(endpoint=endpoint)  # no env vars
     plugin_dir = tmp_path / "plugin"
     plugin_dir.mkdir()
+    mcp_config = generate_mcp_config(plugin, plugin_dir, "test-plugin")
 
-    result = generate_mcp_config(plugin, plugin_dir, "test-plugin")
-    rendered = _render_plaintext(result)
+    # When
+    rendered = _render_plaintext(mcp_config)
 
+    # Then
     expected = (
         f"Name:    {plugin.name}\n"
         f"URL:     {endpoint}\n"
@@ -318,21 +332,232 @@ def test_format_mcp_plaintext_sse(tmp_path: Path) -> None:
 
 def test_mcp_command_default_outputs_plaintext(create_plugin, cli_runner) -> None:
     """Default output (no --json) is plaintext with Name and Command sections."""
+    # Given
     plugin_name = "TestPlugin"
     command = "uv"
     args = ["run", "server.py"]
-
-    plugin = _make_stdio_plugin(
-        name=plugin_name,
-        command=command,
-        args=args,
-    )
+    plugin = _make_stdio_plugin(name=plugin_name, command=command, args=args)
     create_plugin(plugin=plugin, directory="test-plugin")
 
+    # When
     result = cli_runner.invoke(app, ["mcp", "test-plugin"])
 
+    # Then
     assert result.exit_code == exit_codes.SUCCESS
     assert "Name:" in result.output
     assert plugin_name in result.output
     assert "Command:" in result.output
     assert f"{command} {' '.join(args)}" in result.output
+
+
+
+# ---------------------------------------------------------------------------
+# build_claude_mcp_config — unit tests (pure, no subprocess)
+# ---------------------------------------------------------------------------
+
+def test_build_claude_mcp_config_stdio_minimal(tmp_path: Path) -> None:
+    """Minimal stdio plugin: argv has correct shape with name and command."""
+    # Given
+    plugin_name = "my-plugin"
+    command = "uv"
+    plugin = _make_stdio_plugin(name=plugin_name, command=command)
+    plugin_dir = tmp_path / "plugin"
+    plugin_dir.mkdir()
+    mcp_config = generate_mcp_config(plugin, plugin_dir, plugin_name)
+
+    # When
+    result = build_claude_mcp_config(mcp_config)
+
+    # Then
+    assert result.argv == ["claude", "mcp", "add", "--scope", "user", plugin_name, command]
+
+
+def test_build_claude_mcp_config_stdio_with_args(tmp_path: Path) -> None:
+    """Stdio plugin with args: all args appended positionally after command."""
+    # Given
+    plugin_name = "my-plugin"
+    command = "uv"
+    plugin_args = ["run", "--directory", "/some/path", "server.py"]
+    plugin = _make_stdio_plugin(name=plugin_name, command=command, args=plugin_args)
+    plugin_dir = tmp_path / "plugin"
+    plugin_dir.mkdir()
+    mcp_config = generate_mcp_config(plugin, plugin_dir, plugin_name)
+
+    # When
+    result = build_claude_mcp_config(mcp_config)
+
+    # Then
+    assert result.argv == [
+        "claude", "mcp", "add", "--scope", "user",
+        plugin_name, command, *plugin_args,
+    ]
+
+
+def test_build_claude_mcp_config_stdio_with_env_vars(tmp_path: Path) -> None:
+    """Set env vars each become a separate -e KEY=VAL flag."""
+    # Given
+    plugin_name = "my-plugin"
+    command = "uv"
+    var_name = "API_KEY"
+    var_value = "secret-123"
+    plugin = _make_stdio_plugin(name=plugin_name, command=command, mcp_env=[var_name])
+    plugin_dir = tmp_path / "plugin"
+    _write_env_file(plugin_dir, {var_name: var_value})
+    mcp_config = generate_mcp_config(plugin, plugin_dir, plugin_name)
+
+    # When
+    result = build_claude_mcp_config(mcp_config)
+
+    # Then
+    assert result.argv == [
+        "claude", "mcp", "add", "--scope", "user",
+        "-e", f"{var_name}={var_value}",
+        plugin_name, command,
+    ]
+
+
+def test_build_claude_mcp_config_stdio_multiple_env_vars(tmp_path: Path) -> None:
+    """Multiple env vars produce multiple consecutive -e KEY=VAL flags."""
+    # Given
+    plugin_name = "my-plugin"
+    command = "uv"
+    var1_name, var1_value = "API_KEY", "secret-123"
+    var2_name, var2_value = "MODEL", "gpt-4"
+    plugin = _make_stdio_plugin(
+        name=plugin_name, command=command, mcp_env=[var1_name, var2_name]
+    )
+    plugin_dir = tmp_path / "plugin"
+    _write_env_file(plugin_dir, {var1_name: var1_value, var2_name: var2_value})
+    mcp_config = generate_mcp_config(plugin, plugin_dir, plugin_name)
+
+    # When
+    result = build_claude_mcp_config(mcp_config)
+
+    # Then
+    assert result.argv == [
+        "claude", "mcp", "add", "--scope", "user",
+        "-e", f"{var1_name}={var1_value}",
+        "-e", f"{var2_name}={var2_value}",
+        plugin_name, command,
+    ]
+
+
+def test_build_claude_mcp_config_stdio_skips_not_set_env_vars(tmp_path: Path) -> None:
+    """Env vars with <NOT_SET> value are omitted from the argv entirely."""
+    # Given
+    plugin_name = "my-plugin"
+    command = "uv"
+    set_var_name, set_var_value = "MODEL", "gpt-4"
+    missing_var_name = "API_KEY"
+    plugin = _make_stdio_plugin(
+        name=plugin_name, command=command,
+        mcp_env=[set_var_name, missing_var_name],
+        env_vars=[EnvVarConfig(name=missing_var_name)],
+    )
+    plugin_dir = tmp_path / "plugin"
+    _write_env_file(plugin_dir, {set_var_name: set_var_value})
+    mcp_config = generate_mcp_config(plugin, plugin_dir, plugin_name)
+
+    # When
+    result = build_claude_mcp_config(mcp_config)
+
+    # Then — missing var must not appear anywhere in the argv
+    assert missing_var_name not in " ".join(result.argv)
+    assert result.argv == [
+        "claude", "mcp", "add", "--scope", "user",
+        "-e", f"{set_var_name}={set_var_value}",
+        plugin_name, command,
+    ]
+
+
+def test_build_claude_mcp_config_sse(tmp_path: Path) -> None:
+    """SSE plugin: --transport sse inserted and URL placed as positional."""
+    # Given
+    plugin_name = "my-plugin"
+    endpoint = "http://localhost:8080/mcp"
+    plugin = _make_sse_plugin(name=plugin_name, endpoint=endpoint)
+    plugin_dir = tmp_path / "plugin"
+    plugin_dir.mkdir()
+    mcp_config = generate_mcp_config(plugin, plugin_dir, plugin_name)
+
+    # When
+    result = build_claude_mcp_config(mcp_config)
+
+    # Then
+    assert result.argv == [
+        "claude", "mcp", "add", "--transport", "sse", "--scope", "user",
+        plugin_name, endpoint,
+    ]
+
+
+def test_build_claude_mcp_config_scope_defaults_to_user(tmp_path: Path) -> None:
+    """Default scope is 'user' — --scope user always present when no scope given."""
+    # Given
+    plugin_name = "my-plugin"
+    plugin = _make_stdio_plugin(name=plugin_name)
+    plugin_dir = tmp_path / "plugin"
+    plugin_dir.mkdir()
+    mcp_config = generate_mcp_config(plugin, plugin_dir, plugin_name)
+
+    # When
+    result = build_claude_mcp_config(mcp_config)
+
+    # Then
+    scope_index = result.argv.index("--scope")
+    assert result.argv[scope_index + 1] == "user"
+
+
+def test_build_claude_mcp_config_custom_scope(tmp_path: Path) -> None:
+    """Passing scope='local' produces --scope local in the argv."""
+    # Given
+    plugin_name = "my-plugin"
+    custom_scope = "local"
+    plugin = _make_stdio_plugin(name=plugin_name)
+    plugin_dir = tmp_path / "plugin"
+    plugin_dir.mkdir()
+    mcp_config = generate_mcp_config(plugin, plugin_dir, plugin_name)
+
+    # When
+    result = build_claude_mcp_config(mcp_config, scope=custom_scope)
+
+    # Then
+    scope_index = result.argv.index("--scope")
+    assert result.argv[scope_index + 1] == custom_scope
+
+
+# ---------------------------------------------------------------------------
+# generate_mcp_config — fail-fast for missing transport-required fields
+# ---------------------------------------------------------------------------
+
+def test_generate_mcp_config_stdio_raises_when_command_missing(tmp_path: Path) -> None:
+    """stdio transport with no command is a misconfiguration — raises ValueError immediately."""
+    # Given
+    plugin_dir = tmp_path / "plugin"
+    plugin_dir.mkdir()
+    plugin = PluginSchema(
+        schema_version=PLUGIN_SCHEMA_VERSION,
+        name="BrokenPlugin",
+        description="missing command",
+        mcp=McpPluginConfig(transport="stdio"),  # no command
+    )
+
+    # When / Then
+    with pytest.raises(ValueError, match="no command"):
+        generate_mcp_config(plugin, plugin_dir, "broken-plugin")
+
+
+def test_generate_mcp_config_sse_raises_when_endpoint_missing(tmp_path: Path) -> None:
+    """sse transport with no endpoint is a misconfiguration — raises ValueError immediately."""
+    # Given
+    plugin_dir = tmp_path / "plugin"
+    plugin_dir.mkdir()
+    plugin = PluginSchema(
+        schema_version=PLUGIN_SCHEMA_VERSION,
+        name="BrokenPlugin",
+        description="missing endpoint",
+        mcp=McpPluginConfig(transport="sse"),  # no endpoint
+    )
+
+    # When / Then
+    with pytest.raises(ValueError, match="no endpoint"):
+        generate_mcp_config(plugin, plugin_dir, "broken-plugin")
