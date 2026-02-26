@@ -1,5 +1,6 @@
 """Tests for MCP configuration generation."""
 
+import json
 from io import StringIO
 from pathlib import Path
 
@@ -21,7 +22,13 @@ from atk.mcp import (
     generate_mcp_config,
     substitute_plugin_dir,
 )
-from atk.mcp_agents import build_claude_mcp_config
+from atk.mcp_agents import (
+    build_auggie_mcp_config,
+    build_claude_mcp_config,
+    build_codex_mcp_config,
+    build_opencode_mcp_config,
+)
+from atk.mcp_configure import run_opencode_mcp_add
 from atk.plugin_schema import PLUGIN_SCHEMA_VERSION, EnvVarConfig, McpPluginConfig, PluginSchema
 
 
@@ -830,3 +837,370 @@ class TestRemoveSkillReference:
 
         # Then
         assert removed is False
+
+
+
+# ---------------------------------------------------------------------------
+# build_codex_mcp_config — unit tests
+# ---------------------------------------------------------------------------
+
+
+def test_build_codex_mcp_config_stdio_minimal(tmp_path: Path) -> None:
+    """Minimal stdio: argv is codex mcp add <name> -- <cmd>."""
+    plugin_name = "my-plugin"
+    command = "uv"
+    plugin = _make_stdio_plugin(name=plugin_name, command=command)
+    plugin_dir = tmp_path / "plugin"
+    plugin_dir.mkdir()
+    mcp_config = generate_mcp_config(plugin, plugin_dir, plugin_name)
+
+    result = build_codex_mcp_config(mcp_config)
+
+    assert result.argv == ["codex", "mcp", "add", plugin_name, "--", command]
+
+
+def test_build_codex_mcp_config_stdio_with_args(tmp_path: Path) -> None:
+    """Stdio plugin with args: all args appended after -- <command>."""
+    plugin_name = "my-plugin"
+    command = "uv"
+    plugin_args = ["run", "--directory", "/some/path", "server.py"]
+    plugin = _make_stdio_plugin(name=plugin_name, command=command, args=plugin_args)
+    plugin_dir = tmp_path / "plugin"
+    plugin_dir.mkdir()
+    mcp_config = generate_mcp_config(plugin, plugin_dir, plugin_name)
+
+    result = build_codex_mcp_config(mcp_config)
+
+    assert result.argv == [
+        "codex", "mcp", "add", plugin_name, "--", command, *plugin_args,
+    ]
+
+
+def test_build_codex_mcp_config_stdio_with_env_vars(tmp_path: Path) -> None:
+    """Set env vars become --env KEY=VAL flags placed before the server name."""
+    plugin_name = "my-plugin"
+    var_name, var_value = "API_KEY", "secret-123"
+    plugin = _make_stdio_plugin(name=plugin_name, command="uv", mcp_env=[var_name])
+    plugin_dir = tmp_path / "plugin"
+    _write_env_file(plugin_dir, {var_name: var_value})
+    mcp_config = generate_mcp_config(plugin, plugin_dir, plugin_name)
+
+    result = build_codex_mcp_config(mcp_config)
+
+    assert result.argv == [
+        "codex", "mcp", "add", "--env", f"{var_name}={var_value}", plugin_name, "--", "uv",
+    ]
+
+
+def test_build_codex_mcp_config_stdio_skips_not_set_env_vars(tmp_path: Path) -> None:
+    """Unresolved env vars are omitted from the Codex argv entirely."""
+    plugin_name = "my-plugin"
+    set_name, set_value = "MODEL", "gpt-4"
+    missing_name = "API_KEY"
+    plugin = _make_stdio_plugin(
+        name=plugin_name, command="uv",
+        mcp_env=[set_name, missing_name],
+        env_vars=[EnvVarConfig(name=missing_name)],
+    )
+    plugin_dir = tmp_path / "plugin"
+    _write_env_file(plugin_dir, {set_name: set_value})
+    mcp_config = generate_mcp_config(plugin, plugin_dir, plugin_name)
+
+    result = build_codex_mcp_config(mcp_config)
+
+    assert missing_name not in " ".join(result.argv)
+    assert result.argv == [
+        "codex", "mcp", "add", "--env", f"{set_name}={set_value}", plugin_name, "--", "uv",
+    ]
+
+
+def test_build_codex_mcp_config_sse(tmp_path: Path) -> None:
+    """SSE plugin: --url <url> instead of -- <cmd>."""
+    plugin_name = "my-plugin"
+    endpoint = "http://localhost:8080/mcp"
+    plugin = _make_sse_plugin(name=plugin_name, endpoint=endpoint)
+    plugin_dir = tmp_path / "plugin"
+    plugin_dir.mkdir()
+    mcp_config = generate_mcp_config(plugin, plugin_dir, plugin_name)
+
+    result = build_codex_mcp_config(mcp_config)
+
+    assert result.argv == ["codex", "mcp", "add", plugin_name, "--url", endpoint]
+
+
+# ---------------------------------------------------------------------------
+# build_auggie_mcp_config — unit tests
+# ---------------------------------------------------------------------------
+
+
+def test_build_auggie_mcp_config_stdio_minimal(tmp_path: Path) -> None:
+    """Minimal stdio: argv is auggie mcp add-json <name> '<json>'."""
+    plugin_name = "my-plugin"
+    command = "uv"
+    plugin = _make_stdio_plugin(name=plugin_name, command=command)
+    plugin_dir = tmp_path / "plugin"
+    plugin_dir.mkdir()
+    mcp_config = generate_mcp_config(plugin, plugin_dir, plugin_name)
+
+    result = build_auggie_mcp_config(mcp_config)
+
+    assert result.argv[0:4] == ["auggie", "mcp", "add-json", plugin_name]
+    payload = json.loads(result.argv[4])
+    assert payload["command"] == command
+    assert payload["args"] == []
+    assert payload["env"] == {}
+
+
+def test_build_auggie_mcp_config_stdio_args_is_json_array(tmp_path: Path) -> None:
+    """Args in the JSON payload must be an array, never a string."""
+    plugin_name = "my-plugin"
+    plugin_args = ["run", "server.py"]
+    plugin = _make_stdio_plugin(name=plugin_name, command="uv", args=plugin_args)
+    plugin_dir = tmp_path / "plugin"
+    plugin_dir.mkdir()
+    mcp_config = generate_mcp_config(plugin, plugin_dir, plugin_name)
+
+    result = build_auggie_mcp_config(mcp_config)
+
+    payload = json.loads(result.argv[4])
+    assert isinstance(payload["args"], list)
+    assert payload["args"] == plugin_args
+
+
+def test_build_auggie_mcp_config_stdio_includes_resolved_env_vars(tmp_path: Path) -> None:
+    """Resolved env vars appear in the JSON env dict."""
+    plugin_name = "my-plugin"
+    var_name, var_value = "API_KEY", "secret-123"
+    plugin = _make_stdio_plugin(name=plugin_name, command="uv", mcp_env=[var_name])
+    plugin_dir = tmp_path / "plugin"
+    _write_env_file(plugin_dir, {var_name: var_value})
+    mcp_config = generate_mcp_config(plugin, plugin_dir, plugin_name)
+
+    result = build_auggie_mcp_config(mcp_config)
+
+    payload = json.loads(result.argv[4])
+    assert payload["env"] == {var_name: var_value}
+
+
+def test_build_auggie_mcp_config_stdio_omits_not_set_env_vars(tmp_path: Path) -> None:
+    """Unresolved env vars must not appear in the JSON payload."""
+    plugin_name = "my-plugin"
+    missing_name = "API_KEY"
+    plugin = _make_stdio_plugin(
+        name=plugin_name, command="uv",
+        mcp_env=[missing_name],
+        env_vars=[EnvVarConfig(name=missing_name)],
+    )
+    plugin_dir = tmp_path / "plugin"
+    plugin_dir.mkdir()
+    mcp_config = generate_mcp_config(plugin, plugin_dir, plugin_name)
+
+    result = build_auggie_mcp_config(mcp_config)
+
+    payload = json.loads(result.argv[4])
+    assert missing_name not in payload["env"]
+
+
+def test_build_auggie_mcp_config_json_is_single_line(tmp_path: Path) -> None:
+    """The JSON string must be compact (no newlines) — auggie rejects multi-line."""
+    plugin = _make_stdio_plugin(command="uv")
+    plugin_dir = tmp_path / "plugin"
+    plugin_dir.mkdir()
+    mcp_config = generate_mcp_config(plugin, plugin_dir, "my-plugin")
+
+    result = build_auggie_mcp_config(mcp_config)
+
+    assert "\n" not in result.argv[4]
+
+
+def test_build_auggie_mcp_config_sse(tmp_path: Path) -> None:
+    """SSE plugin: payload is {type: sse, url: ...}."""
+    plugin_name = "my-plugin"
+    endpoint = "http://localhost:8080/mcp"
+    plugin = _make_sse_plugin(name=plugin_name, endpoint=endpoint)
+    plugin_dir = tmp_path / "plugin"
+    plugin_dir.mkdir()
+    mcp_config = generate_mcp_config(plugin, plugin_dir, plugin_name)
+
+    result = build_auggie_mcp_config(mcp_config)
+
+    assert result.argv[0:4] == ["auggie", "mcp", "add-json", plugin_name]
+    payload = json.loads(result.argv[4])
+    assert payload == {"type": "sse", "url": endpoint}
+
+
+# ---------------------------------------------------------------------------
+# build_opencode_mcp_config — unit tests
+# ---------------------------------------------------------------------------
+
+
+def test_build_opencode_mcp_config_stdio_minimal(tmp_path: Path) -> None:
+    """Minimal stdio: entry has type=local, command array, empty environment."""
+    plugin_name = "my-plugin"
+    command = "uv"
+    plugin = _make_stdio_plugin(name=plugin_name, command=command)
+    plugin_dir = tmp_path / "plugin"
+    plugin_dir.mkdir()
+    mcp_config = generate_mcp_config(plugin, plugin_dir, plugin_name)
+    cwd = tmp_path / "project"
+    cwd.mkdir()
+
+    result = build_opencode_mcp_config(mcp_config, cwd)
+
+    assert result.entry_key == plugin_name
+    assert result.entry_value["type"] == "local"
+    assert result.entry_value["command"] == [command]
+    assert result.entry_value["environment"] == {}
+    assert result.entry_value["enabled"] is True
+    assert result.file_path == cwd / "opencode.jsonc"
+
+
+def test_build_opencode_mcp_config_stdio_command_includes_args(tmp_path: Path) -> None:
+    """Command array includes executable + all args as one flat list."""
+    plugin_name = "my-plugin"
+    command = "uv"
+    plugin_args = ["run", "server.py"]
+    plugin = _make_stdio_plugin(name=plugin_name, command=command, args=plugin_args)
+    plugin_dir = tmp_path / "plugin"
+    plugin_dir.mkdir()
+    mcp_config = generate_mcp_config(plugin, plugin_dir, plugin_name)
+
+    result = build_opencode_mcp_config(mcp_config, tmp_path)
+
+    assert result.entry_value["command"] == [command, *plugin_args]
+
+
+def test_build_opencode_mcp_config_stdio_includes_resolved_env_vars(tmp_path: Path) -> None:
+    """Resolved env vars appear under the 'environment' key (not 'env')."""
+    plugin_name = "my-plugin"
+    var_name, var_value = "API_KEY", "secret-123"
+    plugin = _make_stdio_plugin(name=plugin_name, command="uv", mcp_env=[var_name])
+    plugin_dir = tmp_path / "plugin"
+    _write_env_file(plugin_dir, {var_name: var_value})
+    mcp_config = generate_mcp_config(plugin, plugin_dir, plugin_name)
+
+    result = build_opencode_mcp_config(mcp_config, tmp_path)
+
+    assert result.entry_value["environment"] == {var_name: var_value}
+    assert "env" not in result.entry_value
+
+
+def test_build_opencode_mcp_config_stdio_omits_not_set_env_vars(tmp_path: Path) -> None:
+    """Unresolved env vars must not appear in the environment dict."""
+    plugin_name = "my-plugin"
+    missing_name = "API_KEY"
+    plugin = _make_stdio_plugin(
+        name=plugin_name, command="uv",
+        mcp_env=[missing_name],
+        env_vars=[EnvVarConfig(name=missing_name)],
+    )
+    plugin_dir = tmp_path / "plugin"
+    plugin_dir.mkdir()
+    mcp_config = generate_mcp_config(plugin, plugin_dir, plugin_name)
+
+    result = build_opencode_mcp_config(mcp_config, tmp_path)
+
+    assert missing_name not in result.entry_value["environment"]
+
+
+def test_build_opencode_mcp_config_sse(tmp_path: Path) -> None:
+    """SSE plugin: entry has type=remote and url."""
+    plugin_name = "my-plugin"
+    endpoint = "http://localhost:8080/mcp"
+    plugin = _make_sse_plugin(name=plugin_name, endpoint=endpoint)
+    plugin_dir = tmp_path / "plugin"
+    plugin_dir.mkdir()
+    mcp_config = generate_mcp_config(plugin, plugin_dir, plugin_name)
+
+    result = build_opencode_mcp_config(mcp_config, tmp_path)
+
+    assert result.entry_value == {"type": "remote", "url": endpoint, "enabled": True}
+
+
+# ---------------------------------------------------------------------------
+# run_opencode_mcp_add — unit tests (file I/O, no subprocess)
+# ---------------------------------------------------------------------------
+
+
+def test_run_opencode_mcp_add_creates_file_when_missing(tmp_path: Path) -> None:
+    """Creates opencode.jsonc with the mcp entry when the file does not exist."""
+    plugin_name = "my-plugin"
+    command = "uv"
+    plugin = _make_stdio_plugin(name=plugin_name, command=command)
+    plugin_dir = tmp_path / "plugin"
+    plugin_dir.mkdir()
+    mcp_config = generate_mcp_config(plugin, plugin_dir, plugin_name)
+    cwd = tmp_path / "project"
+    cwd.mkdir()
+    oc_config = build_opencode_mcp_config(mcp_config, cwd)
+
+    return_code = run_opencode_mcp_add(oc_config)
+
+    assert return_code == 0
+    assert oc_config.file_path.exists()
+    data = json.loads(oc_config.file_path.read_text())
+    assert data["mcp"][plugin_name]["type"] == "local"
+    assert data["mcp"][plugin_name]["command"] == [command]
+
+
+def test_run_opencode_mcp_add_merges_into_existing_file(tmp_path: Path) -> None:
+    """Merges the new entry into an existing opencode.jsonc without overwriting other keys."""
+    plugin_name = "my-plugin"
+    existing_plugin_name = "existing-plugin"
+    plugin = _make_stdio_plugin(name=plugin_name, command="uv")
+    plugin_dir = tmp_path / "plugin"
+    plugin_dir.mkdir()
+    mcp_config = generate_mcp_config(plugin, plugin_dir, plugin_name)
+    cwd = tmp_path / "project"
+    cwd.mkdir()
+
+    existing_data = {
+        "mcp": {existing_plugin_name: {"type": "local", "command": ["echo"], "enabled": True}},
+        "other_key": "preserved",
+    }
+    (cwd / "opencode.jsonc").write_text(json.dumps(existing_data))
+
+    oc_config = build_opencode_mcp_config(mcp_config, cwd)
+    run_opencode_mcp_add(oc_config)
+
+    data = json.loads(oc_config.file_path.read_text())
+    assert existing_plugin_name in data["mcp"]
+    assert plugin_name in data["mcp"]
+    assert data["other_key"] == "preserved"
+
+
+def test_run_opencode_mcp_add_overwrites_existing_entry(tmp_path: Path) -> None:
+    """Re-running for the same plugin replaces the existing entry."""
+    plugin_name = "my-plugin"
+    command_v2 = "python"
+    plugin = _make_stdio_plugin(name=plugin_name, command=command_v2)
+    plugin_dir = tmp_path / "plugin"
+    plugin_dir.mkdir()
+    mcp_config = generate_mcp_config(plugin, plugin_dir, plugin_name)
+    cwd = tmp_path / "project"
+    cwd.mkdir()
+
+    old_data = {"mcp": {plugin_name: {"type": "local", "command": ["uv"], "enabled": True}}}
+    (cwd / "opencode.jsonc").write_text(json.dumps(old_data))
+
+    oc_config = build_opencode_mcp_config(mcp_config, cwd)
+    run_opencode_mcp_add(oc_config)
+
+    data = json.loads(oc_config.file_path.read_text())
+    assert data["mcp"][plugin_name]["command"] == [command_v2]
+
+
+def test_run_opencode_mcp_add_raises_on_invalid_json(tmp_path: Path) -> None:
+    """Raises ValueError if the existing file cannot be parsed as JSON."""
+    plugin = _make_stdio_plugin(command="uv")
+    plugin_dir = tmp_path / "plugin"
+    plugin_dir.mkdir()
+    mcp_config = generate_mcp_config(plugin, plugin_dir, "my-plugin")
+    cwd = tmp_path / "project"
+    cwd.mkdir()
+    (cwd / "opencode.jsonc").write_text("{ invalid json // comment\n")
+
+    oc_config = build_opencode_mcp_config(mcp_config, cwd)
+
+    with pytest.raises(ValueError, match="Cannot parse"):
+        run_opencode_mcp_add(oc_config)

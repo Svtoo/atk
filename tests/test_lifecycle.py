@@ -1952,13 +1952,19 @@ def test_mcp_claude_skips_on_decline(
     mock_run.assert_not_called()
 
 
-def test_mcp_claude_propagates_subprocess_exit_code(
+def test_mcp_claude_reports_failure_on_nonzero_subprocess_exit_code(
     create_plugin: PluginFactory, cli_runner
 ) -> None:
-    """Confirm subprocess non-zero exit code is propagated."""
+    """Confirm subprocess non-zero exit code causes atk to exit with GENERAL_ERROR.
+
+    The multi-agent loop collects outcomes from all agents; individual subprocess
+    exit codes are reported in the summary, not propagated directly to the atk
+    exit code. Any agent failure results in exit_codes.GENERAL_ERROR (1).
+    """
     # Given
     plugin_name = "ClaudeFail"
     plugin_dir_name = "claude-fail"
+    subprocess_exit_code = 42
 
     create_plugin(
         plugin_name,
@@ -1969,12 +1975,16 @@ def test_mcp_claude_propagates_subprocess_exit_code(
     # When
     with (
         patch("atk.cli.is_git_available", return_value=True),
-        patch("atk.cli.subprocess.run", return_value=type("R", (), {"returncode": 42})()),
+        patch(
+            "atk.mcp_configure.subprocess.run",
+            return_value=type("R", (), {"returncode": subprocess_exit_code})(),
+        ),
     ):
         result = cli_runner.invoke(app, ["mcp", plugin_dir_name, "--claude"], input="y\n")
 
-    # Then
-    assert result.exit_code == 42
+    # Then — atk exits with GENERAL_ERROR; the subprocess code appears in summary output
+    assert result.exit_code == exit_codes.GENERAL_ERROR
+    assert f"exit code {subprocess_exit_code}" in result.output
 
 
 def test_mcp_claude_warns_missing_vars_before_confirmation(

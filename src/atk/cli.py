@@ -4,6 +4,7 @@ import json
 import os
 import subprocess
 import sys
+from collections.abc import Callable
 from pathlib import Path
 from typing import Annotated
 
@@ -47,8 +48,20 @@ from atk.lifecycle import (
 )
 from atk.manifest_schema import SourceType, load_manifest
 from atk.mcp import format_mcp_plaintext, generate_mcp_config
-from atk.mcp_agents import build_claude_mcp_config
-from atk.mcp_configure import run_claude_mcp_add
+from atk.mcp_agents import (
+    AgentMcpConfig,
+    OpenCodeMcpConfig,
+    build_auggie_mcp_config,
+    build_claude_mcp_config,
+    build_codex_mcp_config,
+    build_opencode_mcp_config,
+)
+from atk.mcp_configure import (
+    run_auggie_mcp_add,
+    run_claude_mcp_add,
+    run_codex_mcp_add,
+    run_opencode_mcp_add,
+)
 from atk.plugin import CUSTOM_DIR, PluginNotFoundError, load_plugin
 from atk.registry import PluginNotFoundError as RegistryPluginNotFoundError
 from atk.remove import remove_plugin
@@ -583,6 +596,77 @@ def setup(
     raise typer.Exit(exit_codes.SUCCESS)
 
 
+def _run_cli_agent(
+    label: str,
+    agent_config: AgentMcpConfig,
+    executable_name: str,
+    run_fn: Callable[[AgentMcpConfig], int],
+) -> tuple[str, str]:
+    """Confirm and execute a CLI-based MCP agent registration.
+
+    Returns:
+        (status, detail) where status ∈ {configured, skipped, not_found, failed}.
+    """
+    console.print(f"\n[{label}] Will run:\n  {' '.join(agent_config.argv)}\n")
+    if _stdin_prompt("Proceed? [y/N] ").strip().lower() != "y":
+        return "skipped", ""
+    try:
+        code = run_fn(agent_config)
+    except FileNotFoundError:
+        return "not_found", f"'{executable_name}' not found on PATH"
+    if code != 0:
+        return "failed", f"exit code {code}"
+    return "configured", ""
+
+
+def _run_file_agent(label: str, agent_config: OpenCodeMcpConfig) -> tuple[str, str]:
+    """Confirm and execute a file-based MCP agent registration (OpenCode).
+
+    Returns:
+        (status, detail) where status ∈ {configured, skipped, failed}.
+    """
+    preview = json.dumps({agent_config.entry_key: agent_config.entry_value}, indent=2)
+    console.print(
+        f"\n[{label}] Will add to {agent_config.file_path.name}:\n{preview}\n"
+    )
+    if _stdin_prompt("Proceed? [y/N] ").strip().lower() != "y":
+        return "skipped", ""
+    try:
+        run_opencode_mcp_add(agent_config)
+    except (ValueError, OSError) as exc:
+        return "failed", str(exc)
+    return "configured", ""
+
+
+def _inject_claude_skill_md(plugin_dir: Path) -> None:
+    """Offer to inject the plugin's SKILL.md into ~/.claude/CLAUDE.md."""
+    skill_path = plugin_dir / "SKILL.md"
+    if not skill_path.exists():
+        return
+    console.print(f"\n[Claude Code] Will add to ~/.claude/CLAUDE.md:\n  @{skill_path.resolve()}\n")
+    if _stdin_prompt("Proceed? [y/N] ").strip().lower() != "y":
+        return
+    injected = inject_skill_reference(skill_path)
+    if injected:
+        cli_logger.success("Added SKILL.md to ~/.claude/CLAUDE.md")
+    else:
+        cli_logger.info("SKILL.md already referenced in ~/.claude/CLAUDE.md")
+
+
+def _print_agent_summary(outcomes: list[tuple[str, str, str]]) -> None:
+    """Print per-agent configuration outcome summary."""
+    console.print()
+    for label, status, detail in outcomes:
+        if status == "configured":
+            cli_logger.success(f"[{label}] Configured")
+        elif status == "skipped":
+            cli_logger.info(f"[{label}] Skipped")
+        elif status == "not_found":
+            cli_logger.error(f"[{label}] Not found — {detail}")
+        else:
+            cli_logger.error(f"[{label}] Failed — {detail}")
+
+
 @app.command()
 def mcp(
     plugin: Annotated[
@@ -597,14 +681,32 @@ def mcp(
         bool,
         typer.Option("--claude", help="Register MCP server with Claude Code via 'claude mcp add'."),
     ] = False,
+    codex: Annotated[
+        bool,
+        typer.Option("--codex", help="Register MCP server with Codex via 'codex mcp add'."),
+    ] = False,
+    auggie: Annotated[
+        bool,
+        typer.Option("--auggie", help="Register MCP server with Auggie via 'auggie mcp add-json'."),
+    ] = False,
+    opencode: Annotated[
+        bool,
+        typer.Option("--opencode", help="Register MCP server with OpenCode by writing to opencode.jsonc."),
+    ] = False,
 ) -> None:
     """Output MCP configuration for a plugin.
 
     Reads the MCP config from plugin.yaml and resolves environment variables
     from the plugin's .env file. Output can be copied into IDE/tool configurations.
+
+    Pass one or more agent flags to configure agents directly. ATK will ask
+    for confirmation before taking any action for each agent. Multiple flags
+    may be combined; agents are processed in order: Claude, Codex, Auggie, OpenCode.
     """
-    if json_output and claude:
-        cli_logger.error("--json and --claude are mutually exclusive")
+    agent_flags = [claude, codex, auggie, opencode]
+
+    if json_output and any(agent_flags):
+        cli_logger.error("--json and agent flags are mutually exclusive")
         raise typer.Exit(exit_codes.INVALID_ARGS)
 
     atk_home = require_ready_home()
@@ -628,41 +730,43 @@ def mcp(
         print(json.dumps(result.to_mcp_dict(), indent=2))
         raise typer.Exit(exit_codes.SUCCESS)
 
-    if not claude:
+    if not any(agent_flags):
         console.print(format_mcp_plaintext(result))
         raise typer.Exit(exit_codes.SUCCESS)
 
-    # --- Step 1: register MCP server with Claude Code ---
-    agent_config = build_claude_mcp_config(result)
-    console.print(f"\n[Claude Code] Will run:\n  {' '.join(agent_config.argv)}\n")
-    if _stdin_prompt("Proceed? [y/N] ").strip().lower() != "y":
-        raise typer.Exit(exit_codes.SUCCESS)
+    # --- Multi-agent configuration ---
+    outcomes: list[tuple[str, str, str]] = []  # (label, status, detail)
 
-    try:
-        returncode = run_claude_mcp_add(agent_config)
-    except FileNotFoundError:
-        cli_logger.error("'claude' not found on PATH. Install Claude Code and ensure it is on your PATH.")
-        raise typer.Exit(exit_codes.GENERAL_ERROR) from None
+    if claude:
+        status, detail = _run_cli_agent(
+            "Claude Code", build_claude_mcp_config(result), "claude", run_claude_mcp_add
+        )
+        outcomes.append(("Claude Code", status, detail))
+        if status == "configured":
+            _inject_claude_skill_md(plugin_dir)
 
-    if returncode != 0:
-        raise typer.Exit(returncode)
+    if codex:
+        status, detail = _run_cli_agent(
+            "Codex", build_codex_mcp_config(result), "codex", run_codex_mcp_add
+        )
+        outcomes.append(("Codex", status, detail))
 
-    # --- Step 2: register SKILL.md with Claude Code's memory ---
-    skill_path = plugin_dir / "SKILL.md"
-    if not skill_path.exists():
-        raise typer.Exit(exit_codes.SUCCESS)
+    if auggie:
+        status, detail = _run_cli_agent(
+            "Auggie", build_auggie_mcp_config(result), "auggie", run_auggie_mcp_add
+        )
+        outcomes.append(("Auggie", status, detail))
 
-    console.print(f"\n[Claude Code] Will add to ~/.claude/CLAUDE.md:\n  @{skill_path.resolve()}\n")
-    if _stdin_prompt("Proceed? [y/N] ").strip().lower() != "y":
-        raise typer.Exit(exit_codes.SUCCESS)
+    if opencode:
+        status, detail = _run_file_agent(
+            "OpenCode", build_opencode_mcp_config(result, Path.cwd())
+        )
+        outcomes.append(("OpenCode", status, detail))
 
-    injected = inject_skill_reference(skill_path)
-    if injected:
-        cli_logger.success("Added SKILL.md to ~/.claude/CLAUDE.md")
-    else:
-        cli_logger.info("SKILL.md already referenced in ~/.claude/CLAUDE.md")
+    _print_agent_summary(outcomes)
 
-    raise typer.Exit(exit_codes.SUCCESS)
+    has_failures = any(s in ("failed", "not_found") for _, s, _ in outcomes)
+    raise typer.Exit(exit_codes.GENERAL_ERROR if has_failures else exit_codes.SUCCESS)
 
 
 @app.command()
