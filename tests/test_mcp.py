@@ -1117,6 +1117,47 @@ def test_build_opencode_mcp_config_sse(tmp_path: Path) -> None:
     assert result.entry_value == {"type": "remote", "url": endpoint, "enabled": True}
 
 
+def test_build_opencode_mcp_config_default_path_is_global_config(tmp_path: Path) -> None:
+    """REGRESSION: When no config_dir is given, file_path must be the global OpenCode config.
+
+    The global config lives at ~/.config/opencode/opencode.jsonc.
+    Previously, ATK wrote to Path.cwd()/'opencode.jsonc' (wherever atk was run),
+    which OpenCode never read — because OpenCode's global config is in ~/.config/opencode/.
+    """
+    plugin = _make_stdio_plugin(command="uv")
+    plugin_dir = tmp_path / "plugin"
+    plugin_dir.mkdir()
+    mcp_config = generate_mcp_config(plugin, plugin_dir, "my-plugin")
+
+    result = build_opencode_mcp_config(mcp_config)
+
+    expected = Path.home() / ".config" / "opencode" / "opencode.jsonc"
+    assert result.file_path == expected, (
+        f"Expected global config path {expected}, got {result.file_path}. "
+        "OpenCode only reads its global config from ~/.config/opencode/, "
+        "not from the current working directory."
+    )
+
+
+def test_run_opencode_mcp_add_creates_parent_dirs(tmp_path: Path) -> None:
+    """run_opencode_mcp_add must create parent directories that do not yet exist.
+
+    The global config dir (~/.config/opencode/) may not exist on a fresh install.
+    """
+    plugin = _make_stdio_plugin(command="uv")
+    plugin_dir = tmp_path / "plugin"
+    plugin_dir.mkdir()
+    mcp_config = generate_mcp_config(plugin, plugin_dir, "my-plugin")
+    # Simulate a config dir that doesn't exist yet
+    nested_config_dir = tmp_path / "nonexistent" / "deeply" / "nested"
+    oc_config = build_opencode_mcp_config(mcp_config, nested_config_dir)
+    assert not nested_config_dir.exists()
+
+    run_opencode_mcp_add(oc_config)
+
+    assert oc_config.file_path.exists()
+
+
 # ---------------------------------------------------------------------------
 # run_opencode_mcp_add — unit tests (file I/O, no subprocess)
 # ---------------------------------------------------------------------------

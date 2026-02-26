@@ -134,7 +134,7 @@ Auggie stores its configuration in `~/.augment/settings.json` under the `mcpServ
 
 ### OpenCode
 
-**Mechanism:** Direct config file edit. OpenCode's `mcp add` is an interactive TUI command and cannot be scripted. ATK writes to the project-level `opencode.jsonc` file in the current working directory, creating it if it does not exist.
+**Mechanism:** Direct config file edit. OpenCode's `mcp add` is an interactive TUI command and cannot be scripted. ATK writes to the global OpenCode config file at `~/.config/opencode/opencode.jsonc`, creating it (and any missing parent directories) if it does not exist. This is consistent with how Claude, Codex, and Auggie all write to user-level global configs.
 
 **Stdio format stored (under the `mcp` key):**
 ```json

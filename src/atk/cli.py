@@ -627,7 +627,7 @@ def _run_file_agent(label: str, agent_config: OpenCodeMcpConfig) -> tuple[str, s
     """
     preview = json.dumps({agent_config.entry_key: agent_config.entry_value}, indent=2)
     console.print(
-        f"\n[{label}] Will add to {agent_config.file_path.name}:\n{preview}\n"
+        f"\n[{label}] Will add to {agent_config.file_path}:\n{preview}\n"
     )
     if _stdin_prompt("Proceed? [y/N] ").strip().lower() != "y":
         return "skipped", ""
@@ -759,7 +759,7 @@ def mcp(
 
     if opencode:
         status, detail = _run_file_agent(
-            "OpenCode", build_opencode_mcp_config(result, Path.cwd())
+            "OpenCode", build_opencode_mcp_config(result)
         )
         outcomes.append(("OpenCode", status, detail))
 

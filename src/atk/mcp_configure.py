@@ -96,6 +96,9 @@ def run_opencode_mcp_add(config: OpenCodeMcpConfig) -> int:
         data["mcp"] = {}
 
     data["mcp"][config.entry_key] = config.entry_value
+    # Create the directory if it does not exist (e.g. ~/.config/opencode/ on a
+    # fresh install).
+    file_path.parent.mkdir(parents=True, exist_ok=True)
     file_path.write_text(json.dumps(data, indent=2) + "\n")
     return 0
 

@@ -114,12 +114,22 @@ def build_auggie_mcp_config(config: McpConfig) -> AgentMcpConfig:
     return AgentMcpConfig(argv=["auggie", "mcp", "add-json", config.identifier, json_str])
 
 
+def _default_opencode_config_dir() -> Path:
+    """Return the default global OpenCode config directory.
+
+    OpenCode's global config lives at ``~/.config/opencode/`` on all platforms.
+    This is consistent with the XDG base-dir convention that OpenCode follows
+    (documented at https://opencode.ai/docs/config/).
+    """
+    return Path.home() / ".config" / "opencode"
+
+
 @dataclass
 class OpenCodeMcpConfig:
     """Configuration for writing an MCP entry to opencode.jsonc.
 
     OpenCode's ``mcp add`` is an interactive TUI and cannot be scripted.
-    ATK writes directly to the project-level opencode.jsonc file instead.
+    ATK writes directly to the global opencode.jsonc config file instead.
     """
 
     entry_key: str
@@ -127,7 +137,10 @@ class OpenCodeMcpConfig:
     file_path: Path
 
 
-def build_opencode_mcp_config(config: McpConfig, cwd: Path) -> OpenCodeMcpConfig:
+def build_opencode_mcp_config(
+    config: McpConfig,
+    config_dir: Path | None = None,
+) -> OpenCodeMcpConfig:
     """Build the OpenCode MCP config from an McpConfig.
 
     OpenCode uses ``type: "local"`` for stdio and ``type: "remote"`` for SSE.
@@ -136,12 +149,15 @@ def build_opencode_mcp_config(config: McpConfig, cwd: Path) -> OpenCodeMcpConfig
     Env vars with NOT_SET values are omitted.
 
     Args:
-        config: The resolved MCP config from generate_mcp_config().
-        cwd:    Directory where opencode.jsonc will be written.
+        config:     The resolved MCP config from generate_mcp_config().
+        config_dir: Directory where opencode.jsonc will be written.
+                    Defaults to ``~/.config/opencode/`` (the global OpenCode
+                    config directory).  Pass an explicit path in tests.
 
     Returns:
         OpenCodeMcpConfig ready for run_opencode_mcp_add().
     """
+    effective_dir = config_dir if config_dir is not None else _default_opencode_config_dir()
     entry_value: dict[str, Any]
 
     if isinstance(config, SseMcpConfig):
@@ -159,6 +175,6 @@ def build_opencode_mcp_config(config: McpConfig, cwd: Path) -> OpenCodeMcpConfig
     return OpenCodeMcpConfig(
         entry_key=config.identifier,
         entry_value=entry_value,
-        file_path=cwd / "opencode.jsonc",
+        file_path=effective_dir / "opencode.jsonc",
     )
 
