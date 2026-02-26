@@ -60,6 +60,7 @@ flowchart TB
     subgraph Execute["Execution"]
         run[atk run]
         mcp[atk mcp]
+        help[atk help]
     end
 
     init --> add
@@ -526,6 +527,32 @@ atk mcp openmemory          # Output MCP config JSON for openmemory
 - 3: ATK Home not initialized
 - 4: Plugin not found
 - 5: Plugin has no MCP configuration defined
+
+---
+
+## `atk help <plugin>`
+
+Display plugin documentation.
+
+**Arguments:**
+- `<plugin>`: Plugin name or directory (required)
+
+**Behavior:**
+1. Validate ATK Home is initialized (exit 3 if not)
+2. Find plugin by name or directory (exit 4 if not found)
+3. Look for `README.md` in the plugin directory
+4. If found: render as formatted Markdown to the terminal
+5. If not found: print a warning and exit 0
+
+**Notes:**
+- Only works for installed plugins (plugin must be in the manifest)
+- No schema configuration — `README.md` is the convention (see plugin-schema.md)
+- Renders Markdown with Rich for readable terminal output
+
+**Exit Codes:**
+- 0: Success (including when no README.md found — not an error)
+- 3: ATK Home not initialized
+- 4: Plugin not found
 
 ---
 

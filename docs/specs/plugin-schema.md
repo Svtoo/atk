@@ -276,6 +276,36 @@ mcp:
 - **Debuggable** — Users can see the substitution in generated config
 - **Portable** — Plugin developers can test locally by setting `ATK_PLUGIN_DIR=$(pwd)`
 
+## Plugin Documentation Conventions
+
+ATK uses filesystem conventions for plugin documentation rather than schema fields. These
+files are **content, not behavior** — they don't belong in `plugin.yaml`.
+
+### `README.md` — Help file
+
+Every plugin directory **should** contain a `README.md`. This is the canonical help file.
+
+- `atk help <plugin>` reads and renders this file in the terminal
+- Content: what the plugin does, prerequisites, env vars, usage, links
+
+No `help_file:` field exists in `plugin.yaml`. README.md is a universal convention; a
+schema field would be boilerplate for a pattern everyone already understands.
+
+### `SKILL.md` — Agent skill file
+
+A `SKILL.md` file provides agent-readable instructions for using this plugin's MCP server:
+how to invoke it effectively, what the tools do, common patterns, caveats.
+
+- ATK injects this file when configuring an agent via `atk mcp --claude` (and future agents)
+- Plugin developers write one file; ATK handles per-agent placement
+- Optional: only relevant for plugins that expose an MCP server
+
+Named `SKILL.md` — not `CLAUDE.md`, `AGENTS.md`, or `.cursorrules` — to stay agent-neutral.
+Each agent ecosystem has its own convention name; ATK's abstraction is the *skill*, the
+instructions for how to use this MCP effectively regardless of which agent is consuming it.
+
+---
+
 ## Sensible Defaults
 
 ATK applies sensible defaults to minimize configuration:

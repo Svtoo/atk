@@ -266,10 +266,15 @@ Before finalizing your plugin, verify every env var:
 
 ---
 
-## Writing a README
+## Plugin Documentation Conventions
 
-**Always include a `README.md`** in your plugin directory. Plugin consumers need to know what a plugin does before
-they install it, and AI agents working with ATK plugins need documentation to use them effectively.
+ATK uses two documentation files by convention. Neither is declared in `plugin.yaml` — they
+are discovered by filename. Both are content, not behavior.
+
+### `README.md` — Help file
+
+**Always include a `README.md`** in your plugin directory. This is the canonical help file:
+`atk help <plugin>` reads and renders it in the terminal.
 
 A good plugin README includes:
 
@@ -309,6 +314,39 @@ MCP config: `atk mcp my-plugin`
 ## Links
 - [Upstream repository](https://github.com/org/repo)
 ```
+```
+
+### `SKILL.md` — Agent skill file
+
+If your plugin exposes an MCP server, **include a `SKILL.md`** with instructions for AI
+agents on how to use it effectively. ATK injects this file into agent configuration when
+running `atk mcp --claude` (and future agent integrations).
+
+A good SKILL.md includes:
+- What this MCP is for and why it exists
+- What the tools do (brief, usage-oriented — not a copy of the API docs)
+- When to use it and when not to
+- Any critical usage patterns or caveats
+
+Keep it concise. Agents read this as system-level instruction, not documentation.
+
+```markdown
+# My Plugin — Skill
+
+Brief description of what this MCP provides and its purpose.
+
+## Tools
+
+- **tool_name**: What it does and when to use it
+- **other_tool**: What it does and when to use it
+
+## Usage Patterns
+
+Key patterns or workflows an agent should know about.
+
+## Notes
+
+Any caveats, limitations, or non-obvious behaviors.
 ```
 
 ---
