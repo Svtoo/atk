@@ -123,6 +123,29 @@ class TestRunCommand:
 
         assert result.exit_code == exit_codes.GENERAL_ERROR
 
+    def test_forwards_extra_args_to_script(
+        self, create_plugin: PluginFactory, cli_runner
+    ) -> None:
+        """Verify extra arguments after <script> are forwarded to the script.
+
+        Regression: atk run <plugin> <script> --flag used to fail with
+        'Got unexpected extra argument (--flag)' because no args were passed through.
+        """
+        # Given
+        plugin_dir = create_plugin("TestPlugin", "test-plugin", {"install": "echo install"})
+        script = plugin_dir / "with_args.sh"
+        script.write_text('#!/bin/sh\necho "$1" > arg_output.txt\n')
+        script.chmod(0o755)
+
+        # When
+        result = cli_runner.invoke(app, ["run", "test-plugin", "with_args", "--setup"])
+
+        # Then
+        assert result.exit_code == exit_codes.SUCCESS
+        output_file = plugin_dir / "arg_output.txt"
+        assert output_file.exists(), "Script did not write output file"
+        assert output_file.read_text().strip() == "--setup"
+
 
 class TestHelpCommand:
     """Tests for `atk help <plugin>`."""

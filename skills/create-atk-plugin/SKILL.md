@@ -427,9 +427,11 @@ your plugin.
 ## Custom Scripts (atk run)
 
 Plugins can ship auxiliary scripts alongside their lifecycle commands. Any script placed in the plugin directory is
-runnable by users with `atk run <plugin> <script>`. ATK looks for:
+runnable by users with `atk run <plugin> <script> [args...]`. ATK looks for:
 1. `plugins/<name>/<script>`
 2. `plugins/<name>/<script>.sh`
+
+Any arguments after the script name are forwarded verbatim to the script as `$1`, `$2`, etc.
 
 Example — a `backup.sh` shipped with a database plugin:
 ```bash
@@ -437,7 +439,7 @@ Example — a `backup.sh` shipped with a database plugin:
 docker compose exec my-plugin pg_dump mydb > "$ATK_PLUGIN_DIR/backup.sql"
 echo "Backup saved to $ATK_PLUGIN_DIR/backup.sql"
 ```
-Users run it with: `atk run my-plugin backup`
+Users run it with: `atk run my-plugin backup -flag1 -flag2`
 
 ---
 

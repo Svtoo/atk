@@ -1,5 +1,6 @@
 """ATK CLI entry point."""
 
+import json
 import os
 import subprocess
 import sys
@@ -13,6 +14,7 @@ from rich.table import Table
 from atk import __version__, cli_logger, exit_codes
 from atk.add import InstallFailedError, add_plugin
 from atk.banner import print_banner
+from atk.claude_memory import inject_skill_reference
 from atk.env import load_env_file
 from atk.errors import handle_cli_error
 from atk.git import is_git_available
@@ -46,6 +48,7 @@ from atk.lifecycle import (
 from atk.manifest_schema import SourceType, load_manifest
 from atk.mcp import format_mcp_plaintext, generate_mcp_config
 from atk.mcp_agents import build_claude_mcp_config
+from atk.mcp_configure import run_claude_mcp_add
 from atk.plugin import CUSTOM_DIR, PluginNotFoundError, load_plugin
 from atk.registry import PluginNotFoundError as RegistryPluginNotFoundError
 from atk.remove import remove_plugin
@@ -584,9 +587,7 @@ def setup(
 def mcp(
     plugin: Annotated[
         str,
-        typer.Argument(
-            help="Plugin name or directory to get MCP config for.",
-        ),
+        typer.Argument(help="Plugin name or directory to get MCP config for."),
     ],
     json_output: Annotated[
         bool,
@@ -602,8 +603,6 @@ def mcp(
     Reads the MCP config from plugin.yaml and resolves environment variables
     from the plugin's .env file. Output can be copied into IDE/tool configurations.
     """
-    import json
-
     if json_output and claude:
         cli_logger.error("--json and --claude are mutually exclusive")
         raise typer.Exit(exit_codes.INVALID_ARGS)
@@ -622,27 +621,46 @@ def mcp(
 
     result = generate_mcp_config(plugin_schema, plugin_dir, plugin_schema.name)
 
-    if result.missing_vars:
-        for var in result.missing_vars:
-            cli_logger.warning(f"Environment variable '{var}' is not set")
+    for var in result.missing_vars:
+        cli_logger.warning(f"Environment variable '{var}' is not set")
 
-    if claude:
-        agent_config = build_claude_mcp_config(result)
-        console.print(f"\n[Claude Code] Will run:\n  {' '.join(agent_config.argv)}\n")
-        answer = _stdin_prompt("Proceed? [y/N] ")
-        if answer.strip().lower() == "y":
-            try:
-                proc = subprocess.run(agent_config.argv)
-                raise typer.Exit(proc.returncode)
-            except FileNotFoundError:
-                cli_logger.error("'claude' not found on PATH. Install Claude Code and ensure it is on your PATH.")
-                raise typer.Exit(exit_codes.GENERAL_ERROR) from None
-        else:
-            raise typer.Exit(exit_codes.SUCCESS)
-    elif json_output:
+    if json_output:
         print(json.dumps(result.to_mcp_dict(), indent=2))
-    else:
+        raise typer.Exit(exit_codes.SUCCESS)
+
+    if not claude:
         console.print(format_mcp_plaintext(result))
+        raise typer.Exit(exit_codes.SUCCESS)
+
+    # --- Step 1: register MCP server with Claude Code ---
+    agent_config = build_claude_mcp_config(result)
+    console.print(f"\n[Claude Code] Will run:\n  {' '.join(agent_config.argv)}\n")
+    if _stdin_prompt("Proceed? [y/N] ").strip().lower() != "y":
+        raise typer.Exit(exit_codes.SUCCESS)
+
+    try:
+        returncode = run_claude_mcp_add(agent_config)
+    except FileNotFoundError:
+        cli_logger.error("'claude' not found on PATH. Install Claude Code and ensure it is on your PATH.")
+        raise typer.Exit(exit_codes.GENERAL_ERROR) from None
+
+    if returncode != 0:
+        raise typer.Exit(returncode)
+
+    # --- Step 2: register SKILL.md with Claude Code's memory ---
+    skill_path = plugin_dir / "SKILL.md"
+    if not skill_path.exists():
+        raise typer.Exit(exit_codes.SUCCESS)
+
+    console.print(f"\n[Claude Code] Will add to ~/.claude/CLAUDE.md:\n  @{skill_path.resolve()}\n")
+    if _stdin_prompt("Proceed? [y/N] ").strip().lower() != "y":
+        raise typer.Exit(exit_codes.SUCCESS)
+
+    injected = inject_skill_reference(skill_path)
+    if injected:
+        cli_logger.success("Added SKILL.md to ~/.claude/CLAUDE.md")
+    else:
+        cli_logger.info("SKILL.md already referenced in ~/.claude/CLAUDE.md")
 
     raise typer.Exit(exit_codes.SUCCESS)
 
@@ -1012,8 +1030,9 @@ def _resolve_script(plugin_dir: Path, script: str) -> Path | None:
 
 
 
-@app.command()
+@app.command(context_settings={"allow_extra_args": True, "ignore_unknown_options": True})
 def run(
+    ctx: typer.Context,
     plugin: Annotated[
         str,
         typer.Argument(
@@ -1031,9 +1050,8 @@ def run(
 
     Looks for the script in the plugin's root directory.
     If the script name doesn't have an extension, tries adding .sh.
+    Any additional arguments after the script name are forwarded to the script.
     """
-    import subprocess
-
     atk_home = require_initialized_home()
 
     try:
@@ -1050,7 +1068,7 @@ def run(
     env_file = plugin_dir / ".env"
     merged_env = {**os.environ, **load_env_file(env_file)}
     result = subprocess.run(
-        [str(script_path)],
+        [str(script_path), *ctx.args],
         cwd=plugin_dir,
         env=merged_env,
     )

@@ -7,6 +7,12 @@ import pytest
 from rich.console import Console
 
 from atk import exit_codes
+from atk.claude_memory import (
+    ATK_SECTION_BEGIN,
+    ATK_SECTION_END,
+    inject_skill_reference,
+    remove_skill_reference,
+)
 from atk.cli import app
 from atk.mcp import (
     McpConfig,
@@ -666,3 +672,161 @@ def test_generate_mcp_config_sse_raises_when_endpoint_missing(tmp_path: Path) ->
     # When / Then
     with pytest.raises(ValueError, match="no endpoint"):
         generate_mcp_config(plugin, plugin_dir, "broken-plugin")
+
+
+# ---------------------------------------------------------------------------
+# inject_skill_reference / remove_skill_reference
+# ---------------------------------------------------------------------------
+
+
+class TestInjectSkillReference:
+    """Tests for claude_memory.inject_skill_reference."""
+
+    def test_creates_claude_md_when_missing(self, tmp_path: Path) -> None:
+        """inject_skill_reference creates CLAUDE.md (and its parent dir) if absent."""
+        # Given
+        claude_md = tmp_path / ".claude" / "CLAUDE.md"
+        skill_path = tmp_path / "plugin" / "SKILL.md"
+        skill_path.parent.mkdir(parents=True)
+        skill_path.write_text("# Skill")
+
+        # When
+        injected = inject_skill_reference(skill_path, claude_md_path=claude_md)
+
+        # Then
+        assert injected is True
+        assert claude_md.exists()
+        content = claude_md.read_text()
+        assert ATK_SECTION_BEGIN in content
+        assert ATK_SECTION_END in content
+        assert f"@{skill_path.resolve()}" in content
+
+    def test_adds_atk_section_to_existing_file_without_section(self, tmp_path: Path) -> None:
+        """inject_skill_reference appends ATK section to a CLAUDE.md that has user content."""
+        # Given
+        claude_md = tmp_path / "CLAUDE.md"
+        user_content = "# My notes\n\nSome user content.\n"
+        claude_md.write_text(user_content)
+        skill_path = tmp_path / "SKILL.md"
+        skill_path.write_text("# Skill")
+
+        # When
+        injected = inject_skill_reference(skill_path, claude_md_path=claude_md)
+
+        # Then
+        assert injected is True
+        content = claude_md.read_text()
+        # User content must be preserved
+        assert "Some user content." in content
+        # ATK section must follow it
+        assert content.index(ATK_SECTION_BEGIN) > content.index("Some user content.")
+        assert f"@{skill_path.resolve()}" in content
+
+    def test_idempotent_when_reference_already_present(self, tmp_path: Path) -> None:
+        """inject_skill_reference returns False and does not duplicate an existing reference."""
+        # Given
+        skill_path = tmp_path / "SKILL.md"
+        skill_path.write_text("# Skill")
+        claude_md = tmp_path / "CLAUDE.md"
+
+        inject_skill_reference(skill_path, claude_md_path=claude_md)  # first call
+
+        # When
+        injected_again = inject_skill_reference(skill_path, claude_md_path=claude_md)
+
+        # Then
+        assert injected_again is False
+        content = claude_md.read_text()
+        reference = f"@{skill_path.resolve()}"
+        assert content.count(reference) == 1
+
+    def test_multiple_plugins_all_appear_in_section(self, tmp_path: Path) -> None:
+        """Multiple plugins each get their own reference line inside the ATK section."""
+        # Given
+        claude_md = tmp_path / "CLAUDE.md"
+        skill_a = tmp_path / "plugin-a" / "SKILL.md"
+        skill_b = tmp_path / "plugin-b" / "SKILL.md"
+        skill_a.parent.mkdir()
+        skill_b.parent.mkdir()
+        skill_a.write_text("# A")
+        skill_b.write_text("# B")
+
+        # When
+        inject_skill_reference(skill_a, claude_md_path=claude_md)
+        inject_skill_reference(skill_b, claude_md_path=claude_md)
+
+        # Then
+        content = claude_md.read_text()
+        assert f"@{skill_a.resolve()}" in content
+        assert f"@{skill_b.resolve()}" in content
+        # Both must be inside the ATK section
+        begin = content.index(ATK_SECTION_BEGIN)
+        end = content.index(ATK_SECTION_END)
+        section = content[begin:end]
+        assert f"@{skill_a.resolve()}" in section
+        assert f"@{skill_b.resolve()}" in section
+
+    def test_references_outside_atk_section_are_not_deduplicated(self, tmp_path: Path) -> None:
+        """A reference that the user placed outside the ATK section does not block injection."""
+        # Given
+        skill_path = tmp_path / "SKILL.md"
+        skill_path.write_text("# Skill")
+        reference = f"@{skill_path.resolve()}"
+        claude_md = tmp_path / "CLAUDE.md"
+        # User manually placed the reference outside any ATK section
+        claude_md.write_text(f"{reference}\n")
+
+        # When
+        injected = inject_skill_reference(skill_path, claude_md_path=claude_md)
+
+        # Then — ATK still adds its own managed reference inside the section
+        assert injected is True
+        content = claude_md.read_text()
+        assert ATK_SECTION_BEGIN in content
+
+
+class TestRemoveSkillReference:
+    """Tests for claude_memory.remove_skill_reference."""
+
+    def test_removes_existing_reference(self, tmp_path: Path) -> None:
+        """remove_skill_reference removes a reference previously added by inject."""
+        # Given
+        skill_path = tmp_path / "SKILL.md"
+        skill_path.write_text("# Skill")
+        claude_md = tmp_path / "CLAUDE.md"
+        inject_skill_reference(skill_path, claude_md_path=claude_md)
+
+        # When
+        removed = remove_skill_reference(skill_path, claude_md_path=claude_md)
+
+        # Then
+        assert removed is True
+        content = claude_md.read_text()
+        assert f"@{skill_path.resolve()}" not in content
+
+    def test_returns_false_when_not_present(self, tmp_path: Path) -> None:
+        """remove_skill_reference returns False when the reference does not exist."""
+        # Given
+        skill_path = tmp_path / "SKILL.md"
+        skill_path.write_text("# Skill")
+        claude_md = tmp_path / "CLAUDE.md"
+        claude_md.write_text(f"{ATK_SECTION_BEGIN}\n{ATK_SECTION_END}\n")
+
+        # When
+        removed = remove_skill_reference(skill_path, claude_md_path=claude_md)
+
+        # Then
+        assert removed is False
+
+    def test_returns_false_when_claude_md_missing(self, tmp_path: Path) -> None:
+        """remove_skill_reference returns False gracefully when CLAUDE.md does not exist."""
+        # Given
+        skill_path = tmp_path / "SKILL.md"
+        skill_path.write_text("# Skill")
+        claude_md = tmp_path / "nonexistent" / "CLAUDE.md"
+
+        # When
+        removed = remove_skill_reference(skill_path, claude_md_path=claude_md)
+
+        # Then
+        assert removed is False
