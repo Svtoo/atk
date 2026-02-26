@@ -112,6 +112,7 @@ Plugins submitted to the registry must:
 1. Have a valid `plugin.yaml` (passes schema validation)
 2. If `lifecycle.install` is defined, `lifecycle.uninstall` must also be defined
 3. Include all required files (compose files, scripts referenced in lifecycle)
+4. Include a `README.md` — enforced by CI; `make validate` fails without it
 
 ## CI Workflow
 

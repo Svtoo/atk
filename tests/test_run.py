@@ -1,4 +1,4 @@
-"""Tests for the `atk run` CLI command."""
+"""Tests for the `atk run` and `atk help` CLI commands."""
 
 from collections.abc import Callable
 from pathlib import Path
@@ -122,4 +122,42 @@ class TestRunCommand:
         result = cli_runner.invoke(app, ["run", "test-plugin", "nonexistent_script"])
 
         assert result.exit_code == exit_codes.GENERAL_ERROR
+
+
+class TestHelpCommand:
+    """Tests for `atk help <plugin>`."""
+
+    def test_renders_readme_when_present(
+        self, create_plugin: PluginFactory, cli_runner
+    ) -> None:
+        """Verify README.md content is rendered when file exists."""
+        readme_content = "# My Plugin\n\nThis is the help text."
+        plugin_dir = create_plugin("TestPlugin", "test-plugin", {})
+        (plugin_dir / "README.md").write_text(readme_content)
+
+        result = cli_runner.invoke(app, ["help", "test-plugin"])
+
+        assert result.exit_code == exit_codes.SUCCESS
+        assert "My Plugin" in result.output
+
+    def test_warns_when_no_readme(
+        self, create_plugin: PluginFactory, cli_runner
+    ) -> None:
+        """Verify warning and exit 0 when README.md is absent."""
+        create_plugin("TestPlugin", "test-plugin", {})
+
+        result = cli_runner.invoke(app, ["help", "test-plugin"])
+
+        assert result.exit_code == exit_codes.SUCCESS
+        assert "no README.md" in result.output
+
+    def test_plugin_not_found_returns_error(
+        self, configure_atk_home, cli_runner
+    ) -> None:
+        """Verify PLUGIN_NOT_FOUND when plugin is not in manifest."""
+        configure_atk_home()
+
+        result = cli_runner.invoke(app, ["help", "nonexistent-plugin"])
+
+        assert result.exit_code == exit_codes.PLUGIN_NOT_FOUND
 

@@ -957,6 +957,38 @@ def logs(
 
 
 
+@app.command(name="help")
+def plugin_help(
+    plugin: Annotated[
+        str,
+        typer.Argument(
+            help="Plugin name or directory to show documentation for.",
+        ),
+    ],
+) -> None:
+    """Show plugin documentation (README.md).
+
+    Renders the plugin's README.md as formatted Markdown in the terminal.
+    """
+    from rich.markdown import Markdown
+
+    atk_home = require_initialized_home()
+
+    try:
+        _, plugin_dir = load_plugin(atk_home, plugin)
+    except PluginNotFoundError:
+        cli_logger.error(f"Plugin '{plugin}' not found in manifest")
+        raise typer.Exit(exit_codes.PLUGIN_NOT_FOUND) from None
+
+    readme_path = plugin_dir / "README.md"
+    if not readme_path.exists():
+        cli_logger.warning(f"Plugin '{plugin}' has no README.md")
+        raise typer.Exit(exit_codes.SUCCESS)
+
+    console.print(Markdown(readme_path.read_text()))
+    raise typer.Exit(exit_codes.SUCCESS)
+
+
 def _resolve_script(plugin_dir: Path, script: str) -> Path | None:
     """Resolve a script path, checking custom/ directory first.
 
