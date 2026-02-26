@@ -369,7 +369,7 @@ def test_build_claude_mcp_config_stdio_minimal(tmp_path: Path) -> None:
     result = build_claude_mcp_config(mcp_config)
 
     # Then
-    assert result.argv == ["claude", "mcp", "add", "--scope", "user", plugin_name, command]
+    assert result.argv == ["claude", "mcp", "add", "--scope", "user", "--", plugin_name, command]
 
 
 def test_build_claude_mcp_config_stdio_with_args(tmp_path: Path) -> None:
@@ -388,9 +388,36 @@ def test_build_claude_mcp_config_stdio_with_args(tmp_path: Path) -> None:
 
     # Then
     assert result.argv == [
-        "claude", "mcp", "add", "--scope", "user",
+        "claude", "mcp", "add", "--scope", "user", "--",
         plugin_name, command, *plugin_args,
     ]
+
+
+def test_build_claude_mcp_config_double_dash_terminates_option_parsing(tmp_path: Path) -> None:
+    """-- must appear before server name so claude does not eat server args as its own options.
+
+    Regression: `uv run --directory /path` caused `error: unknown option '--directory'`
+    because claude's parser was still active when it hit --directory.
+    """
+    # Given
+    plugin_name = "parley"
+    command = "uv"
+    plugin_args = ["run", "--directory", "/some/path", "parley-mcp", "run"]
+    plugin = _make_stdio_plugin(name=plugin_name, command=command, args=plugin_args)
+    plugin_dir = tmp_path / "plugin"
+    plugin_dir.mkdir()
+    mcp_config = generate_mcp_config(plugin, plugin_dir, plugin_name)
+
+    # When
+    result = build_claude_mcp_config(mcp_config)
+
+    # Then — "--" must appear before the server name
+    double_dash_idx = result.argv.index("--")
+    name_idx = result.argv.index(plugin_name)
+    assert double_dash_idx < name_idx
+    # and --directory must survive intact in the argv
+    assert "--directory" in result.argv
+
 
 
 def test_build_claude_mcp_config_stdio_with_env_vars(tmp_path: Path) -> None:
@@ -412,7 +439,7 @@ def test_build_claude_mcp_config_stdio_with_env_vars(tmp_path: Path) -> None:
     assert result.argv == [
         "claude", "mcp", "add", "--scope", "user",
         "-e", f"{var_name}={var_value}",
-        plugin_name, command,
+        "--", plugin_name, command,
     ]
 
 
@@ -438,7 +465,7 @@ def test_build_claude_mcp_config_stdio_multiple_env_vars(tmp_path: Path) -> None
         "claude", "mcp", "add", "--scope", "user",
         "-e", f"{var1_name}={var1_value}",
         "-e", f"{var2_name}={var2_value}",
-        plugin_name, command,
+        "--", plugin_name, command,
     ]
 
 
@@ -466,7 +493,7 @@ def test_build_claude_mcp_config_stdio_skips_not_set_env_vars(tmp_path: Path) ->
     assert result.argv == [
         "claude", "mcp", "add", "--scope", "user",
         "-e", f"{set_var_name}={set_var_value}",
-        plugin_name, command,
+        "--", plugin_name, command,
     ]
 
 
@@ -486,7 +513,7 @@ def test_build_claude_mcp_config_sse(tmp_path: Path) -> None:
     # Then
     assert result.argv == [
         "claude", "mcp", "add", "--transport", "sse", "--scope", "user",
-        plugin_name, endpoint,
+        "--", plugin_name, endpoint,
     ]
 
 

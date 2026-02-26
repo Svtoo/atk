@@ -1,6 +1,7 @@
 """ATK CLI entry point."""
 
 import os
+import subprocess
 import sys
 from pathlib import Path
 from typing import Annotated
@@ -44,6 +45,7 @@ from atk.lifecycle import (
 )
 from atk.manifest_schema import SourceType, load_manifest
 from atk.mcp import format_mcp_plaintext, generate_mcp_config
+from atk.mcp_agents import build_claude_mcp_config
 from atk.plugin import CUSTOM_DIR, PluginNotFoundError, load_plugin
 from atk.registry import PluginNotFoundError as RegistryPluginNotFoundError
 from atk.remove import remove_plugin
@@ -590,6 +592,10 @@ def mcp(
         bool,
         typer.Option("--json", help="Output as JSON instead of plaintext."),
     ] = False,
+    claude: Annotated[
+        bool,
+        typer.Option("--claude", help="Register MCP server with Claude Code via 'claude mcp add'."),
+    ] = False,
 ) -> None:
     """Output MCP configuration for a plugin.
 
@@ -597,6 +603,10 @@ def mcp(
     from the plugin's .env file. Output can be copied into IDE/tool configurations.
     """
     import json
+
+    if json_output and claude:
+        cli_logger.error("--json and --claude are mutually exclusive")
+        raise typer.Exit(exit_codes.INVALID_ARGS)
 
     atk_home = require_ready_home()
 
@@ -616,7 +626,20 @@ def mcp(
         for var in result.missing_vars:
             cli_logger.warning(f"Environment variable '{var}' is not set")
 
-    if json_output:
+    if claude:
+        agent_config = build_claude_mcp_config(result)
+        console.print(f"\n[Claude Code] Will run:\n  {' '.join(agent_config.argv)}\n")
+        answer = _stdin_prompt("Proceed? [y/N] ")
+        if answer.strip().lower() == "y":
+            try:
+                proc = subprocess.run(agent_config.argv)
+                raise typer.Exit(proc.returncode)
+            except FileNotFoundError:
+                cli_logger.error("'claude' not found on PATH. Install Claude Code and ensure it is on your PATH.")
+                raise typer.Exit(exit_codes.GENERAL_ERROR) from None
+        else:
+            raise typer.Exit(exit_codes.SUCCESS)
+    elif json_output:
         print(json.dumps(result.to_mcp_dict(), indent=2))
     else:
         console.print(format_mcp_plaintext(result))

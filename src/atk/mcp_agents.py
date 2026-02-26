@@ -43,6 +43,9 @@ def build_claude_mcp_config(config: McpConfig, scope: str = "user") -> AgentMcpC
         if val != NOT_SET:
             argv += ["-e", f"{key}={val}"]
 
+    # "--" terminates claude's option parsing so that server args like
+    # "--directory /path" are not misinterpreted as claude mcp add options.
+    argv.append("--")
     argv.append(config.identifier)
 
     if isinstance(config, SseMcpConfig):

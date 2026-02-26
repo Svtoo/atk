@@ -1887,3 +1887,168 @@ class TestMcpCli:
             }
         }
         assert output == expected
+
+
+# ---------------------------------------------------------------------------
+# Flat tests: atk mcp --claude flag
+# ---------------------------------------------------------------------------
+
+
+def test_mcp_claude_confirms_and_runs_subprocess(
+    create_plugin: PluginFactory, cli_runner
+) -> None:
+    """Confirm 'y' triggers subprocess.run with the correct claude argv."""
+    # Given
+    plugin_name = "ClaudePlugin"
+    plugin_dir_name = "claude-plugin"
+    mcp_command = "docker"
+    mcp_args = ["run", "my-mcp-server"]
+
+    create_plugin(
+        plugin_name,
+        plugin_dir_name,
+        mcp=McpPluginConfig(transport="stdio", command=mcp_command, args=mcp_args),
+    )
+
+    expected_argv = ["claude", "mcp", "add", "--scope", "user", "--", plugin_name, mcp_command] + mcp_args
+
+    # When
+    with (
+        patch("atk.cli.is_git_available", return_value=True),
+        patch("atk.cli.subprocess.run", return_value=type("R", (), {"returncode": 0})()) as mock_run,
+    ):
+        result = cli_runner.invoke(app, ["mcp", plugin_dir_name, "--claude"], input="y\n")
+
+    # Then
+    assert result.exit_code == exit_codes.SUCCESS
+    mock_run.assert_called_once()
+    called_argv = mock_run.call_args[0][0]
+    assert called_argv == expected_argv
+
+
+def test_mcp_claude_skips_on_decline(
+    create_plugin: PluginFactory, cli_runner
+) -> None:
+    """Confirm 'n' skips subprocess.run and exits 0."""
+    # Given
+    plugin_name = "ClaudeSkip"
+    plugin_dir_name = "claude-skip"
+
+    create_plugin(
+        plugin_name,
+        plugin_dir_name,
+        mcp=McpPluginConfig(transport="stdio", command="echo"),
+    )
+
+    # When
+    with (
+        patch("atk.cli.is_git_available", return_value=True),
+        patch("atk.cli.subprocess.run") as mock_run,
+    ):
+        result = cli_runner.invoke(app, ["mcp", plugin_dir_name, "--claude"], input="n\n")
+
+    # Then
+    assert result.exit_code == exit_codes.SUCCESS
+    mock_run.assert_not_called()
+
+
+def test_mcp_claude_propagates_subprocess_exit_code(
+    create_plugin: PluginFactory, cli_runner
+) -> None:
+    """Confirm subprocess non-zero exit code is propagated."""
+    # Given
+    plugin_name = "ClaudeFail"
+    plugin_dir_name = "claude-fail"
+
+    create_plugin(
+        plugin_name,
+        plugin_dir_name,
+        mcp=McpPluginConfig(transport="stdio", command="echo"),
+    )
+
+    # When
+    with (
+        patch("atk.cli.is_git_available", return_value=True),
+        patch("atk.cli.subprocess.run", return_value=type("R", (), {"returncode": 42})()),
+    ):
+        result = cli_runner.invoke(app, ["mcp", plugin_dir_name, "--claude"], input="y\n")
+
+    # Then
+    assert result.exit_code == 42
+
+
+def test_mcp_claude_warns_missing_vars_before_confirmation(
+    create_plugin: PluginFactory, cli_runner
+) -> None:
+    """Confirm missing env var warning appears before the Proceed? prompt."""
+    # Given
+    plugin_name = "ClaudeWarn"
+    plugin_dir_name = "claude-warn"
+    var_name = "MISSING_API_KEY"
+
+    create_plugin(
+        plugin_name,
+        plugin_dir_name,
+        mcp=McpPluginConfig(transport="stdio", command="echo", env=[var_name]),
+    )
+
+    # When
+    with (
+        patch("atk.cli.is_git_available", return_value=True),
+        patch("atk.cli.subprocess.run", return_value=type("R", (), {"returncode": 0})()),
+    ):
+        result = cli_runner.invoke(app, ["mcp", plugin_dir_name, "--claude"], input="y\n")
+
+    # Then
+    assert result.exit_code == exit_codes.SUCCESS
+    warning_pos = result.output.find(var_name)
+    proceed_pos = result.output.find("Proceed?")
+    assert warning_pos != -1, "Warning about missing var not found"
+    assert proceed_pos != -1, "Proceed? prompt not found"
+    assert warning_pos < proceed_pos, "Warning must appear before Proceed?"
+
+
+def test_mcp_json_and_claude_flags_are_mutually_exclusive(
+    create_plugin: PluginFactory, cli_runner
+) -> None:
+    """Confirm --json and --claude together exit with INVALID_ARGS."""
+    # Given
+    plugin_name = "ClaudeMutex"
+    plugin_dir_name = "claude-mutex"
+
+    create_plugin(
+        plugin_name,
+        plugin_dir_name,
+        mcp=McpPluginConfig(transport="stdio", command="echo"),
+    )
+
+    # When
+    result = cli_runner.invoke(app, ["mcp", plugin_dir_name, "--json", "--claude"])
+
+    # Then
+    assert result.exit_code == exit_codes.INVALID_ARGS
+
+
+def test_mcp_claude_handles_claude_not_found(
+    create_plugin: PluginFactory, cli_runner
+) -> None:
+    """Confirm FileNotFoundError from subprocess exits with GENERAL_ERROR."""
+    # Given
+    plugin_name = "ClaudeNotFound"
+    plugin_dir_name = "claude-not-found"
+
+    create_plugin(
+        plugin_name,
+        plugin_dir_name,
+        mcp=McpPluginConfig(transport="stdio", command="echo"),
+    )
+
+    # When
+    with (
+        patch("atk.cli.is_git_available", return_value=True),
+        patch("atk.cli.subprocess.run", side_effect=FileNotFoundError),
+    ):
+        result = cli_runner.invoke(app, ["mcp", plugin_dir_name, "--claude"], input="y\n")
+
+    # Then
+    assert result.exit_code == exit_codes.GENERAL_ERROR
