@@ -277,6 +277,84 @@ def test_generate_mcp_config_marks_not_set_when_no_value_and_no_default(tmp_path
 
 
 # ---------------------------------------------------------------------------
+# Env var substitution in command and args
+# ---------------------------------------------------------------------------
+
+def test_generate_mcp_config_substitutes_env_var_in_args(tmp_path: Path) -> None:
+    """$VAR references in args are replaced with the resolved env var value.
+
+    Regression: OpenMemory uses args=['-y', 'mcp-remote', '$OPENMEMORY_URL/mcp'].
+    Claude Code spawns servers via execve (no shell), so $VAR in args is never
+    expanded at runtime. ATK must substitute the resolved value before handing
+    the config to any agent CLI.
+    """
+    # Given
+    var_name = "OPENMEMORY_URL"
+    var_value = "http://localhost:8787"
+    plugin = _make_stdio_plugin(
+        command="npx",
+        args=["-y", "mcp-remote", f"${var_name}/mcp"],
+        mcp_env=[var_name],
+        env_vars=[EnvVarConfig(name=var_name, default=var_value)],
+    )
+    plugin_dir = tmp_path / "test-plugin"
+    plugin_dir.mkdir()
+
+    # When
+    result = generate_mcp_config(plugin, plugin_dir, "test-plugin")
+
+    # Then — $OPENMEMORY_URL/mcp must be replaced with the resolved URL
+    assert isinstance(result, StdioMcpConfig)
+    expected_args = ["-y", "mcp-remote", f"{var_value}/mcp"]
+    assert result.args == expected_args
+
+
+def test_generate_mcp_config_substitutes_braces_env_var_in_args(tmp_path: Path) -> None:
+    """${VAR} brace syntax in args is also substituted."""
+    # Given
+    var_name = "BASE_URL"
+    var_value = "http://localhost:9000"
+    plugin = _make_stdio_plugin(
+        command="npx",
+        args=["--url", f"${{{var_name}}}/endpoint"],
+        mcp_env=[var_name],
+        env_vars=[EnvVarConfig(name=var_name, default=var_value)],
+    )
+    plugin_dir = tmp_path / "test-plugin"
+    plugin_dir.mkdir()
+
+    # When
+    result = generate_mcp_config(plugin, plugin_dir, "test-plugin")
+
+    # Then
+    assert isinstance(result, StdioMcpConfig)
+    expected_args = ["--url", f"{var_value}/endpoint"]
+    assert result.args == expected_args
+
+
+def test_generate_mcp_config_leaves_not_set_var_unexpanded_in_args(tmp_path: Path) -> None:
+    """If a $VAR reference in args maps to a NOT_SET var, leave it unchanged."""
+    # Given
+    var_name = "MISSING_URL"
+    plugin = _make_stdio_plugin(
+        command="npx",
+        args=["--url", f"${var_name}/mcp"],
+        mcp_env=[var_name],
+        env_vars=[EnvVarConfig(name=var_name)],  # no default
+    )
+    plugin_dir = tmp_path / "test-plugin"
+    plugin_dir.mkdir()
+
+    # When
+    result = generate_mcp_config(plugin, plugin_dir, "test-plugin")
+
+    # Then — unresolvable var stays as the literal $VAR string
+    assert isinstance(result, StdioMcpConfig)
+    assert result.args == ["--url", f"${var_name}/mcp"]
+    assert var_name in result.missing_vars
+
+
+# ---------------------------------------------------------------------------
 # Formatter adapter layer — format_mcp_plaintext
 # ---------------------------------------------------------------------------
 

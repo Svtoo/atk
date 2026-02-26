@@ -86,6 +86,28 @@ def substitute_plugin_dir(value: str, plugin_dir: Path) -> str:
     return value
 
 
+def substitute_env_vars(value: str, env: dict[str, str]) -> str:
+    """Substitute $VAR and ${VAR} references using resolved env var values.
+
+    Only substitutes variables that have a real value (not NOT_SET).
+    Unresolved variables are left unchanged so the caller can detect them.
+
+    Args:
+        value: String that may contain $VAR or ${VAR} references.
+        env: Resolved env dict (values may be NOT_SET for missing vars).
+
+    Returns:
+        String with known env var references replaced by their resolved values.
+    """
+    for var_name, var_value in env.items():
+        if var_value == NOT_SET:
+            continue
+        # Replace ${VAR} first (more specific), then $VAR
+        value = value.replace(f"${{{var_name}}}", var_value)
+        value = value.replace(f"${var_name}", var_value)
+    return value
+
+
 def generate_mcp_config(
     plugin: PluginSchema,
     plugin_dir: Path,
@@ -133,7 +155,10 @@ def generate_mcp_config(
             identifier=plugin_identifier,
             plugin_name=plugin.name,
             command=substitute_plugin_dir(mcp.command, plugin_dir),
-            args=[substitute_plugin_dir(a, plugin_dir) for a in (mcp.args or [])],
+            args=[
+                substitute_env_vars(substitute_plugin_dir(a, plugin_dir), env)
+                for a in (mcp.args or [])
+            ],
             env=env,
             missing_vars=missing_vars,
         )
