@@ -185,7 +185,7 @@ class TestRequireGit:
     def test_exits_when_git_not_available(self) -> None:
         """Verify require_git exits with GIT_ERROR when git not found."""
         # Given - mock git as unavailable
-        with patch("atk.cli.is_git_available", return_value=False):
+        with patch("atk.commands.preconditions.is_git_available", return_value=False):
             # When/Then
             with pytest.raises(Exit) as exc_info:
                 require_git()
@@ -235,7 +235,7 @@ class TestRequireReadyHome:
         monkeypatch.setenv("ATK_HOME", str(atk_home))
 
         # When/Then - mock git as unavailable
-        with patch("atk.cli.is_git_available", return_value=False):
+        with patch("atk.commands.preconditions.is_git_available", return_value=False):
             with pytest.raises(Exit) as exc_info:
                 require_ready_home()
 
@@ -257,7 +257,7 @@ class TestRequireReadyHome:
         manifest_path.write_text(yaml.dump(manifest_content))
 
         # When/Then - mock git as unavailable
-        with patch("atk.cli.is_git_available", return_value=False):
+        with patch("atk.commands.preconditions.is_git_available", return_value=False):
             result = require_ready_home()
 
             # Then - should succeed because auto_commit is disabled

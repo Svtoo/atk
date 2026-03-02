@@ -10,7 +10,8 @@ import pytest
 import yaml
 
 from atk import exit_codes
-from atk.cli import app, format_env_status
+from atk.cli import app
+from atk.commands.status import _format_env_status as format_env_status
 from atk.git import read_atk_ref
 from atk.lifecycle import (
     LifecycleCommandNotDefinedError,
@@ -1914,8 +1915,8 @@ def test_mcp_claude_confirms_and_runs_subprocess(
 
     # When
     with (
-        patch("atk.cli.is_git_available", return_value=True),
-        patch("atk.cli.subprocess.run", return_value=type("R", (), {"returncode": 0})()) as mock_run,
+        patch("atk.commands.preconditions.is_git_available", return_value=True),
+        patch("atk.mcp_configure.subprocess.run", return_value=type("R", (), {"returncode": 0})()) as mock_run,
     ):
         result = cli_runner.invoke(app, ["mcp", "add", plugin_dir_name, "--claude"], input="y\n")
 
@@ -1942,8 +1943,8 @@ def test_mcp_claude_skips_on_decline(
 
     # When
     with (
-        patch("atk.cli.is_git_available", return_value=True),
-        patch("atk.cli.subprocess.run") as mock_run,
+        patch("atk.commands.preconditions.is_git_available", return_value=True),
+        patch("atk.mcp_configure.subprocess.run") as mock_run,
     ):
         result = cli_runner.invoke(app, ["mcp", "add", plugin_dir_name, "--claude"], input="n\n")
 
@@ -1974,7 +1975,7 @@ def test_mcp_claude_reports_failure_on_nonzero_subprocess_exit_code(
 
     # When
     with (
-        patch("atk.cli.is_git_available", return_value=True),
+        patch("atk.commands.preconditions.is_git_available", return_value=True),
         patch(
             "atk.mcp_configure.subprocess.run",
             return_value=type("R", (), {"returncode": subprocess_exit_code})(),
@@ -2004,8 +2005,8 @@ def test_mcp_claude_warns_missing_vars_before_confirmation(
 
     # When
     with (
-        patch("atk.cli.is_git_available", return_value=True),
-        patch("atk.cli.subprocess.run", return_value=type("R", (), {"returncode": 0})()),
+        patch("atk.commands.preconditions.is_git_available", return_value=True),
+        patch("atk.mcp_configure.subprocess.run", return_value=type("R", (), {"returncode": 0})()),
     ):
         result = cli_runner.invoke(app, ["mcp", "add", plugin_dir_name, "--claude"], input="y\n")
 
@@ -2034,8 +2035,8 @@ def test_mcp_claude_handles_claude_not_found(
 
     # When
     with (
-        patch("atk.cli.is_git_available", return_value=True),
-        patch("atk.cli.subprocess.run", side_effect=FileNotFoundError),
+        patch("atk.commands.preconditions.is_git_available", return_value=True),
+        patch("atk.mcp_configure.subprocess.run", side_effect=FileNotFoundError),
     ):
         result = cli_runner.invoke(app, ["mcp", "add", plugin_dir_name, "--claude"], input="y\n")
 

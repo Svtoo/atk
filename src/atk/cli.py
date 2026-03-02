@@ -1,62 +1,56 @@
 """ATK CLI entry point."""
 
 import json
-import os
-import subprocess
 import sys
-from collections.abc import Callable
 from pathlib import Path
 from typing import Annotated
 
 import typer
 from rich.console import Console
-from rich.table import Table
 
 from atk import __version__, cli_logger, exit_codes
 from atk.add import InstallFailedError, add_plugin
-from atk.agents.auggie_skill import inject_skill_symlink, remove_skill_symlink
-from atk.agents.claude_skill import inject_skill_reference, remove_skill_reference
-from atk.agents.codex_skill import inject_skill_directive, remove_skill_directive
-from atk.agents.opencode_skill import (
-    inject_skill_instruction,
-    remove_opencode_plugin,
-)
 from atk.banner import print_banner
-from atk.env import load_env_file
+from atk.commands.lifecycle import run_lifecycle_cli
+from atk.commands.mcp import (
+    inject_auggie_skill_md,
+    inject_claude_skill_md,
+    inject_codex_skill_md,
+    inject_opencode_skill_md,
+    print_agent_summary,
+    remove_auggie_skill_md,
+    remove_claude_skill_md,
+    remove_cli_agent_by_name,
+    remove_codex_skill_md,
+    remove_file_agent,
+    run_cli_agent,
+    run_file_agent,
+)
+from atk.commands.preconditions import (
+    assert_plugin_or_all,
+    require_git,
+    require_initialized_home,
+    require_ready_home,
+    stdin_prompt,
+)
+from atk.commands.run import run_plugin_script
+from atk.commands.status import print_status_table
+from atk.commands.upgrade import upgrade_all_plugins, upgrade_single_plugin
 from atk.errors import handle_cli_error
-from atk.git import is_git_available
 from atk.git_source import GitPluginNotFoundError, GitSourceError
-from atk.home import get_atk_home, validate_atk_home
+from atk.home import get_atk_home
 from atk.init import init_atk_home
 from atk.lifecycle import (
-    AllPluginsMissingEnvVars,
-    AllPluginsPartialFailure,
-    AllPluginsPortConflict,
-    AllPluginsSuccess,
-    LifecycleCommand,
-    LifecycleCommandFailed,
     LifecycleCommandNotDefinedError,
-    LifecycleCommandSkipped,
-    LifecycleMissingEnvVars,
-    LifecyclePluginNotFound,
-    LifecyclePortConflict,
-    LifecycleSuccess,
-    PluginStatus,
-    PluginStatusResult,
-    PortConflict,
-    PortStatus,
-    execute_all_lifecycle,
-    execute_lifecycle,
     get_all_plugins_status,
     get_plugin_status,
     restart_all_plugins,
+    run_lifecycle_command,
     run_plugin_lifecycle,
 )
-from atk.manifest_schema import SourceType, load_manifest
+from atk.manifest_schema import load_manifest
 from atk.mcp import format_mcp_plaintext, generate_mcp_config
 from atk.mcp_agents import (
-    AgentMcpConfig,
-    OpenCodeMcpConfig,
     build_auggie_mcp_config,
     build_claude_mcp_config,
     build_codex_mcp_config,
@@ -69,14 +63,12 @@ from atk.mcp_configure import (
     run_claude_mcp_remove,
     run_codex_mcp_add,
     run_codex_mcp_remove,
-    run_opencode_mcp_add,
 )
-from atk.plugin import CUSTOM_DIR, PluginNotFoundError, load_plugin
+from atk.plugin import PluginNotFoundError, load_plugin
 from atk.registry import PluginNotFoundError as RegistryPluginNotFoundError
 from atk.remove import remove_plugin
 from atk.setup import run_setup
 from atk.update_check import get_update_notice
-from atk.upgrade import LocalPluginError, UpgradeError, upgrade_plugin
 
 app = typer.Typer(
     name="atk",
@@ -101,188 +93,7 @@ app.add_typer(
 )
 
 
-def _stdin_prompt(text: str) -> str:
-    """Prompt user for input via stdin.
 
-    Shared helper for interactive prompts across CLI commands.
-    """
-    return input(text)  # For Table rendering and other rich output
-
-
-def require_initialized_home() -> Path:
-    """Get ATK Home and verify it is initialized.
-
-    Returns:
-        Path to the initialized ATK Home directory.
-
-    Raises:
-        typer.Exit: With HOME_NOT_INITIALIZED if ATK Home is not initialized.
-    """
-    atk_home = get_atk_home()
-    validation = validate_atk_home(atk_home)
-
-    if not validation.is_valid:
-        cli_logger.error(f"ATK Home not initialized at {atk_home}")
-        cli_logger.info("  Run [bold]atk init[/bold] first.")
-        raise typer.Exit(exit_codes.HOME_NOT_INITIALIZED)
-
-    return atk_home
-
-
-def require_git() -> None:
-    """Verify git is available on the system.
-
-    Raises:
-        typer.Exit: With GIT_ERROR if git is not available.
-    """
-    if not is_git_available():
-        cli_logger.error("Git is not available")
-        cli_logger.dim("  • ATK requires git for repository management")
-        raise typer.Exit(exit_codes.GIT_ERROR)
-
-
-def require_ready_home() -> Path:
-    """Get ATK Home, verify initialized, and check git if auto_commit enabled.
-
-    This is the standard precondition check for most ATK commands.
-    Combines require_initialized_home() with git availability check
-    when auto_commit is enabled in the manifest.
-
-    Returns:
-        Path to the initialized ATK Home directory.
-
-    Raises:
-        typer.Exit: With HOME_NOT_INITIALIZED if not initialized.
-        typer.Exit: With GIT_ERROR if auto_commit enabled but git unavailable.
-    """
-    atk_home = require_initialized_home()
-
-    # Check if git is needed (auto_commit enabled)
-    manifest = load_manifest(atk_home)
-    if manifest.config.auto_commit:
-        require_git()
-
-    return atk_home
-
-
-PAST_TENSE = {
-    "install": "Installed",
-    "start": "Started",
-    "stop": "Stopped",
-    "restart": "Restarted",
-}
-
-
-def _format_missing_env_vars(plugin_name: str, missing_vars: list[str]) -> None:
-    """Output error message for missing required env vars."""
-    cli_logger.error(f"Missing required environment variables for '{plugin_name}':")
-    for var in missing_vars:
-        cli_logger.error(f"  • {var}")
-    cli_logger.info(f"Run 'atk setup \"{plugin_name}\"' to configure.")
-
-
-def _run_lifecycle_cli(
-    command_name: LifecycleCommand,
-    plugin: str | None,
-    all_plugins: bool,
-    reverse: bool = False,
-) -> None:
-    """Run a lifecycle command from CLI with proper output and exit codes."""
-    atk_home = require_ready_home()
-    verb = PAST_TENSE.get(command_name, command_name.capitalize() + "ed")
-
-    if all_plugins and plugin:
-        cli_logger.error("Cannot specify both plugin and --all")
-        raise typer.Exit(exit_codes.INVALID_ARGS)
-
-    if not all_plugins and not plugin:
-        cli_logger.error("Must specify plugin or --all")
-        raise typer.Exit(exit_codes.INVALID_ARGS)
-
-    if all_plugins:
-        _run_all_plugins_lifecycle_cli(atk_home, command_name, verb, reverse=reverse)
-    else:
-        assert plugin is not None
-        _run_single_plugin_lifecycle_cli(atk_home, plugin, command_name, verb)
-
-
-def _run_single_plugin_lifecycle_cli(
-    atk_home: Path, identifier: str, command_name: LifecycleCommand, verb: str
-) -> None:
-    """Run lifecycle command for a single plugin and format output."""
-    result = execute_lifecycle(atk_home, identifier, command_name)
-
-    match result:
-        case LifecycleSuccess(plugin_name=name):
-            cli_logger.success(f"{verb} plugin '{name}'")
-            raise typer.Exit(exit_codes.SUCCESS)
-
-        case LifecycleCommandFailed(plugin_name=name, exit_code=code):
-            cli_logger.error(
-                f"{command_name.capitalize()} failed for plugin '{name}' (exit code {code})"
-            )
-            raise typer.Exit(code)
-
-        case LifecycleCommandSkipped(plugin_name=name, command_name=cmd):
-            cli_logger.warning(f"Plugin '{name}' has no {cmd} command defined")
-            raise typer.Exit(exit_codes.SUCCESS)
-
-        case LifecyclePluginNotFound(identifier=ident):
-            cli_logger.error(f"Plugin '{ident}' not found in manifest")
-            raise typer.Exit(exit_codes.PLUGIN_NOT_FOUND)
-
-        case LifecycleMissingEnvVars(plugin_name=name, missing_vars=missing):
-            _format_missing_env_vars(name, missing)
-            raise typer.Exit(exit_codes.ENV_NOT_CONFIGURED)
-
-        case LifecyclePortConflict(plugin_name=name, conflicts=conflicts):
-            _format_port_conflicts(name, conflicts)
-            raise typer.Exit(exit_codes.PORT_CONFLICT)
-
-
-def _format_port_conflicts(plugin_name: str, conflicts: list[PortConflict]) -> None:
-    """Format port conflict error messages."""
-    for conflict in conflicts:
-        cli_logger.error(f"Port {conflict.port} is already in use")
-        if conflict.description:
-            cli_logger.error(f"  {plugin_name} requires this port for: {conflict.description}")
-    cli_logger.info(
-        "Stop the conflicting service or use 'atk restart' if the plugin is already running."
-    )
-
-
-def _run_all_plugins_lifecycle_cli(
-    atk_home: Path, command_name: LifecycleCommand, verb: str, *, reverse: bool
-) -> None:
-    """Run lifecycle command for all plugins and format output."""
-    result = execute_all_lifecycle(atk_home, command_name, reverse=reverse)
-
-    match result:
-        case AllPluginsSuccess(succeeded=succeeded, skipped=skipped):
-            for name in succeeded:
-                cli_logger.success(f"{verb} plugin '{name}'")
-            for name in skipped:
-                cli_logger.warning(f"Plugin '{name}' has no {command_name} command defined")
-            raise typer.Exit(exit_codes.SUCCESS)
-
-        case AllPluginsPartialFailure(succeeded=succeeded, skipped=skipped, failed=failed):
-            for name in succeeded:
-                cli_logger.success(f"{verb} plugin '{name}'")
-            for name in skipped:
-                cli_logger.warning(f"Plugin '{name}' has no {command_name} command defined")
-            for name, code in failed:
-                cli_logger.error(
-                    f"{command_name.capitalize()} failed for plugin '{name}' (exit code {code})"
-                )
-            raise typer.Exit(exit_codes.GENERAL_ERROR)
-
-        case AllPluginsMissingEnvVars(plugin_name=name, missing_vars=missing):
-            _format_missing_env_vars(name, missing)
-            raise typer.Exit(exit_codes.ENV_NOT_CONFIGURED)
-
-        case AllPluginsPortConflict(plugin_name=name, conflicts=conflicts):
-            _format_port_conflicts(name, conflicts)
-            raise typer.Exit(exit_codes.PORT_CONFLICT)
 
 
 def version_callback(value: bool) -> None:
@@ -355,7 +166,7 @@ def add(
     atk_home = require_ready_home()
 
     try:
-        directory = add_plugin(source, atk_home, _stdin_prompt)
+        directory = add_plugin(source, atk_home, stdin_prompt)
         cli_logger.success(f"Added plugin to {atk_home}/plugins/{directory}")
         raise typer.Exit(exit_codes.SUCCESS)
     except RegistryPluginNotFoundError as e:
@@ -473,92 +284,13 @@ def upgrade(
 
     Local plugins cannot be upgraded and are skipped with --all.
     """
+    assert_plugin_or_all(plugin, all_plugins)
     atk_home = require_ready_home()
 
-    if all_plugins and plugin:
-        cli_logger.error("Cannot specify both plugin and --all")
-        raise typer.Exit(exit_codes.INVALID_ARGS)
-
-    if not all_plugins and not plugin:
-        cli_logger.error("Must specify plugin or --all")
-        raise typer.Exit(exit_codes.INVALID_ARGS)
-
     if plugin:
-        _upgrade_single_plugin(atk_home, plugin)
+        upgrade_single_plugin(atk_home, plugin)
     else:
-        _upgrade_all_plugins(atk_home)
-
-
-def _upgrade_single_plugin(atk_home: Path, identifier: str) -> None:
-    """Upgrade a single plugin and format output."""
-    try:
-        result = upgrade_plugin(identifier, atk_home, _stdin_prompt)
-    except LocalPluginError:
-        cli_logger.error(f"Plugin '{identifier}' is a local plugin and cannot be upgraded")
-        raise typer.Exit(exit_codes.PLUGIN_INVALID) from None
-    except UpgradeError as e:
-        cli_logger.error(f"Upgrade failed: {e}")
-        raise typer.Exit(exit_codes.GENERAL_ERROR) from None
-    except GitSourceError as e:
-        cli_logger.error(f"Failed to fetch from git: {e}")
-        raise typer.Exit(exit_codes.GENERAL_ERROR) from None
-
-    if not result.upgraded:
-        cli_logger.info(f"Plugin '{result.plugin_name}' is already up to date")
-        raise typer.Exit(exit_codes.SUCCESS)
-
-    cli_logger.success(f"Upgraded plugin '{result.plugin_name}'")
-    if result.new_env_vars:
-        cli_logger.info(f"  New environment variables configured: {', '.join(result.new_env_vars)}")
-    if result.install_failed:
-        cli_logger.error(
-            f"  Install failed (exit code {result.install_exit_code})"
-        )
-        raise typer.Exit(exit_codes.GENERAL_ERROR)
-    raise typer.Exit(exit_codes.SUCCESS)
-
-
-def _upgrade_all_plugins(atk_home: Path) -> None:
-    """Upgrade all upgradeable plugins and format output."""
-    manifest = load_manifest(atk_home)
-    upgraded_count = 0
-    skipped_count = 0
-    failed_count = 0
-
-    for entry in manifest.plugins:
-        if entry.source.type == SourceType.LOCAL:
-            cli_logger.dim(f"Skipping local plugin '{entry.name}'")
-            skipped_count += 1
-            continue
-
-        try:
-            result = upgrade_plugin(entry.directory, atk_home, _stdin_prompt)
-        except (UpgradeError, GitSourceError) as e:
-            cli_logger.error(f"Failed to upgrade '{entry.name}': {e}")
-            failed_count += 1
-            continue
-
-        if not result.upgraded:
-            cli_logger.dim(f"Plugin '{result.plugin_name}' is already up to date")
-            continue
-
-        cli_logger.success(f"Upgraded plugin '{result.plugin_name}'")
-        if result.new_env_vars:
-            cli_logger.info(f"  New environment variables: {', '.join(result.new_env_vars)}")
-        if result.install_failed:
-            cli_logger.error(f"  Install failed (exit code {result.install_exit_code})")
-            failed_count += 1
-        else:
-            upgraded_count += 1
-
-    # Summary
-    if upgraded_count == 0 and failed_count == 0:
-        cli_logger.info("All plugins are up to date")
-    elif failed_count > 0:
-        cli_logger.error(f"Upgrade complete: {upgraded_count} upgraded, {failed_count} failed")
-        raise typer.Exit(exit_codes.GENERAL_ERROR)
-
-    raise typer.Exit(exit_codes.SUCCESS)
+        upgrade_all_plugins(atk_home)
 
 
 @app.command()
@@ -584,13 +316,7 @@ def setup(
     """
     atk_home = require_ready_home()
 
-    if all_plugins and plugin:
-        cli_logger.error("Cannot specify both plugin and --all")
-        raise typer.Exit(exit_codes.INVALID_ARGS)
-
-    if not all_plugins and not plugin:
-        cli_logger.error("Must specify plugin or --all")
-        raise typer.Exit(exit_codes.INVALID_ARGS)
+    assert_plugin_or_all(plugin, all_plugins)
 
     if plugin:
         try:
@@ -603,7 +329,7 @@ def setup(
             cli_logger.info(f"Plugin '{plugin_schema.name}' has no environment variables defined")
             raise typer.Exit(exit_codes.SUCCESS)
 
-        result = run_setup(plugin_schema, plugin_dir, _stdin_prompt)
+        result = run_setup(plugin_schema, plugin_dir, stdin_prompt)
         cli_logger.success(f"Configured {len(result.configured_vars)} variable(s) for '{result.plugin_name}'")
         raise typer.Exit(exit_codes.SUCCESS)
 
@@ -613,202 +339,10 @@ def setup(
         if not plugin_schema.env_vars:
             continue
         cli_logger.info(f"\nConfiguring '{plugin_schema.name}':")
-        result = run_setup(plugin_schema, plugin_dir, _stdin_prompt)
+        result = run_setup(plugin_schema, plugin_dir, stdin_prompt)
         cli_logger.success(f"Configured {len(result.configured_vars)} variable(s)")
 
     raise typer.Exit(exit_codes.SUCCESS)
-
-
-def _run_cli_agent(
-    label: str,
-    agent_config: AgentMcpConfig,
-    executable_name: str,
-    run_fn: Callable[[AgentMcpConfig], int],
-    force: bool = False,
-) -> tuple[str, str]:
-    """Confirm and execute a CLI-based MCP agent registration.
-
-    Returns:
-        (status, detail) where status ∈ {configured, skipped, not_found, failed}.
-    """
-    console.print(f"\n[{label}] Will run:\n  {' '.join(agent_config.argv)}\n")
-    if not force and _stdin_prompt("Proceed? [y/N] ").strip().lower() != "y":
-        return "skipped", ""
-    try:
-        code = run_fn(agent_config)
-    except FileNotFoundError:
-        return "not_found", f"'{executable_name}' not found on PATH"
-    if code != 0:
-        return "failed", f"exit code {code}"
-    return "configured", ""
-
-
-def _remove_cli_agent_by_name(
-    label: str,
-    plugin_name: str,
-    executable_name: str,
-    run_fn: Callable[[str], int],
-    *,
-    force: bool = False,
-) -> tuple[str, str]:
-    """Confirm and execute a CLI-based MCP agent removal.
-
-    Returns:
-        (status, detail) where status ∈ {removed, skipped, not_found, failed}.
-    """
-    argv_preview = f"{executable_name} mcp remove {plugin_name}"
-    console.print(f"\n[{label}] Will run:\n  {argv_preview}\n")
-    if not force and _stdin_prompt("Proceed? [y/N] ").strip().lower() != "y":
-        return "skipped", ""
-    try:
-        code = run_fn(plugin_name)
-    except FileNotFoundError:
-        return "not_found", f"'{executable_name}' not found on PATH"
-    if code != 0:
-        return "failed", f"exit code {code}"
-    return "removed", ""
-
-
-def _run_file_agent(
-    label: str, agent_config: OpenCodeMcpConfig, *, force: bool = False
-) -> tuple[str, str]:
-    """Confirm and execute a file-based MCP agent registration (OpenCode).
-
-    Returns:
-        (status, detail) where status ∈ {configured, skipped, failed}.
-    """
-    preview = json.dumps({agent_config.entry_key: agent_config.entry_value}, indent=2)
-    console.print(
-        f"\n[{label}] Will add to {agent_config.file_path}:\n{preview}\n"
-    )
-    if not force and _stdin_prompt("Proceed? [y/N] ").strip().lower() != "y":
-        return "skipped", ""
-    try:
-        run_opencode_mcp_add(agent_config)
-    except (ValueError, OSError) as exc:
-        return "failed", str(exc)
-    return "configured", ""
-
-
-def _remove_file_agent(
-    label: str,
-    plugin_name: str,
-    plugin_dir: Path,
-    *,
-    force: bool = False,
-) -> tuple[str, str]:
-    """Confirm and execute a file-based MCP agent removal (OpenCode).
-
-    Returns:
-        (status, detail) where status ∈ {removed, skipped, failed}.
-    """
-    console.print(
-        f"\n[{label}] Will remove MCP entry '{plugin_name}' "
-        f"and SKILL.md reference from opencode.jsonc\n"
-    )
-    if not force and _stdin_prompt("Proceed? [y/N] ").strip().lower() != "y":
-        return "skipped", ""
-    _remove_opencode_skill_md(plugin_name, plugin_dir)
-    return "removed", ""
-
-
-
-def _inject_claude_skill_md(plugin_dir: Path, *, force: bool = False) -> None:
-    """Offer to inject the plugin's SKILL.md into ~/.claude/CLAUDE.md."""
-    skill_path = plugin_dir / "SKILL.md"
-    if not skill_path.exists():
-        return
-    console.print(f"\n[Claude Code] Will add to ~/.claude/CLAUDE.md:\n  @{skill_path.resolve()}\n")
-    if not force and _stdin_prompt("Proceed? [y/N] ").strip().lower() != "y":
-        return
-    injected = inject_skill_reference(skill_path)
-    if injected:
-        cli_logger.success("Added SKILL.md to ~/.claude/CLAUDE.md")
-    else:
-        cli_logger.info("SKILL.md already referenced in ~/.claude/CLAUDE.md")
-
-
-def _inject_auggie_skill_md(plugin_dir: Path, *, force: bool = False) -> None:
-    """Offer to inject the plugin's SKILL.md as a symlink in ~/.augment/rules/."""
-    skill_path = plugin_dir / "SKILL.md"
-    if not skill_path.exists():
-        return
-    symlink_name = f"atk-{plugin_dir.name}.md"
-    console.print(
-        f"\n[Auggie] Will create symlink:\n"
-        f"  ~/.augment/rules/{symlink_name} → {skill_path.resolve()}\n"
-    )
-    if not force and _stdin_prompt("Proceed? [y/N] ").strip().lower() != "y":
-        return
-    try:
-        injected = inject_skill_symlink(plugin_dir.name, skill_path)
-    except FileExistsError:
-        cli_logger.error(
-            f"~/.augment/rules/{symlink_name} exists and is not a symlink managed by ATK"
-        )
-        return
-    if injected:
-        cli_logger.success(f"Created skill symlink ~/.augment/rules/{symlink_name}")
-    else:
-        cli_logger.info(f"Skill symlink ~/.augment/rules/{symlink_name} already up to date")
-
-
-def _inject_codex_skill_md(
-    plugin_name: str, plugin_dir: Path, *, force: bool = False
-) -> None:
-    """Offer to inject the plugin's SKILL.md read-directive into ~/.codex/AGENTS.md."""
-    skill_path = plugin_dir / "SKILL.md"
-    if not skill_path.exists():
-        return
-    console.print(
-        f"\n[Codex] Will add read-directive to ~/.codex/AGENTS.md:\n"
-        f"  Read {skill_path.resolve()} for instructions on using the {plugin_name} MCP tools.\n"
-    )
-    if not force and _stdin_prompt("Proceed? [y/N] ").strip().lower() != "y":
-        return
-    injected = inject_skill_directive(plugin_name, skill_path)
-    if injected:
-        cli_logger.success("Added SKILL.md read-directive to ~/.codex/AGENTS.md")
-    else:
-        cli_logger.info("SKILL.md read-directive already present in ~/.codex/AGENTS.md")
-
-
-def _inject_opencode_skill_md(plugin_dir: Path, *, force: bool = False) -> None:
-    """Offer to add the plugin's SKILL.md to opencode.jsonc instructions array."""
-    skill_path = plugin_dir / "SKILL.md"
-    if not skill_path.exists():
-        return
-    resolved = skill_path.resolve()
-    console.print(
-        f"\n[OpenCode] Will add to opencode.jsonc instructions:\n  {resolved}\n"
-    )
-    if not force and _stdin_prompt("Proceed? [y/N] ").strip().lower() != "y":
-        return
-    injected = inject_skill_instruction(skill_path)
-    if injected:
-        cli_logger.success("Added SKILL.md to opencode.jsonc instructions")
-    else:
-        cli_logger.info("SKILL.md already present in opencode.jsonc instructions")
-
-
-
-def _print_agent_summary(outcomes: list[tuple[str, str, str]]) -> None:
-    """Print per-agent outcome summary.
-
-    Works for both add and remove flows.  Success statuses (``configured``,
-    ``removed``) are shown as success; ``skipped`` as info; everything else
-    as error.
-    """
-    console.print()
-    for label, status, detail in outcomes:
-        if status in ("configured", "removed"):
-            cli_logger.success(f"[{label}] {status.capitalize()}")
-        elif status == "skipped":
-            cli_logger.info(f"[{label}] Skipped")
-        elif status == "not_found":
-            cli_logger.error(f"[{label}] Not found — {detail}")
-        else:
-            cli_logger.error(f"[{label}] Failed — {detail}")
 
 
 @mcp_app.command(name="show")
@@ -924,101 +458,44 @@ def mcp_add(
     outcomes: list[tuple[str, str, str]] = []  # (label, status, detail)
 
     if claude:
-        status, detail = _run_cli_agent(
+        status, detail = run_cli_agent(
             "Claude Code", build_claude_mcp_config(result), "claude", run_claude_mcp_add,
             force=force,
         )
         outcomes.append(("Claude Code", status, detail))
         if status == "configured":
-            _inject_claude_skill_md(plugin_dir, force=force)
+            inject_claude_skill_md(plugin_dir, force=force)
 
     if codex:
-        status, detail = _run_cli_agent(
+        status, detail = run_cli_agent(
             "Codex", build_codex_mcp_config(result), "codex", run_codex_mcp_add,
             force=force,
         )
         outcomes.append(("Codex", status, detail))
         if status == "configured":
-            _inject_codex_skill_md(plugin_schema.name, plugin_dir, force=force)
+            inject_codex_skill_md(plugin_schema.name, plugin_dir, force=force)
 
     if auggie:
-        status, detail = _run_cli_agent(
+        status, detail = run_cli_agent(
             "Auggie", build_auggie_mcp_config(result), "auggie", run_auggie_mcp_add,
             force=force,
         )
         outcomes.append(("Auggie", status, detail))
         if status == "configured":
-            _inject_auggie_skill_md(plugin_dir, force=force)
+            inject_auggie_skill_md(plugin_dir, force=force)
 
     if opencode:
-        status, detail = _run_file_agent(
+        status, detail = run_file_agent(
             "OpenCode", build_opencode_mcp_config(result), force=force,
         )
         outcomes.append(("OpenCode", status, detail))
         if status == "configured":
-            _inject_opencode_skill_md(plugin_dir, force=force)
+            inject_opencode_skill_md(plugin_dir, force=force)
 
-    _print_agent_summary(outcomes)
+    print_agent_summary(outcomes)
 
     has_failures = any(s in ("failed", "not_found") for _, s, _ in outcomes)
     raise typer.Exit(exit_codes.GENERAL_ERROR if has_failures else exit_codes.SUCCESS)
-
-
-
-def _remove_claude_skill_md(plugin_dir: Path) -> None:
-    """Remove the plugin's SKILL.md reference from ~/.claude/CLAUDE.md."""
-    skill_path = plugin_dir / "SKILL.md"
-    if not skill_path.exists():
-        return
-    removed = remove_skill_reference(skill_path)
-    if removed:
-        cli_logger.success("Removed SKILL.md reference from ~/.claude/CLAUDE.md")
-    else:
-        cli_logger.info("SKILL.md reference not found in ~/.claude/CLAUDE.md")
-
-
-def _remove_auggie_skill_md(plugin_dir: Path) -> None:
-    """Remove the plugin's SKILL.md symlink from ~/.augment/rules/."""
-    symlink_name = f"atk-{plugin_dir.name}.md"
-    removed = remove_skill_symlink(plugin_dir.name)
-    if removed:
-        cli_logger.success(f"Removed skill symlink ~/.augment/rules/{symlink_name}")
-    else:
-        cli_logger.info(f"Skill symlink ~/.augment/rules/{symlink_name} not found")
-
-
-def _remove_codex_skill_md(plugin_name: str, plugin_dir: Path) -> None:
-    """Remove the plugin's SKILL.md read-directive from ~/.codex/AGENTS.md."""
-    skill_path = plugin_dir / "SKILL.md"
-    if not skill_path.exists():
-        return
-    removed = remove_skill_directive(plugin_name, skill_path)
-    if removed:
-        cli_logger.success("Removed SKILL.md read-directive from ~/.codex/AGENTS.md")
-    else:
-        cli_logger.info("SKILL.md read-directive not found in ~/.codex/AGENTS.md")
-
-
-def _remove_opencode_skill_md(plugin_name: str, plugin_dir: Path) -> None:
-    """Remove the plugin's SKILL.md from opencode.jsonc and its MCP entry.
-
-    OpenCode removal is a single-file operation: both the MCP entry and the
-    skill instruction are removed in one write via ``remove_opencode_plugin``.
-    """
-    skill_path = plugin_dir / "SKILL.md"
-    skill_path_arg = skill_path if skill_path.exists() else None
-    mcp_removed, skill_removed = remove_opencode_plugin(
-        plugin_name, skill_path_arg
-    )
-    if mcp_removed:
-        cli_logger.success(f"Removed MCP entry '{plugin_name}' from opencode.jsonc")
-    else:
-        cli_logger.info(f"MCP entry '{plugin_name}' not found in opencode.jsonc")
-    if skill_removed:
-        cli_logger.success("Removed SKILL.md from opencode.jsonc instructions")
-    elif skill_path_arg is not None:
-        cli_logger.info("SKILL.md not found in opencode.jsonc instructions")
-
 
 
 @mcp_app.command(name="remove")
@@ -1079,40 +556,40 @@ def mcp_remove(
     outcomes: list[tuple[str, str, str]] = []
 
     if claude:
-        status, detail = _remove_cli_agent_by_name(
+        status, detail = remove_cli_agent_by_name(
             "Claude Code", plugin_schema.name, "claude", run_claude_mcp_remove,
             force=force,
         )
         outcomes.append(("Claude Code", status, detail))
         if status == "removed":
-            _remove_claude_skill_md(plugin_dir)
+            remove_claude_skill_md(plugin_dir)
 
     if codex:
-        status, detail = _remove_cli_agent_by_name(
+        status, detail = remove_cli_agent_by_name(
             "Codex", plugin_schema.name, "codex", run_codex_mcp_remove,
             force=force,
         )
         outcomes.append(("Codex", status, detail))
         if status == "removed":
-            _remove_codex_skill_md(plugin_schema.name, plugin_dir)
+            remove_codex_skill_md(plugin_schema.name, plugin_dir)
 
     if auggie:
-        status, detail = _remove_cli_agent_by_name(
+        status, detail = remove_cli_agent_by_name(
             "Auggie", plugin_schema.name, "auggie", run_auggie_mcp_remove,
             force=force,
         )
         outcomes.append(("Auggie", status, detail))
         if status == "removed":
-            _remove_auggie_skill_md(plugin_dir)
+            remove_auggie_skill_md(plugin_dir)
 
     if opencode:
-        status, detail = _remove_file_agent(
+        status, detail = remove_file_agent(
             "OpenCode", plugin_schema.name, plugin_dir,
             force=force,
         )
         outcomes.append(("OpenCode", status, detail))
 
-    _print_agent_summary(outcomes)
+    print_agent_summary(outcomes)
 
     has_failures = any(s in ("failed", "not_found") for _, s, _ in outcomes)
     raise typer.Exit(exit_codes.GENERAL_ERROR if has_failures else exit_codes.SUCCESS)
@@ -1139,7 +616,7 @@ def install(
     Executes the install command defined in the plugin's plugin.yaml.
     Shows a warning if no install command is defined.
     """
-    _run_lifecycle_cli("install", plugin, all_plugins)
+    run_lifecycle_cli("install", plugin, all_plugins)
 
 
 @app.command()
@@ -1191,8 +668,6 @@ def uninstall(
             raise typer.Exit(exit_codes.SUCCESS)
 
     # Run stop lifecycle first (if defined)
-    from atk.lifecycle import LifecycleCommandNotDefinedError, run_lifecycle_command
-
     try:
         exit_code = run_lifecycle_command(plugin_schema, plugin_dir, "stop")
         if exit_code != 0:
@@ -1236,7 +711,7 @@ def start(
     Executes the start command defined in the plugin's plugin.yaml.
     Shows a warning if no start command is defined.
     """
-    _run_lifecycle_cli("start", plugin, all_plugins)
+    run_lifecycle_cli("start", plugin, all_plugins)
 
 
 @app.command()
@@ -1263,7 +738,7 @@ def stop(
     When using --all, plugins are stopped in REVERSE manifest order
     (opposite of start order) to handle dependencies correctly.
     """
-    _run_lifecycle_cli("stop", plugin, all_plugins, reverse=True)
+    run_lifecycle_cli("stop", plugin, all_plugins, reverse=True)
 
 
 @app.command()
@@ -1325,14 +800,7 @@ def restart(
         return
 
     # --all case - custom two-phase handling
-    if all_plugins and plugin:
-        cli_logger.error("Cannot specify both plugin and --all")
-        raise typer.Exit(exit_codes.INVALID_ARGS)
-
-    if not all_plugins and not plugin:
-        cli_logger.error("Must specify plugin or --all")
-        raise typer.Exit(exit_codes.INVALID_ARGS)
-
+    assert_plugin_or_all(plugin, all_plugins)
     atk_home = require_ready_home()
     result = restart_all_plugins(atk_home)
 
@@ -1383,7 +851,7 @@ def status(
     if plugin:
         try:
             result = get_plugin_status(atk_home, plugin)
-            _print_status_table([result])
+            print_status_table([result])
             raise typer.Exit(exit_codes.SUCCESS)
         except PluginNotFoundError:
             cli_logger.error(f"Plugin '{plugin}' not found in manifest")
@@ -1396,7 +864,7 @@ def status(
         cli_logger.dim("No plugins installed.")
         raise typer.Exit(exit_codes.SUCCESS)
 
-    _print_status_table(results)
+    print_status_table(results)
     raise typer.Exit(exit_codes.SUCCESS)
 
 
@@ -1460,29 +928,6 @@ def plugin_help(
     raise typer.Exit(exit_codes.SUCCESS)
 
 
-def _resolve_script(plugin_dir: Path, script: str) -> Path | None:
-    """Resolve a script path, checking custom/ directory first.
-
-    Resolution order:
-    1. plugins/<plugin>/custom/<script>
-    2. plugins/<plugin>/custom/<script>.sh
-    3. plugins/<plugin>/<script>
-    4. plugins/<plugin>/<script>.sh
-    """
-    custom_dir = plugin_dir / CUSTOM_DIR
-    candidates = [
-        custom_dir / script,
-        custom_dir / f"{script}.sh",
-        plugin_dir / script,
-        plugin_dir / f"{script}.sh",
-    ]
-    for candidate in candidates:
-        if candidate.exists():
-            return candidate
-    return None
-
-
-
 @app.command(context_settings={"allow_extra_args": True, "ignore_unknown_options": True})
 def run(
     ctx: typer.Context,
@@ -1513,124 +958,7 @@ def run(
         cli_logger.error(f"Plugin '{plugin}' not found in manifest")
         raise typer.Exit(exit_codes.PLUGIN_NOT_FOUND) from None
 
-    script_path = _resolve_script(plugin_dir, script)
-    if script_path is None:
-        cli_logger.error(f"Script '{script}' not found in plugin directory")
-        raise typer.Exit(exit_codes.GENERAL_ERROR)
-
-    env_file = plugin_dir / ".env"
-    merged_env = {**os.environ, **load_env_file(env_file)}
-    result = subprocess.run(
-        [str(script_path), *ctx.args],
-        cwd=plugin_dir,
-        env=merged_env,
-    )
-    raise typer.Exit(result.returncode)
-
-
-def _format_port(port_status: PortStatus) -> str:
-    """Format a port with listening status indicator."""
-    if not isinstance(port_status, PortStatus):
-        return str(port_status)
-
-    if port_status.listening is None:
-        return str(port_status.port)
-    elif port_status.listening:
-        return f"[green]{port_status.port} ✓[/green]"
-    else:
-        return f"[red]{port_status.port} ✗[/red]"
-
-
-def format_env_status(
-    missing_required_vars: list[str], unset_optional_count: int, total_env_vars: int
-) -> str:
-    """Format environment variable status for display.
-
-    Args:
-        missing_required_vars: List of missing required variable names.
-        unset_optional_count: Count of unset optional variables.
-        total_env_vars: Total number of env vars defined in plugin.yaml.
-
-    Returns:
-        Formatted string:
-        - "✓" if all required vars are set
-        - "! VAR1, VAR2 (+N optional)" if required vars missing
-        - "-" if no env vars defined
-    """
-    # No env vars defined
-    if total_env_vars == 0:
-        return "-"
-
-    # All required vars set
-    if not missing_required_vars:
-        return "[green]✓[/green]"
-
-    # Missing required vars
-    var_list = ", ".join(missing_required_vars)
-    result = f"[red]! {var_list}[/red]"
-
-    # Add optional count if any
-    if unset_optional_count > 0:
-        result += f" [dim](+{unset_optional_count} optional)[/dim]"
-
-    return result
-
-
-def _print_status_table(results: list[PluginStatusResult]) -> None:
-    """Print a status table for the given plugin status results."""
-
-    table = Table(show_header=True, header_style="bold")
-    table.add_column("NAME", style="cyan")
-    table.add_column("STATUS")
-    table.add_column("PORTS")
-    table.add_column("ENV")
-
-    for result in results:
-        if not isinstance(result, PluginStatusResult):
-            continue
-
-        if result.status == PluginStatus.RUNNING:
-            status_str = "[green]running[/green]"
-        elif result.status == PluginStatus.STOPPED:
-            status_str = "[red]stopped[/red]"
-        else:
-            status_str = "[yellow]unknown[/yellow]"
-
-        ports_str = ", ".join(_format_port(p) for p in result.ports) if result.ports else "-"
-
-        # Format ENV column
-        env_str = format_env_status(
-            result.missing_required_vars, result.unset_optional_count, result.total_env_vars
-        )
-
-        name = f"{result.name} ({result.directory})"
-
-        table.add_row(name, status_str, ports_str, env_str)
-
-    console.print(table)
-
-    # Print legend
-    has_port_checks = any(
-        p.listening is not None for r in results for p in r.ports
-    )
-    has_env_vars = any(r.total_env_vars > 0 for r in results)
-
-    if has_port_checks or has_env_vars:
-        console.print()
-        console.print("[dim]Legend:[/dim]")
-
-        if has_port_checks:
-            console.print("[dim]  Ports: [/dim][green]✓[/green][dim] listening, [/dim][red]✗[/red][dim] not listening[/dim]")
-
-        if has_env_vars:
-            console.print(
-                "[dim]  ENV: [/dim][green]✓[/green][dim] all required vars set, "
-                "[/dim][red]![/red][dim] missing required vars, [/dim]-[dim] no env vars defined[/dim]"
-            )
-
-        if has_port_checks:
-            console.print()
-            console.print("[dim]Note: Port checks verify if something is listening, not that it's the plugin.[/dim]")
+    run_plugin_script(plugin_dir, script, ctx.args)
 
 
 def _show_update_notice() -> None:
