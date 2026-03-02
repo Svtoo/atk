@@ -48,6 +48,10 @@ def add_line(line: str, file_path: Path) -> bool:
         )
 
     file_path.parent.mkdir(parents=True, exist_ok=True)
+    # Remove broken symlinks so write_text doesn't follow them to a
+    # non-existent target (e.g. ~/.codex/AGENTS.md → missing path).
+    if file_path.is_symlink() and not file_path.exists():
+        file_path.unlink()
     file_path.write_text(new_content)
     return True
 

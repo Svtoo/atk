@@ -32,6 +32,15 @@ def run_auggie_mcp_remove(plugin_name: str) -> int:
     return subprocess.run(["auggie", "mcp", "remove", plugin_name]).returncode
 
 
+def run_codex_mcp_remove(plugin_name: str) -> int:
+    """Invoke ``codex mcp remove`` and return its exit code.
+
+    Raises:
+        FileNotFoundError: if ``codex`` is not found on PATH.
+    """
+    return subprocess.run(["codex", "mcp", "remove", plugin_name]).returncode
+
+
 def run_claude_mcp_add(config: AgentMcpConfig) -> int:
     """Invoke ``claude mcp add`` and return its exit code.
 
