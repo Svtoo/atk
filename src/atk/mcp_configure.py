@@ -12,6 +12,26 @@ from typing import Any
 from atk.mcp_agents import AgentMcpConfig, OpenCodeMcpConfig
 
 
+def run_claude_mcp_remove(plugin_name: str, scope: str = "user") -> int:
+    """Invoke ``claude mcp remove`` and return its exit code.
+
+    Raises:
+        FileNotFoundError: if ``claude`` is not found on PATH.
+    """
+    return subprocess.run(
+        ["claude", "mcp", "remove", "--scope", scope, plugin_name]
+    ).returncode
+
+
+def run_auggie_mcp_remove(plugin_name: str) -> int:
+    """Invoke ``auggie mcp remove`` and return its exit code.
+
+    Raises:
+        FileNotFoundError: if ``auggie`` is not found on PATH.
+    """
+    return subprocess.run(["auggie", "mcp", "remove", plugin_name]).returncode
+
+
 def run_claude_mcp_add(config: AgentMcpConfig) -> int:
     """Invoke ``claude mcp add`` and return its exit code.
 

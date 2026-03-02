@@ -22,7 +22,11 @@ from atk.mcp_agents import (
     build_codex_mcp_config,
     build_opencode_mcp_config,
 )
-from atk.mcp_configure import run_opencode_mcp_add
+from atk.mcp_configure import (
+    run_auggie_mcp_remove,
+    run_claude_mcp_remove,
+    run_opencode_mcp_add,
+)
 from atk.plugin_schema import PLUGIN_SCHEMA_VERSION, EnvVarConfig, McpPluginConfig, PluginSchema
 
 
@@ -1082,3 +1086,87 @@ def test_run_opencode_mcp_add_raises_on_invalid_json(tmp_path: Path) -> None:
 
     with pytest.raises(ValueError, match="Cannot parse"):
         run_opencode_mcp_add(oc_config)
+
+
+
+# ---------------------------------------------------------------------------
+# run_claude_mcp_remove / run_auggie_mcp_remove — unit tests
+# ---------------------------------------------------------------------------
+
+
+def test_run_claude_mcp_remove_calls_correct_argv(monkeypatch) -> None:
+    """run_claude_mcp_remove invokes 'claude mcp remove --scope user <name>'."""
+    # Given
+    plugin_name = "my-plugin"
+    captured_args: list[list[str]] = []
+
+    class FakeResult:
+        returncode = 0
+
+    def fake_run(argv, **_kwargs):
+        captured_args.append(list(argv))
+        return FakeResult()
+
+    monkeypatch.setattr("atk.mcp_configure.subprocess.run", fake_run)
+
+    # When
+    code = run_claude_mcp_remove(plugin_name)
+
+    # Then
+    assert code == 0
+    assert captured_args == [["claude", "mcp", "remove", "--scope", "user", plugin_name]]
+
+
+def test_run_auggie_mcp_remove_calls_correct_argv(monkeypatch) -> None:
+    """run_auggie_mcp_remove invokes 'auggie mcp remove <name>'."""
+    # Given
+    plugin_name = "my-plugin"
+    captured_args: list[list[str]] = []
+
+    class FakeResult:
+        returncode = 0
+
+    def fake_run(argv, **_kwargs):
+        captured_args.append(list(argv))
+        return FakeResult()
+
+    monkeypatch.setattr("atk.mcp_configure.subprocess.run", fake_run)
+
+    # When
+    code = run_auggie_mcp_remove(plugin_name)
+
+    # Then
+    assert code == 0
+    assert captured_args == [["auggie", "mcp", "remove", plugin_name]]
+
+
+# ---------------------------------------------------------------------------
+# mcp-remove CLI command — E2E tests
+# ---------------------------------------------------------------------------
+
+
+def test_mcp_remove_no_flags_warns(create_plugin, cli_runner) -> None:
+    """``atk mcp remove`` with no agent flags prints a warning and exits successfully."""
+    # Given
+    plugin = _make_stdio_plugin(name="TestPlugin", command="uv")
+    create_plugin(plugin=plugin, directory="test-plugin")
+
+    # When
+    result = cli_runner.invoke(app, ["mcp", "remove", "test-plugin"])
+
+    # Then
+    assert result.exit_code == exit_codes.SUCCESS
+    assert "No agent flags" in result.output
+
+
+def test_mcp_remove_plugin_not_found(configure_atk_home, cli_runner) -> None:
+    """``atk mcp remove`` with a nonexistent plugin exits with PLUGIN_NOT_FOUND."""
+    # Given
+    configure_atk_home()
+
+    # When
+    result = cli_runner.invoke(app, ["mcp", "remove", "nonexistent", "--claude"])
+
+    # Then
+    assert result.exit_code == exit_codes.PLUGIN_NOT_FOUND
+    assert "not found" in result.output

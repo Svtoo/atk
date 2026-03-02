@@ -8,13 +8,16 @@ from collections.abc import Callable
 from pathlib import Path
 from typing import Annotated
 
+import click
 import typer
 from rich.console import Console
 from rich.table import Table
+from typer.core import TyperGroup
 
 from atk import __version__, cli_logger, exit_codes
 from atk.add import InstallFailedError, add_plugin
-from atk.agents.claude_skill import inject_skill_reference
+from atk.agents.auggie_skill import inject_skill_symlink, remove_skill_symlink
+from atk.agents.claude_skill import inject_skill_reference, remove_skill_reference
 from atk.banner import print_banner
 from atk.env import load_env_file
 from atk.errors import handle_cli_error
@@ -58,7 +61,9 @@ from atk.mcp_agents import (
 )
 from atk.mcp_configure import (
     run_auggie_mcp_add,
+    run_auggie_mcp_remove,
     run_claude_mcp_add,
+    run_claude_mcp_remove,
     run_codex_mcp_add,
     run_opencode_mcp_add,
 )
@@ -76,6 +81,36 @@ app = typer.Typer(
 )
 
 console = Console()
+
+
+class _DefaultGroup(TyperGroup):
+    """Typer group with a hidden default subcommand.
+
+    When the first positional argument is not a recognised subcommand name,
+    the group silently prepends ``_configure`` so that
+    ``atk mcp <plugin> …`` is equivalent to ``atk mcp _configure <plugin> …``
+    while ``atk mcp remove <plugin> …`` routes normally.
+    """
+
+    default_cmd_name: str = "_configure"
+
+    def resolve_command(
+        self, ctx: click.Context, args: list[str]
+    ) -> tuple[str | None, click.Command | None, list[str]]:
+        try:
+            return super().resolve_command(ctx, args)
+        except click.UsageError:
+            args = [self.default_cmd_name, *args]
+            return super().resolve_command(ctx, args)
+
+
+mcp_app = typer.Typer(no_args_is_help=True)
+app.add_typer(
+    mcp_app,
+    name="mcp",
+    cls=_DefaultGroup,
+    help="Output or configure MCP settings for a plugin.",
+)
 
 
 def _stdin_prompt(text: str) -> str:
@@ -619,6 +654,30 @@ def _run_cli_agent(
     return "configured", ""
 
 
+def _remove_cli_agent_by_name(
+    label: str,
+    plugin_name: str,
+    executable_name: str,
+    run_fn: Callable[[str], int],
+) -> tuple[str, str]:
+    """Confirm and execute a CLI-based MCP agent removal.
+
+    Returns:
+        (status, detail) where status ∈ {removed, skipped, not_found, failed}.
+    """
+    argv_preview = f"{executable_name} mcp remove {plugin_name}"
+    console.print(f"\n[{label}] Will run:\n  {argv_preview}\n")
+    if _stdin_prompt("Proceed? [y/N] ").strip().lower() != "y":
+        return "skipped", ""
+    try:
+        code = run_fn(plugin_name)
+    except FileNotFoundError:
+        return "not_found", f"'{executable_name}' not found on PATH"
+    if code != 0:
+        return "failed", f"exit code {code}"
+    return "removed", ""
+
+
 def _run_file_agent(label: str, agent_config: OpenCodeMcpConfig) -> tuple[str, str]:
     """Confirm and execute a file-based MCP agent registration (OpenCode).
 
@@ -653,12 +712,42 @@ def _inject_claude_skill_md(plugin_dir: Path) -> None:
         cli_logger.info("SKILL.md already referenced in ~/.claude/CLAUDE.md")
 
 
+def _inject_auggie_skill_md(plugin_dir: Path) -> None:
+    """Offer to inject the plugin's SKILL.md as a symlink in ~/.augment/rules/."""
+    skill_path = plugin_dir / "SKILL.md"
+    if not skill_path.exists():
+        return
+    symlink_name = f"atk-{plugin_dir.name}.md"
+    console.print(
+        f"\n[Auggie] Will create symlink:\n"
+        f"  ~/.augment/rules/{symlink_name} → {skill_path.resolve()}\n"
+    )
+    if _stdin_prompt("Proceed? [y/N] ").strip().lower() != "y":
+        return
+    try:
+        injected = inject_skill_symlink(plugin_dir.name, skill_path)
+    except FileExistsError:
+        cli_logger.error(
+            f"~/.augment/rules/{symlink_name} exists and is not a symlink managed by ATK"
+        )
+        return
+    if injected:
+        cli_logger.success(f"Created skill symlink ~/.augment/rules/{symlink_name}")
+    else:
+        cli_logger.info(f"Skill symlink ~/.augment/rules/{symlink_name} already up to date")
+
+
 def _print_agent_summary(outcomes: list[tuple[str, str, str]]) -> None:
-    """Print per-agent configuration outcome summary."""
+    """Print per-agent outcome summary.
+
+    Works for both add and remove flows.  Success statuses (``configured``,
+    ``removed``) are shown as success; ``skipped`` as info; everything else
+    as error.
+    """
     console.print()
     for label, status, detail in outcomes:
-        if status == "configured":
-            cli_logger.success(f"[{label}] Configured")
+        if status in ("configured", "removed"):
+            cli_logger.success(f"[{label}] {status.capitalize()}")
         elif status == "skipped":
             cli_logger.info(f"[{label}] Skipped")
         elif status == "not_found":
@@ -667,8 +756,8 @@ def _print_agent_summary(outcomes: list[tuple[str, str, str]]) -> None:
             cli_logger.error(f"[{label}] Failed — {detail}")
 
 
-@app.command()
-def mcp(
+@mcp_app.command(name="_configure", hidden=True)
+def mcp_configure(
     plugin: Annotated[
         str,
         typer.Argument(help="Plugin name or directory to get MCP config for."),
@@ -756,12 +845,95 @@ def mcp(
             "Auggie", build_auggie_mcp_config(result), "auggie", run_auggie_mcp_add
         )
         outcomes.append(("Auggie", status, detail))
+        if status == "configured":
+            _inject_auggie_skill_md(plugin_dir)
 
     if opencode:
         status, detail = _run_file_agent(
             "OpenCode", build_opencode_mcp_config(result)
         )
         outcomes.append(("OpenCode", status, detail))
+
+    _print_agent_summary(outcomes)
+
+    has_failures = any(s in ("failed", "not_found") for _, s, _ in outcomes)
+    raise typer.Exit(exit_codes.GENERAL_ERROR if has_failures else exit_codes.SUCCESS)
+
+
+
+def _remove_claude_skill_md(plugin_dir: Path) -> None:
+    """Remove the plugin's SKILL.md reference from ~/.claude/CLAUDE.md."""
+    skill_path = plugin_dir / "SKILL.md"
+    if not skill_path.exists():
+        return
+    removed = remove_skill_reference(skill_path)
+    if removed:
+        cli_logger.success("Removed SKILL.md reference from ~/.claude/CLAUDE.md")
+    else:
+        cli_logger.info("SKILL.md reference not found in ~/.claude/CLAUDE.md")
+
+
+def _remove_auggie_skill_md(plugin_dir: Path) -> None:
+    """Remove the plugin's SKILL.md symlink from ~/.augment/rules/."""
+    symlink_name = f"atk-{plugin_dir.name}.md"
+    removed = remove_skill_symlink(plugin_dir.name)
+    if removed:
+        cli_logger.success(f"Removed skill symlink ~/.augment/rules/{symlink_name}")
+    else:
+        cli_logger.info(f"Skill symlink ~/.augment/rules/{symlink_name} not found")
+
+
+@mcp_app.command(name="remove")
+def mcp_remove(
+    plugin: Annotated[
+        str,
+        typer.Argument(help="Plugin name or directory to remove MCP config for."),
+    ],
+    claude: Annotated[
+        bool,
+        typer.Option("--claude", help="Remove MCP server from Claude Code."),
+    ] = False,
+    auggie: Annotated[
+        bool,
+        typer.Option("--auggie", help="Remove MCP server from Auggie."),
+    ] = False,
+) -> None:
+    """Remove MCP configuration for a plugin from coding agents.
+
+    Removes both the MCP server registration and the skill injection for each
+    selected agent. ATK asks for confirmation before acting on each agent.
+    """
+    agent_flags = [claude, auggie]
+
+    if not any(agent_flags):
+        cli_logger.warning("No agent flags specified — nothing to remove")
+        raise typer.Exit(exit_codes.SUCCESS)
+
+    atk_home = require_ready_home()
+
+    try:
+        plugin_schema, plugin_dir = load_plugin(atk_home, plugin)
+    except PluginNotFoundError:
+        cli_logger.error(f"Plugin '{plugin}' not found in manifest")
+        raise typer.Exit(exit_codes.PLUGIN_NOT_FOUND) from None
+
+    outcomes: list[tuple[str, str, str]] = []
+
+    if claude:
+        status, detail = _remove_cli_agent_by_name(
+            "Claude Code", plugin_schema.name, "claude", run_claude_mcp_remove
+        )
+        outcomes.append(("Claude Code", status, detail))
+        if status == "removed":
+            _remove_claude_skill_md(plugin_dir)
+
+    if auggie:
+        status, detail = _remove_cli_agent_by_name(
+            "Auggie", plugin_schema.name, "auggie", run_auggie_mcp_remove
+        )
+        outcomes.append(("Auggie", status, detail))
+        if status == "removed":
+            _remove_auggie_skill_md(plugin_dir)
 
     _print_agent_summary(outcomes)
 
