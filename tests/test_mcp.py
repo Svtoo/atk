@@ -429,7 +429,7 @@ def test_mcp_command_default_outputs_plaintext(create_plugin, cli_runner) -> Non
     create_plugin(plugin=plugin, directory="test-plugin")
 
     # When
-    result = cli_runner.invoke(app, ["mcp", "test-plugin"])
+    result = cli_runner.invoke(app, ["mcp", "show", "test-plugin"])
 
     # Then
     assert result.exit_code == exit_codes.SUCCESS

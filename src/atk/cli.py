@@ -8,11 +8,9 @@ from collections.abc import Callable
 from pathlib import Path
 from typing import Annotated
 
-import click
 import typer
 from rich.console import Console
 from rich.table import Table
-from typer.core import TyperGroup
 
 from atk import __version__, cli_logger, exit_codes
 from atk.add import InstallFailedError, add_plugin
@@ -89,33 +87,17 @@ app = typer.Typer(
 console = Console()
 
 
-class _DefaultGroup(TyperGroup):
-    """Typer group with a hidden default subcommand.
-
-    When the first positional argument is not a recognised subcommand name,
-    the group silently prepends ``_configure`` so that
-    ``atk mcp <plugin> …`` is equivalent to ``atk mcp _configure <plugin> …``
-    while ``atk mcp remove <plugin> …`` routes normally.
-    """
-
-    default_cmd_name: str = "_configure"
-
-    def resolve_command(
-        self, ctx: click.Context, args: list[str]
-    ) -> tuple[str | None, click.Command | None, list[str]]:
-        try:
-            return super().resolve_command(ctx, args)
-        except click.UsageError:
-            args = [self.default_cmd_name, *args]
-            return super().resolve_command(ctx, args)
-
-
 mcp_app = typer.Typer(no_args_is_help=True)
 app.add_typer(
     mcp_app,
     name="mcp",
-    cls=_DefaultGroup,
-    help="Output or configure MCP settings for a plugin.",
+    help=(
+        "Manage MCP (Model Context Protocol) server configurations for plugins.\n\n"
+        "Commands:\n\n"
+        "  show    — Display the MCP config for a plugin (plaintext or JSON).\n\n"
+        "  add     — Register a plugin's MCP server with one or more coding agents.\n\n"
+        "  remove  — Unregister a plugin's MCP server from coding agents."
+    ),
 )
 
 
@@ -703,6 +685,27 @@ def _run_file_agent(label: str, agent_config: OpenCodeMcpConfig) -> tuple[str, s
     return "configured", ""
 
 
+def _remove_file_agent(
+    label: str,
+    plugin_name: str,
+    plugin_dir: Path,
+) -> tuple[str, str]:
+    """Confirm and execute a file-based MCP agent removal (OpenCode).
+
+    Returns:
+        (status, detail) where status ∈ {removed, skipped, failed}.
+    """
+    console.print(
+        f"\n[{label}] Will remove MCP entry '{plugin_name}' "
+        f"and SKILL.md reference from opencode.jsonc\n"
+    )
+    if _stdin_prompt("Proceed? [y/N] ").strip().lower() != "y":
+        return "skipped", ""
+    _remove_opencode_skill_md(plugin_name, plugin_dir)
+    return "removed", ""
+
+
+
 def _inject_claude_skill_md(plugin_dir: Path) -> None:
     """Offer to inject the plugin's SKILL.md into ~/.claude/CLAUDE.md."""
     skill_path = plugin_dir / "SKILL.md"
@@ -799,48 +802,25 @@ def _print_agent_summary(outcomes: list[tuple[str, str, str]]) -> None:
             cli_logger.error(f"[{label}] Failed — {detail}")
 
 
-@mcp_app.command(name="_configure", hidden=True)
-def mcp_configure(
+@mcp_app.command(name="show")
+def mcp_show(
     plugin: Annotated[
         str,
-        typer.Argument(help="Plugin name or directory to get MCP config for."),
+        typer.Argument(help="Plugin name or directory."),
     ],
     json_output: Annotated[
         bool,
         typer.Option("--json", help="Output as JSON instead of plaintext."),
     ] = False,
-    claude: Annotated[
-        bool,
-        typer.Option("--claude", help="Register MCP server with Claude Code via 'claude mcp add'."),
-    ] = False,
-    codex: Annotated[
-        bool,
-        typer.Option("--codex", help="Register MCP server with Codex via 'codex mcp add'."),
-    ] = False,
-    auggie: Annotated[
-        bool,
-        typer.Option("--auggie", help="Register MCP server with Auggie via 'auggie mcp add-json'."),
-    ] = False,
-    opencode: Annotated[
-        bool,
-        typer.Option("--opencode", help="Register MCP server with OpenCode by writing to opencode.jsonc."),
-    ] = False,
 ) -> None:
-    """Output MCP configuration for a plugin.
+    """Display the MCP configuration for a plugin.
 
-    Reads the MCP config from plugin.yaml and resolves environment variables
-    from the plugin's .env file. Output can be copied into IDE/tool configurations.
+    Reads the MCP section from plugin.yaml, resolves environment variables
+    from the plugin's .env file, and prints the result.  The output can be
+    copied directly into an IDE or tool configuration file.
 
-    Pass one or more agent flags to configure agents directly. ATK will ask
-    for confirmation before taking any action for each agent. Multiple flags
-    may be combined; agents are processed in order: Claude, Codex, Auggie, OpenCode.
+    Use --json to get machine-readable JSON output.
     """
-    agent_flags = [claude, codex, auggie, opencode]
-
-    if json_output and any(agent_flags):
-        cli_logger.error("--json and agent flags are mutually exclusive")
-        raise typer.Exit(exit_codes.INVALID_ARGS)
-
     atk_home = require_ready_home()
 
     try:
@@ -860,11 +840,70 @@ def mcp_configure(
 
     if json_output:
         print(json.dumps(result.to_mcp_dict(), indent=2))
-        raise typer.Exit(exit_codes.SUCCESS)
+    else:
+        console.print(format_mcp_plaintext(result))
+
+    raise typer.Exit(exit_codes.SUCCESS)
+
+
+@mcp_app.command(name="add")
+def mcp_add(
+    plugin: Annotated[
+        str,
+        typer.Argument(help="Plugin name or directory."),
+    ],
+    claude: Annotated[
+        bool,
+        typer.Option("--claude", help="Register with Claude Code via 'claude mcp add'."),
+    ] = False,
+    codex: Annotated[
+        bool,
+        typer.Option("--codex", help="Register with Codex via 'codex mcp add'."),
+    ] = False,
+    auggie: Annotated[
+        bool,
+        typer.Option("--auggie", help="Register with Auggie via 'auggie mcp add-json'."),
+    ] = False,
+    opencode: Annotated[
+        bool,
+        typer.Option("--opencode", help="Register with OpenCode by writing to opencode.jsonc."),
+    ] = False,
+) -> None:
+    """Register a plugin's MCP server with one or more coding agents.
+
+    Reads the MCP config from plugin.yaml, then configures each selected
+    agent.  ATK asks for confirmation before taking any action.  If the
+    plugin ships a SKILL.md, ATK also offers to inject it so the agent
+    understands how to use the plugin's tools.
+
+    Multiple agent flags may be combined; agents are processed in order:
+    Claude → Codex → Auggie → OpenCode.
+    """
+    agent_flags = [claude, codex, auggie, opencode]
 
     if not any(agent_flags):
-        console.print(format_mcp_plaintext(result))
+        cli_logger.warning(
+            "No agent flags specified — pass one or more of "
+            "--claude, --codex, --auggie, --opencode"
+        )
         raise typer.Exit(exit_codes.SUCCESS)
+
+    atk_home = require_ready_home()
+
+    try:
+        plugin_schema, plugin_dir = load_plugin(atk_home, plugin)
+    except PluginNotFoundError:
+        cli_logger.error(f"Plugin '{plugin}' not found in manifest")
+        raise typer.Exit(exit_codes.PLUGIN_NOT_FOUND) from None
+
+    if plugin_schema.mcp is None:
+        cli_logger.error(f"Plugin '{plugin_schema.name}' has no MCP configuration")
+        raise typer.Exit(exit_codes.PLUGIN_INVALID)
+
+    result = generate_mcp_config(plugin_schema, plugin_dir, plugin_schema.name)
+
+    for var in result.missing_vars:
+        cli_logger.warning(f"Environment variable '{var}' is not set")
 
     # --- Multi-agent configuration ---
     outcomes: list[tuple[str, str, str]] = []  # (label, status, detail)
@@ -968,34 +1007,41 @@ def _remove_opencode_skill_md(plugin_name: str, plugin_dir: Path) -> None:
 def mcp_remove(
     plugin: Annotated[
         str,
-        typer.Argument(help="Plugin name or directory to remove MCP config for."),
+        typer.Argument(help="Plugin name or directory."),
     ],
     claude: Annotated[
         bool,
-        typer.Option("--claude", help="Remove MCP server from Claude Code."),
+        typer.Option("--claude", help="Remove from Claude Code via 'claude mcp remove'."),
     ] = False,
     codex: Annotated[
         bool,
-        typer.Option("--codex", help="Remove MCP server from Codex."),
+        typer.Option("--codex", help="Remove from Codex via 'codex mcp remove'."),
     ] = False,
     auggie: Annotated[
         bool,
-        typer.Option("--auggie", help="Remove MCP server from Auggie."),
+        typer.Option("--auggie", help="Remove from Auggie via 'auggie mcp remove'."),
     ] = False,
     opencode: Annotated[
         bool,
-        typer.Option("--opencode", help="Remove MCP server from OpenCode."),
+        typer.Option("--opencode", help="Remove from OpenCode by editing opencode.jsonc."),
     ] = False,
 ) -> None:
-    """Remove MCP configuration for a plugin from coding agents.
+    """Unregister a plugin's MCP server from one or more coding agents.
 
-    Removes both the MCP server registration and the skill injection for each
-    selected agent. ATK asks for confirmation before acting on each agent.
+    Removes both the MCP server registration and any injected SKILL.md
+    reference for each selected agent.  ATK asks for confirmation before
+    taking any action.
+
+    Multiple agent flags may be combined; agents are processed in order:
+    Claude → Codex → Auggie → OpenCode.
     """
     agent_flags = [claude, codex, auggie, opencode]
 
     if not any(agent_flags):
-        cli_logger.warning("No agent flags specified — nothing to remove")
+        cli_logger.warning(
+            "No agent flags specified — pass one or more of "
+            "--claude, --codex, --auggie, --opencode"
+        )
         raise typer.Exit(exit_codes.SUCCESS)
 
     atk_home = require_ready_home()
@@ -1033,8 +1079,10 @@ def mcp_remove(
             _remove_auggie_skill_md(plugin_dir)
 
     if opencode:
-        _remove_opencode_skill_md(plugin_schema.name, plugin_dir)
-        outcomes.append(("OpenCode", "removed", ""))
+        status, detail = _remove_file_agent(
+            "OpenCode", plugin_schema.name, plugin_dir
+        )
+        outcomes.append(("OpenCode", status, detail))
 
     _print_agent_summary(outcomes)
 
