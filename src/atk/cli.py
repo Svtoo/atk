@@ -14,8 +14,8 @@ from rich.table import Table
 
 from atk import __version__, cli_logger, exit_codes
 from atk.add import InstallFailedError, add_plugin
+from atk.agents.claude_skill import inject_skill_reference
 from atk.banner import print_banner
-from atk.claude_memory import inject_skill_reference
 from atk.env import load_env_file
 from atk.errors import handle_cli_error
 from atk.git import is_git_available
