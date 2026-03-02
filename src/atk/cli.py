@@ -624,6 +624,7 @@ def _run_cli_agent(
     agent_config: AgentMcpConfig,
     executable_name: str,
     run_fn: Callable[[AgentMcpConfig], int],
+    force: bool = False,
 ) -> tuple[str, str]:
     """Confirm and execute a CLI-based MCP agent registration.
 
@@ -631,7 +632,7 @@ def _run_cli_agent(
         (status, detail) where status ∈ {configured, skipped, not_found, failed}.
     """
     console.print(f"\n[{label}] Will run:\n  {' '.join(agent_config.argv)}\n")
-    if _stdin_prompt("Proceed? [y/N] ").strip().lower() != "y":
+    if not force and _stdin_prompt("Proceed? [y/N] ").strip().lower() != "y":
         return "skipped", ""
     try:
         code = run_fn(agent_config)
@@ -647,6 +648,8 @@ def _remove_cli_agent_by_name(
     plugin_name: str,
     executable_name: str,
     run_fn: Callable[[str], int],
+    *,
+    force: bool = False,
 ) -> tuple[str, str]:
     """Confirm and execute a CLI-based MCP agent removal.
 
@@ -655,7 +658,7 @@ def _remove_cli_agent_by_name(
     """
     argv_preview = f"{executable_name} mcp remove {plugin_name}"
     console.print(f"\n[{label}] Will run:\n  {argv_preview}\n")
-    if _stdin_prompt("Proceed? [y/N] ").strip().lower() != "y":
+    if not force and _stdin_prompt("Proceed? [y/N] ").strip().lower() != "y":
         return "skipped", ""
     try:
         code = run_fn(plugin_name)
@@ -666,7 +669,9 @@ def _remove_cli_agent_by_name(
     return "removed", ""
 
 
-def _run_file_agent(label: str, agent_config: OpenCodeMcpConfig) -> tuple[str, str]:
+def _run_file_agent(
+    label: str, agent_config: OpenCodeMcpConfig, *, force: bool = False
+) -> tuple[str, str]:
     """Confirm and execute a file-based MCP agent registration (OpenCode).
 
     Returns:
@@ -676,7 +681,7 @@ def _run_file_agent(label: str, agent_config: OpenCodeMcpConfig) -> tuple[str, s
     console.print(
         f"\n[{label}] Will add to {agent_config.file_path}:\n{preview}\n"
     )
-    if _stdin_prompt("Proceed? [y/N] ").strip().lower() != "y":
+    if not force and _stdin_prompt("Proceed? [y/N] ").strip().lower() != "y":
         return "skipped", ""
     try:
         run_opencode_mcp_add(agent_config)
@@ -689,6 +694,8 @@ def _remove_file_agent(
     label: str,
     plugin_name: str,
     plugin_dir: Path,
+    *,
+    force: bool = False,
 ) -> tuple[str, str]:
     """Confirm and execute a file-based MCP agent removal (OpenCode).
 
@@ -699,20 +706,20 @@ def _remove_file_agent(
         f"\n[{label}] Will remove MCP entry '{plugin_name}' "
         f"and SKILL.md reference from opencode.jsonc\n"
     )
-    if _stdin_prompt("Proceed? [y/N] ").strip().lower() != "y":
+    if not force and _stdin_prompt("Proceed? [y/N] ").strip().lower() != "y":
         return "skipped", ""
     _remove_opencode_skill_md(plugin_name, plugin_dir)
     return "removed", ""
 
 
 
-def _inject_claude_skill_md(plugin_dir: Path) -> None:
+def _inject_claude_skill_md(plugin_dir: Path, *, force: bool = False) -> None:
     """Offer to inject the plugin's SKILL.md into ~/.claude/CLAUDE.md."""
     skill_path = plugin_dir / "SKILL.md"
     if not skill_path.exists():
         return
     console.print(f"\n[Claude Code] Will add to ~/.claude/CLAUDE.md:\n  @{skill_path.resolve()}\n")
-    if _stdin_prompt("Proceed? [y/N] ").strip().lower() != "y":
+    if not force and _stdin_prompt("Proceed? [y/N] ").strip().lower() != "y":
         return
     injected = inject_skill_reference(skill_path)
     if injected:
@@ -721,7 +728,7 @@ def _inject_claude_skill_md(plugin_dir: Path) -> None:
         cli_logger.info("SKILL.md already referenced in ~/.claude/CLAUDE.md")
 
 
-def _inject_auggie_skill_md(plugin_dir: Path) -> None:
+def _inject_auggie_skill_md(plugin_dir: Path, *, force: bool = False) -> None:
     """Offer to inject the plugin's SKILL.md as a symlink in ~/.augment/rules/."""
     skill_path = plugin_dir / "SKILL.md"
     if not skill_path.exists():
@@ -731,7 +738,7 @@ def _inject_auggie_skill_md(plugin_dir: Path) -> None:
         f"\n[Auggie] Will create symlink:\n"
         f"  ~/.augment/rules/{symlink_name} → {skill_path.resolve()}\n"
     )
-    if _stdin_prompt("Proceed? [y/N] ").strip().lower() != "y":
+    if not force and _stdin_prompt("Proceed? [y/N] ").strip().lower() != "y":
         return
     try:
         injected = inject_skill_symlink(plugin_dir.name, skill_path)
@@ -746,7 +753,9 @@ def _inject_auggie_skill_md(plugin_dir: Path) -> None:
         cli_logger.info(f"Skill symlink ~/.augment/rules/{symlink_name} already up to date")
 
 
-def _inject_codex_skill_md(plugin_name: str, plugin_dir: Path) -> None:
+def _inject_codex_skill_md(
+    plugin_name: str, plugin_dir: Path, *, force: bool = False
+) -> None:
     """Offer to inject the plugin's SKILL.md read-directive into ~/.codex/AGENTS.md."""
     skill_path = plugin_dir / "SKILL.md"
     if not skill_path.exists():
@@ -755,7 +764,7 @@ def _inject_codex_skill_md(plugin_name: str, plugin_dir: Path) -> None:
         f"\n[Codex] Will add read-directive to ~/.codex/AGENTS.md:\n"
         f"  Read {skill_path.resolve()} for instructions on using the {plugin_name} MCP tools.\n"
     )
-    if _stdin_prompt("Proceed? [y/N] ").strip().lower() != "y":
+    if not force and _stdin_prompt("Proceed? [y/N] ").strip().lower() != "y":
         return
     injected = inject_skill_directive(plugin_name, skill_path)
     if injected:
@@ -764,7 +773,7 @@ def _inject_codex_skill_md(plugin_name: str, plugin_dir: Path) -> None:
         cli_logger.info("SKILL.md read-directive already present in ~/.codex/AGENTS.md")
 
 
-def _inject_opencode_skill_md(plugin_dir: Path) -> None:
+def _inject_opencode_skill_md(plugin_dir: Path, *, force: bool = False) -> None:
     """Offer to add the plugin's SKILL.md to opencode.jsonc instructions array."""
     skill_path = plugin_dir / "SKILL.md"
     if not skill_path.exists():
@@ -773,7 +782,7 @@ def _inject_opencode_skill_md(plugin_dir: Path) -> None:
     console.print(
         f"\n[OpenCode] Will add to opencode.jsonc instructions:\n  {resolved}\n"
     )
-    if _stdin_prompt("Proceed? [y/N] ").strip().lower() != "y":
+    if not force and _stdin_prompt("Proceed? [y/N] ").strip().lower() != "y":
         return
     injected = inject_skill_instruction(skill_path)
     if injected:
@@ -868,6 +877,10 @@ def mcp_add(
         bool,
         typer.Option("--opencode", help="Register with OpenCode by writing to opencode.jsonc."),
     ] = False,
+    force: Annotated[
+        bool,
+        typer.Option("-y", "--force", help="Skip all confirmation prompts."),
+    ] = False,
 ) -> None:
     """Register a plugin's MCP server with one or more coding agents.
 
@@ -875,6 +888,8 @@ def mcp_add(
     agent.  ATK asks for confirmation before taking any action.  If the
     plugin ships a SKILL.md, ATK also offers to inject it so the agent
     understands how to use the plugin's tools.
+
+    Pass -y / --force to skip all confirmation prompts.
 
     Multiple agent flags may be combined; agents are processed in order:
     Claude → Codex → Auggie → OpenCode.
@@ -910,35 +925,38 @@ def mcp_add(
 
     if claude:
         status, detail = _run_cli_agent(
-            "Claude Code", build_claude_mcp_config(result), "claude", run_claude_mcp_add
+            "Claude Code", build_claude_mcp_config(result), "claude", run_claude_mcp_add,
+            force=force,
         )
         outcomes.append(("Claude Code", status, detail))
         if status == "configured":
-            _inject_claude_skill_md(plugin_dir)
+            _inject_claude_skill_md(plugin_dir, force=force)
 
     if codex:
         status, detail = _run_cli_agent(
-            "Codex", build_codex_mcp_config(result), "codex", run_codex_mcp_add
+            "Codex", build_codex_mcp_config(result), "codex", run_codex_mcp_add,
+            force=force,
         )
         outcomes.append(("Codex", status, detail))
         if status == "configured":
-            _inject_codex_skill_md(plugin_schema.name, plugin_dir)
+            _inject_codex_skill_md(plugin_schema.name, plugin_dir, force=force)
 
     if auggie:
         status, detail = _run_cli_agent(
-            "Auggie", build_auggie_mcp_config(result), "auggie", run_auggie_mcp_add
+            "Auggie", build_auggie_mcp_config(result), "auggie", run_auggie_mcp_add,
+            force=force,
         )
         outcomes.append(("Auggie", status, detail))
         if status == "configured":
-            _inject_auggie_skill_md(plugin_dir)
+            _inject_auggie_skill_md(plugin_dir, force=force)
 
     if opencode:
         status, detail = _run_file_agent(
-            "OpenCode", build_opencode_mcp_config(result)
+            "OpenCode", build_opencode_mcp_config(result), force=force,
         )
         outcomes.append(("OpenCode", status, detail))
         if status == "configured":
-            _inject_opencode_skill_md(plugin_dir)
+            _inject_opencode_skill_md(plugin_dir, force=force)
 
     _print_agent_summary(outcomes)
 
@@ -1025,12 +1043,18 @@ def mcp_remove(
         bool,
         typer.Option("--opencode", help="Remove from OpenCode by editing opencode.jsonc."),
     ] = False,
+    force: Annotated[
+        bool,
+        typer.Option("-y", "--force", help="Skip all confirmation prompts."),
+    ] = False,
 ) -> None:
     """Unregister a plugin's MCP server from one or more coding agents.
 
     Removes both the MCP server registration and any injected SKILL.md
     reference for each selected agent.  ATK asks for confirmation before
     taking any action.
+
+    Pass -y / --force to skip all confirmation prompts.
 
     Multiple agent flags may be combined; agents are processed in order:
     Claude → Codex → Auggie → OpenCode.
@@ -1056,7 +1080,8 @@ def mcp_remove(
 
     if claude:
         status, detail = _remove_cli_agent_by_name(
-            "Claude Code", plugin_schema.name, "claude", run_claude_mcp_remove
+            "Claude Code", plugin_schema.name, "claude", run_claude_mcp_remove,
+            force=force,
         )
         outcomes.append(("Claude Code", status, detail))
         if status == "removed":
@@ -1064,7 +1089,8 @@ def mcp_remove(
 
     if codex:
         status, detail = _remove_cli_agent_by_name(
-            "Codex", plugin_schema.name, "codex", run_codex_mcp_remove
+            "Codex", plugin_schema.name, "codex", run_codex_mcp_remove,
+            force=force,
         )
         outcomes.append(("Codex", status, detail))
         if status == "removed":
@@ -1072,7 +1098,8 @@ def mcp_remove(
 
     if auggie:
         status, detail = _remove_cli_agent_by_name(
-            "Auggie", plugin_schema.name, "auggie", run_auggie_mcp_remove
+            "Auggie", plugin_schema.name, "auggie", run_auggie_mcp_remove,
+            force=force,
         )
         outcomes.append(("Auggie", status, detail))
         if status == "removed":
@@ -1080,7 +1107,8 @@ def mcp_remove(
 
     if opencode:
         status, detail = _remove_file_agent(
-            "OpenCode", plugin_schema.name, plugin_dir
+            "OpenCode", plugin_schema.name, plugin_dir,
+            force=force,
         )
         outcomes.append(("OpenCode", status, detail))
 
