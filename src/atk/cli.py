@@ -7,12 +7,14 @@ from typing import Annotated
 
 import typer
 from rich.console import Console
+from rich.markdown import Markdown
 
 from atk import __version__, cli_logger, exit_codes
 from atk.add import InstallFailedError, add_plugin
 from atk.banner import print_banner
-from atk.commands.lifecycle import run_lifecycle_cli
+from atk.commands.lifecycle import run_lifecycle_cli, run_restart_single_cli, run_uninstall_cli
 from atk.commands.mcp import (
+    AgentStatus,
     inject_auggie_skill_md,
     inject_claude_skill_md,
     inject_codex_skill_md,
@@ -30,6 +32,7 @@ from atk.commands.preconditions import (
     assert_plugin_or_all,
     require_git,
     require_initialized_home,
+    require_plugin,
     require_ready_home,
     stdin_prompt,
 )
@@ -45,7 +48,6 @@ from atk.lifecycle import (
     get_all_plugins_status,
     get_plugin_status,
     restart_all_plugins,
-    run_lifecycle_command,
     run_plugin_lifecycle,
 )
 from atk.manifest_schema import load_manifest
@@ -319,11 +321,7 @@ def setup(
     assert_plugin_or_all(plugin, all_plugins)
 
     if plugin:
-        try:
-            plugin_schema, plugin_dir = load_plugin(atk_home, plugin)
-        except PluginNotFoundError:
-            cli_logger.error(f"Plugin '{plugin}' not found in manifest")
-            raise typer.Exit(exit_codes.PLUGIN_NOT_FOUND) from None
+        plugin_schema, plugin_dir = require_plugin(atk_home, plugin)
 
         if not plugin_schema.env_vars:
             cli_logger.info(f"Plugin '{plugin_schema.name}' has no environment variables defined")
@@ -366,11 +364,7 @@ def mcp_show(
     """
     atk_home = require_ready_home()
 
-    try:
-        plugin_schema, plugin_dir = load_plugin(atk_home, plugin)
-    except PluginNotFoundError:
-        cli_logger.error(f"Plugin '{plugin}' not found in manifest")
-        raise typer.Exit(exit_codes.PLUGIN_NOT_FOUND) from None
+    plugin_schema, plugin_dir = require_plugin(atk_home, plugin)
 
     if plugin_schema.mcp is None:
         cli_logger.error(f"Plugin '{plugin_schema.name}' has no MCP configuration")
@@ -439,11 +433,7 @@ def mcp_add(
 
     atk_home = require_ready_home()
 
-    try:
-        plugin_schema, plugin_dir = load_plugin(atk_home, plugin)
-    except PluginNotFoundError:
-        cli_logger.error(f"Plugin '{plugin}' not found in manifest")
-        raise typer.Exit(exit_codes.PLUGIN_NOT_FOUND) from None
+    plugin_schema, plugin_dir = require_plugin(atk_home, plugin)
 
     if plugin_schema.mcp is None:
         cli_logger.error(f"Plugin '{plugin_schema.name}' has no MCP configuration")
@@ -455,7 +445,7 @@ def mcp_add(
         cli_logger.warning(f"Environment variable '{var}' is not set")
 
     # --- Multi-agent configuration ---
-    outcomes: list[tuple[str, str, str]] = []  # (label, status, detail)
+    outcomes: list[tuple[str, AgentStatus, str]] = []  # (label, status, detail)
 
     if claude:
         status, detail = run_cli_agent(
@@ -547,13 +537,9 @@ def mcp_remove(
 
     atk_home = require_ready_home()
 
-    try:
-        plugin_schema, plugin_dir = load_plugin(atk_home, plugin)
-    except PluginNotFoundError:
-        cli_logger.error(f"Plugin '{plugin}' not found in manifest")
-        raise typer.Exit(exit_codes.PLUGIN_NOT_FOUND) from None
+    plugin_schema, plugin_dir = require_plugin(atk_home, plugin)
 
-    outcomes: list[tuple[str, str, str]] = []
+    outcomes: list[tuple[str, AgentStatus, str]] = []
 
     if claude:
         status, detail = remove_cli_agent_by_name(
@@ -642,52 +628,8 @@ def uninstall(
     Symmetric to 'atk install': install sets up, uninstall tears down.
     """
     atk_home = require_ready_home()
-
-    # Load plugin to get schema
-    try:
-        plugin_schema, plugin_dir = load_plugin(atk_home, plugin)
-    except PluginNotFoundError:
-        cli_logger.error(f"Plugin '{plugin}' not found in manifest")
-        raise typer.Exit(exit_codes.PLUGIN_NOT_FOUND) from None
-
-    # Check if uninstall is defined
-    if plugin_schema.lifecycle is None or plugin_schema.lifecycle.uninstall is None:
-        cli_logger.warning(f"Plugin '{plugin_schema.name}' has no uninstall command defined")
-        raise typer.Exit(exit_codes.SUCCESS)
-
-    # Show confirmation prompt unless --force
-    if not force:
-        console.print(
-            f"\n⚠️  This will run the uninstall command which may delete data:\n"
-            f"    {plugin_schema.lifecycle.uninstall}\n",
-            style="yellow",
-        )
-        confirm = typer.confirm("Continue?", default=False)
-        if not confirm:
-            cli_logger.info("Uninstall cancelled")
-            raise typer.Exit(exit_codes.SUCCESS)
-
-    # Run stop lifecycle first (if defined)
-    try:
-        exit_code = run_lifecycle_command(plugin_schema, plugin_dir, "stop")
-        if exit_code != 0:
-            cli_logger.warning(f"Stop failed with exit code {exit_code}, continuing with uninstall")
-    except LifecycleCommandNotDefinedError:
-        # Stop is optional, continue
-        pass
-
-    # Run uninstall lifecycle
-    try:
-        exit_code = run_lifecycle_command(plugin_schema, plugin_dir, "uninstall")
-        if exit_code != 0:
-            cli_logger.error(f"Uninstall failed with exit code {exit_code}")
-            raise typer.Exit(exit_codes.DOCKER_ERROR)
-        cli_logger.success(f"Uninstalled '{plugin_schema.name}'")
-        raise typer.Exit(exit_codes.SUCCESS)
-    except LifecycleCommandNotDefinedError as e:
-        # Should not happen since we checked above, but handle gracefully
-        cli_logger.warning(f"Plugin '{plugin_schema.name}' has no uninstall command defined")
-        raise typer.Exit(exit_codes.SUCCESS) from e
+    plugin_schema, plugin_dir = require_plugin(atk_home, plugin)
+    run_uninstall_cli(plugin_schema, plugin_dir, force=force)
 
 
 @app.command()
@@ -765,38 +707,10 @@ def restart(
     For --all: Stops all plugins in reverse order, then starts all in
     manifest order. If the stop phase has failures, the start phase is skipped.
     """
-    # Single plugin case - execute stop then start
+    # Single plugin case - delegate stop-then-start to commands layer
     if plugin and not all_plugins:
         atk_home = require_ready_home()
-
-        try:
-            # Phase 1: Stop
-            try:
-                stop_code = run_plugin_lifecycle(atk_home, plugin, "stop")
-                if stop_code == 0:
-                    cli_logger.success(f"Stopped plugin '{plugin}'")
-                else:
-                    cli_logger.error(f"Stop failed for plugin '{plugin}' (exit code {stop_code})")
-                    raise typer.Exit(exit_codes.GENERAL_ERROR)
-            except LifecycleCommandNotDefinedError:
-                cli_logger.warning(f"Plugin '{plugin}' has no stop command defined")
-
-            # Phase 2: Start
-            try:
-                start_code = run_plugin_lifecycle(atk_home, plugin, "start")
-                if start_code == 0:
-                    cli_logger.success(f"Started plugin '{plugin}'")
-                    raise typer.Exit(exit_codes.SUCCESS)
-                else:
-                    cli_logger.error(f"Start failed for plugin '{plugin}' (exit code {start_code})")
-                    raise typer.Exit(exit_codes.GENERAL_ERROR)
-            except LifecycleCommandNotDefinedError:
-                cli_logger.warning(f"Plugin '{plugin}' has no start command defined")
-                raise typer.Exit(exit_codes.SUCCESS) from None
-
-        except PluginNotFoundError:
-            cli_logger.error(f"Plugin '{plugin}' not found in manifest")
-            raise typer.Exit(exit_codes.PLUGIN_NOT_FOUND) from None
+        run_restart_single_cli(atk_home, plugin)
         return
 
     # --all case - custom two-phase handling
@@ -909,15 +823,9 @@ def plugin_help(
 
     Renders the plugin's README.md as formatted Markdown in the terminal.
     """
-    from rich.markdown import Markdown
-
     atk_home = require_initialized_home()
 
-    try:
-        _, plugin_dir = load_plugin(atk_home, plugin)
-    except PluginNotFoundError:
-        cli_logger.error(f"Plugin '{plugin}' not found in manifest")
-        raise typer.Exit(exit_codes.PLUGIN_NOT_FOUND) from None
+    _, plugin_dir = require_plugin(atk_home, plugin)
 
     readme_path = plugin_dir / "README.md"
     if not readme_path.exists():
@@ -952,11 +860,7 @@ def run(
     """
     atk_home = require_initialized_home()
 
-    try:
-        _, plugin_dir = load_plugin(atk_home, plugin)
-    except PluginNotFoundError:
-        cli_logger.error(f"Plugin '{plugin}' not found in manifest")
-        raise typer.Exit(exit_codes.PLUGIN_NOT_FOUND) from None
+    _, plugin_dir = require_plugin(atk_home, plugin)
 
     run_plugin_script(plugin_dir, script, ctx.args)
 

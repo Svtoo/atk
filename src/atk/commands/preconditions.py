@@ -12,6 +12,8 @@ from atk import cli_logger, exit_codes
 from atk.git import is_git_available
 from atk.home import get_atk_home, validate_atk_home
 from atk.manifest_schema import load_manifest
+from atk.plugin import PluginNotFoundError, load_plugin
+from atk.plugin_schema import PluginSchema
 
 
 def stdin_prompt(text: str) -> str:
@@ -72,6 +74,29 @@ def require_ready_home() -> Path:
         require_git()
 
     return atk_home
+
+
+def require_plugin(atk_home: Path, identifier: str) -> tuple[PluginSchema, Path]:
+    """Load a plugin or exit with PLUGIN_NOT_FOUND.
+
+    Centralises the repeated pattern of calling load_plugin and converting a
+    PluginNotFoundError into a clean CLI exit so individual commands stay thin.
+
+    Args:
+        atk_home: Path to ATK Home directory.
+        identifier: Plugin name or directory name.
+
+    Returns:
+        (plugin_schema, plugin_dir) tuple.
+
+    Raises:
+        typer.Exit: With PLUGIN_NOT_FOUND exit code if the plugin is not found.
+    """
+    try:
+        return load_plugin(atk_home, identifier)
+    except PluginNotFoundError:
+        cli_logger.error(f"Plugin '{identifier}' not found in manifest")
+        raise typer.Exit(exit_codes.PLUGIN_NOT_FOUND) from None
 
 
 def assert_plugin_or_all(plugin: str | None, all_plugins: bool) -> None:

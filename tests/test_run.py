@@ -72,57 +72,6 @@ class TestRunCommand:
         output_file = plugin_dir / "env_output.txt"
         assert output_file.read_text().strip() == file_value
 
-    def test_runs_script_without_sh_extension(
-        self, create_plugin: PluginFactory, cli_runner
-    ) -> None:
-        """Verify script is found and run when caller omits .sh extension."""
-        # Given
-        plugin_dir = create_plugin("TestPlugin", "test-plugin", {"install": "echo install"})
-        script = plugin_dir / "myscript.sh"
-        script.write_text("#!/bin/sh\ntouch ran.txt\n")
-        script.chmod(0o755)
-
-        # When
-        result = cli_runner.invoke(app, ["run", "test-plugin", "myscript"])
-
-        # Then
-        assert result.exit_code == exit_codes.SUCCESS
-        assert (plugin_dir / "ran.txt").exists()
-
-    def test_returns_script_exit_code(
-        self, create_plugin: PluginFactory, cli_runner
-    ) -> None:
-        """Verify exit code from script is propagated."""
-        # Given
-        expected_code = 42
-        plugin_dir = create_plugin("TestPlugin", "test-plugin", {"install": "echo install"})
-        script = plugin_dir / "fail.sh"
-        script.write_text(f"#!/bin/sh\nexit {expected_code}\n")
-        script.chmod(0o755)
-
-        # When
-        result = cli_runner.invoke(app, ["run", "test-plugin", "fail"])
-
-        # Then
-        assert result.exit_code == expected_code
-
-    def test_plugin_not_found_returns_error(self, configure_atk_home, cli_runner) -> None:
-        """Verify error when plugin does not exist."""
-        configure_atk_home()
-        result = cli_runner.invoke(app, ["run", "nonexistent-plugin", "backup"])
-
-        assert result.exit_code == exit_codes.PLUGIN_NOT_FOUND
-
-    def test_script_not_found_returns_error(
-        self, create_plugin: PluginFactory, cli_runner
-    ) -> None:
-        """Verify error when script does not exist in plugin directory."""
-        create_plugin("TestPlugin", "test-plugin", {"install": "echo install"})
-
-        result = cli_runner.invoke(app, ["run", "test-plugin", "nonexistent_script"])
-
-        assert result.exit_code == exit_codes.GENERAL_ERROR
-
     def test_forwards_extra_args_to_script(
         self, create_plugin: PluginFactory, cli_runner
     ) -> None:

@@ -7,6 +7,7 @@ SKILL.md injection/removal helpers for all supported coding agents.
 import json
 from collections.abc import Callable
 from pathlib import Path
+from typing import Literal
 
 from rich.console import Console
 
@@ -21,6 +22,9 @@ from atk.mcp_configure import run_opencode_mcp_add
 
 console = Console()
 
+# Status values returned by all agent runner functions.
+AgentStatus = Literal["configured", "removed", "skipped", "not_found", "failed"]
+
 # ---------------------------------------------------------------------------
 # Agent add helpers
 # ---------------------------------------------------------------------------
@@ -32,7 +36,7 @@ def run_cli_agent(
     executable_name: str,
     run_fn: Callable[[AgentMcpConfig], int],
     force: bool = False,
-) -> tuple[str, str]:
+) -> tuple[AgentStatus, str]:
     """Confirm and execute a CLI-based MCP agent registration.
 
     Returns:
@@ -52,7 +56,7 @@ def run_cli_agent(
 
 def run_file_agent(
     label: str, agent_config: OpenCodeMcpConfig, *, force: bool = False
-) -> tuple[str, str]:
+) -> tuple[AgentStatus, str]:
     """Confirm and execute a file-based MCP agent registration (OpenCode).
 
     Returns:
@@ -81,7 +85,7 @@ def remove_cli_agent_by_name(
     run_fn: Callable[[str], int],
     *,
     force: bool = False,
-) -> tuple[str, str]:
+) -> tuple[AgentStatus, str]:
     """Confirm and execute a CLI-based MCP agent removal.
 
     Returns:
@@ -106,7 +110,7 @@ def remove_file_agent(
     plugin_dir: Path,
     *,
     force: bool = False,
-) -> tuple[str, str]:
+) -> tuple[AgentStatus, str]:
     """Confirm and execute a file-based MCP agent removal (OpenCode).
 
     Returns:
@@ -264,7 +268,7 @@ def remove_opencode_skill_md(plugin_name: str, plugin_dir: Path) -> None:
 # ---------------------------------------------------------------------------
 
 
-def print_agent_summary(outcomes: list[tuple[str, str, str]]) -> None:
+def print_agent_summary(outcomes: list[tuple[str, AgentStatus, str]]) -> None:
     """Print per-agent outcome summary.
 
     Works for both add and remove flows.  Success statuses (``configured``,
