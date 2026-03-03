@@ -4,6 +4,13 @@ from rich.console import Console
 from rich.table import Table
 
 from atk.lifecycle import PluginStatus, PluginStatusResult, PortStatus
+from atk.plugin_schema import PluginMaturity
+
+_MATURITY_DISPLAY: dict[PluginMaturity, str] = {
+    PluginMaturity.AI_GENERATED: "[red]ai-generated[/red]",
+    PluginMaturity.COMMUNITY: "[yellow]community[/yellow]",
+    PluginMaturity.VERIFIED: "[green]verified[/green]",
+}
 
 console = Console()
 
@@ -53,6 +60,7 @@ def print_status_table(results: list[PluginStatusResult]) -> None:
     table.add_column("STATUS")
     table.add_column("PORTS")
     table.add_column("ENV")
+    table.add_column("MATURITY")
 
     for result in results:
         if not isinstance(result, PluginStatusResult):
@@ -71,15 +79,18 @@ def print_status_table(results: list[PluginStatusResult]) -> None:
             result.missing_required_vars, result.unset_optional_count, result.total_env_vars
         )
 
+        maturity_str = _MATURITY_DISPLAY.get(result.maturity, str(result.maturity))
+
         name = f"{result.name} ({result.directory})"
-        table.add_row(name, status_str, ports_str, env_str)
+        table.add_row(name, status_str, ports_str, env_str, maturity_str)
 
     console.print(table)
 
     has_port_checks = any(p.listening is not None for r in results for p in r.ports)
     has_env_vars = any(r.total_env_vars > 0 for r in results)
+    has_unverified = any(r.maturity != PluginMaturity.VERIFIED for r in results)
 
-    if has_port_checks or has_env_vars:
+    if has_port_checks or has_env_vars or has_unverified:
         console.print()
         console.print("[dim]Legend:[/dim]")
 
@@ -93,6 +104,13 @@ def print_status_table(results: list[PluginStatusResult]) -> None:
             console.print(
                 "[dim]  ENV: [/dim][green]✓[/green][dim] all required vars set, "
                 "[/dim][red]![/red][dim] missing required vars, [/dim]-[dim] no env vars defined[/dim]"
+            )
+
+        if has_unverified:
+            console.print(
+                "[dim]  Maturity: [/dim][green]verified[/green][dim] = official registry, "
+                "[/dim][yellow]community[/yellow][dim] = unverified third-party, "
+                "[/dim][red]ai-generated[/red][dim] = AI output, no human review[/dim]"
             )
 
         if has_port_checks:

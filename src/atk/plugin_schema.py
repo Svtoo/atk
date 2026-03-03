@@ -19,6 +19,27 @@ class StrictModel(BaseModel):
 PLUGIN_SCHEMA_VERSION = "2026-01-23"
 
 
+class PluginMaturity(str, Enum):
+    """Plugin maturity level, reflecting trust and verification status.
+
+    The default is AI_GENERATED — every plugin produced by AI tooling starts here.
+    Promoting to a higher level requires a conscious human decision.
+
+    Registry CI requires VERIFIED; any plugin submitted with a lower maturity
+    will fail index generation and be blocked from the registry.
+    """
+
+    AI_GENERATED = "ai-generated"
+    """Built by an AI agent. No human has reviewed or tested this plugin."""
+
+    COMMUNITY = "community"
+    """A human has authored or validated this plugin, but it is not in the
+    official ATK registry."""
+
+    VERIFIED = "verified"
+    """Listed in the official ATK registry. Curated and tested by maintainers."""
+
+
 class ServiceType(str, Enum):
     """Supported service types for running plugins."""
 
@@ -164,6 +185,14 @@ class PluginSchema(StrictModel):
     )
     name: str = Field(description="Plugin name")
     description: str = Field(description="Plugin description")
+    maturity: PluginMaturity = Field(
+        default=PluginMaturity.AI_GENERATED,
+        description=(
+            "Plugin maturity level. Defaults to 'ai-generated' — any plugin produced by AI "
+            "tooling starts here. Must be explicitly promoted by a human. "
+            "Registry CI requires 'verified'."
+        ),
+    )
 
     service: ServiceConfig | None = Field(
         default=None,

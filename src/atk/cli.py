@@ -10,7 +10,7 @@ from rich.console import Console
 from rich.markdown import Markdown
 
 from atk import __version__, cli_logger, exit_codes
-from atk.add import InstallFailedError, add_plugin
+from atk.add import AddCancelledError, InstallFailedError, add_plugin
 from atk.banner import print_banner
 from atk.commands.lifecycle import run_lifecycle_cli, run_restart_single_cli, run_uninstall_cli
 from atk.commands.mcp import (
@@ -159,18 +159,33 @@ def add(
             help="Plugin source: local path, registry name, or git URL.",
         ),
     ],
+    force: Annotated[
+        bool,
+        typer.Option(
+            "-y",
+            "--force",
+            help="Skip the maturity confirmation prompt for unverified plugins.",
+        ),
+    ] = False,
 ) -> None:
     """Add a plugin to ATK Home.
 
     Accepts a local path, registry plugin name, or git URL.
     If the plugin has environment variables, prompts for configuration before install.
+    Warns and asks for confirmation when the plugin maturity is below 'verified'
+    (use -y / --force to skip the prompt).
     """
     atk_home = require_ready_home()
 
+    confirm_func = (lambda _: True) if force else (lambda msg: typer.confirm(msg, default=False))
+
     try:
-        directory = add_plugin(source, atk_home, stdin_prompt)
+        directory = add_plugin(source, atk_home, stdin_prompt, confirm_func=confirm_func)
         cli_logger.success(f"Added plugin to {atk_home}/plugins/{directory}")
         raise typer.Exit(exit_codes.SUCCESS)
+    except AddCancelledError:
+        cli_logger.info("Installation cancelled")
+        raise typer.Exit(exit_codes.SUCCESS) from None
     except RegistryPluginNotFoundError as e:
         cli_logger.error(f"Plugin not found in registry: {e}")
         raise typer.Exit(exit_codes.PLUGIN_INVALID) from e
@@ -232,21 +247,28 @@ def remove(
                     cli_logger.info("Remove cancelled")
                     raise typer.Exit(exit_codes.SUCCESS)
         except PluginNotFoundError:
-            # Plugin not in manifest — remove_plugin will handle as no-op
+            # Plugin not in manifest — remove_plugin will handle (no-op or orphan cleanup)
             pass
 
     try:
         result = remove_plugin(plugin, atk_home, force=force)
         if result.removed:
-            if result.stop_failed:
+            if result.orphan_cleaned:
                 cli_logger.warning(
-                    f"Warning: stop failed for '{plugin}' (exit code {result.stop_exit_code})"
+                    f"Plugin '{plugin}' was not in the manifest, but an orphaned directory "
+                    f"was found at ~/.atk/plugins/{plugin}/ and removed. "
+                    f"A previous install likely failed partway through."
                 )
-            if result.uninstall_failed:
-                cli_logger.warning(
-                    f"Warning: uninstall failed for '{plugin}' (exit code {result.uninstall_exit_code})"
-                )
-            cli_logger.success(f"Removed plugin '{plugin}'")
+            else:
+                if result.stop_failed:
+                    cli_logger.warning(
+                        f"Warning: stop failed for '{plugin}' (exit code {result.stop_exit_code})"
+                    )
+                if result.uninstall_failed:
+                    cli_logger.warning(
+                        f"Warning: uninstall failed for '{plugin}' (exit code {result.uninstall_exit_code})"
+                    )
+                cli_logger.success(f"Removed plugin '{plugin}'")
         elif result.uninstall_failed:
             cli_logger.error(
                 f"Uninstall failed for '{plugin}' (exit code {result.uninstall_exit_code}). "

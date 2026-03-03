@@ -14,7 +14,7 @@ from atk.bootstrap import fetch_missing_plugin
 from atk.env import check_required_env_vars, get_env_status, load_env_file
 from atk.manifest_schema import load_manifest
 from atk.plugin import CUSTOM_DIR, PluginNotFoundError, load_plugin
-from atk.plugin_schema import PluginSchema
+from atk.plugin_schema import PluginMaturity, PluginSchema
 
 LifecycleCommand = Literal["install", "uninstall", "start", "stop", "logs", "status"]
 
@@ -564,6 +564,7 @@ class PluginStatusResult:
     missing_required_vars: list[str]  # Names of missing required env vars
     unset_optional_count: int  # Count of unset optional env vars
     total_env_vars: int  # Total number of env vars defined in plugin.yaml
+    maturity: PluginMaturity = field(default=PluginMaturity.AI_GENERATED)
 
 
 def get_plugin_status(atk_home: Path, identifier: str) -> PluginStatusResult:
@@ -599,6 +600,7 @@ def get_plugin_status(atk_home: Path, identifier: str) -> PluginStatusResult:
             missing_required_vars=missing_required_vars,
             unset_optional_count=unset_optional_count,
             total_env_vars=total_env_vars,
+            maturity=plugin.maturity,
         )
 
     result = subprocess.run(
@@ -623,6 +625,7 @@ def get_plugin_status(atk_home: Path, identifier: str) -> PluginStatusResult:
         missing_required_vars=missing_required_vars,
         unset_optional_count=unset_optional_count,
         total_env_vars=total_env_vars,
+        maturity=plugin.maturity,
     )
 
 

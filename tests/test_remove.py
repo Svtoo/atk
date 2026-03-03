@@ -272,6 +272,29 @@ class TestRemovePlugin:
         plugin_dirs = [p.directory for p in manifest_after.plugins]
         assert directory not in plugin_dirs
 
+    def test_remove_orphaned_directory_not_in_manifest(self, tmp_path: Path) -> None:
+        """Verify remove_plugin cleans up an orphaned plugin directory that is not in the manifest.
+
+        Reproduces the S2 bug: atk add can fail after copying files but before writing the
+        manifest, leaving a stale directory that blocks subsequent atk add calls.
+        atk remove must clean it up even when the manifest has no record of it.
+        """
+        # Given
+        atk_home = tmp_path / "atk-home"
+        init_atk_home(atk_home)
+        directory = "orphan-plugin"
+        orphan_dir = atk_home / "plugins" / directory
+        orphan_dir.mkdir(parents=True)  # Simulate a failed mid-install
+
+        # When
+        result = remove_plugin(directory, atk_home)
+
+        # Then — orphan directory is gone
+        assert not orphan_dir.exists()
+        # Then — result correctly signals orphan cleanup
+        assert result.removed is True
+        assert result.orphan_cleaned is True
+
 
 class TestRemoveCLI:
     """Tests for atk remove CLI command."""
@@ -308,6 +331,30 @@ class TestRemoveCLI:
         assert result.exit_code == exit_codes.SUCCESS
         assert "not found" in result.stdout
 
+    def test_cli_remove_orphaned_directory_not_in_manifest(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Verify CLI cleans up orphaned plugin directory that is not in the manifest.
+
+        Reproduces the S2 bug: atk remove must remove the stale directory left by
+        a failed mid-install so that subsequent atk add calls can succeed.
+        """
+        # Given
+        atk_home = tmp_path / "atk-home"
+        init_atk_home(atk_home)
+        monkeypatch.setenv("ATK_HOME", str(atk_home))
+        directory = "orphan-plugin"
+        orphan_dir = atk_home / "plugins" / directory
+        orphan_dir.mkdir(parents=True)  # Simulate a failed mid-install
+
+        # When
+        result = runner.invoke(app, ["remove", directory])
+
+        # Then
+        assert result.exit_code == exit_codes.SUCCESS
+        assert not orphan_dir.exists()
+        assert "orphan" in result.stdout.lower()
+
     def test_cli_remove_uninitialized_home(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
         """Verify CLI errors when ATK Home not initialized."""
         # Given
@@ -340,14 +387,14 @@ class TestRemoveCLI:
         minimal_plugin_path = fixtures_dir / "minimal-plugin"
 
         # full-plugin has 2 env vars (FULL_PLUGIN_API_KEY required, FULL_PLUGIN_DEBUG optional)
-        # Provide input for both prompts
+        # Use -y to skip the maturity confirmation; provide input for env var prompts
         result1 = runner.invoke(
-            app, ["add", str(full_plugin_path)], input="test-api-key\nfalse\n"
+            app, ["add", "-y", str(full_plugin_path)], input="test-api-key\nfalse\n"
         )
         assert result1.exit_code == exit_codes.SUCCESS, f"Failed to add full-plugin: {result1.stdout}"
 
-        # minimal-plugin has no env vars
-        result2 = runner.invoke(app, ["add", str(minimal_plugin_path)])
+        # minimal-plugin has no env vars; use -y to skip the maturity confirmation
+        result2 = runner.invoke(app, ["add", "-y", str(minimal_plugin_path)])
         assert result2.exit_code == exit_codes.SUCCESS, f"Failed to add minimal-plugin: {result2.stdout}"
 
         # Verify both plugins exist
@@ -563,7 +610,8 @@ class TestRemoveAutoCommit:
         # Given - initialized ATK home with a plugin added via atk add (creates commit)
         init_atk_home(self.atk_home)
         source = Path("tests/fixtures/plugins/minimal-plugin")
-        add_result = runner.invoke(app, ["add", str(source)])
+        # Use -y to skip the maturity confirmation (testing remove flow, not maturity)
+        add_result = runner.invoke(app, ["add", "-y", str(source)])
         assert add_result.exit_code == exit_codes.SUCCESS
 
         # When

@@ -56,8 +56,11 @@ def serialize_plugin(plugin: PluginSchema) -> str:
     """Serialize a PluginSchema to YAML string.
 
     Helper function for tests that need to write plugin.yaml files manually.
+    Uses mode='json' so that enum fields (e.g. PluginMaturity) are serialized
+    as plain strings rather than Python-tagged objects that yaml.safe_load
+    cannot parse back.
     """
-    return yaml.dump(plugin.model_dump(exclude_none=True), default_flow_style=False)
+    return yaml.dump(plugin.model_dump(exclude_none=True, mode="json"), default_flow_style=False)
 
 
 def write_plugin_yaml(path: Path, plugin: PluginSchema) -> None:
@@ -170,7 +173,7 @@ def create_plugin(configure_atk_home) -> PluginFactory:
         plugin_dir.mkdir(parents=True, exist_ok=True)
 
         (plugin_dir / "plugin.yaml").write_text(
-            yaml.dump(final_plugin.model_dump(exclude_none=True))
+            yaml.dump(final_plugin.model_dump(exclude_none=True, mode="json"))
         )
 
         manifest = load_manifest(atk_home)
@@ -209,7 +212,7 @@ def create_fake_registry(tmp_path: Path) -> FakeRegistry:
             schema_version=PLUGIN_SCHEMA_VERSION,
             name="Test Plugin",
             description="A test plugin from registry",
-        ).model_dump(exclude_none=True))
+        ).model_dump(exclude_none=True, mode="json"))
     )
     (plugins_dir / "docker-compose.yml").write_text("version: '3'\n")
 

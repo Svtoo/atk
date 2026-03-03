@@ -7,6 +7,7 @@ from atk.plugin_schema import (
     EnvVarConfig,
     LifecycleConfig,
     McpPluginConfig,
+    PluginMaturity,
     PluginSchema,
     PortConfig,
     ServiceConfig,
@@ -723,3 +724,100 @@ lifecycle:
         assert plugin.ports == []
         assert plugin.env_vars == []
         assert plugin.mcp is None
+
+
+
+class TestPluginMaturity:
+    """Tests for the maturity field on PluginSchema."""
+
+    def setup_method(self) -> None:
+        """Set up base plugin data used across tests."""
+        self.base = {
+            "schema_version": "2026-03-03",
+            "name": "test-plugin",
+            "description": "A test plugin",
+        }
+
+    def test_default_maturity_is_ai_generated(self) -> None:
+        """Verify that omitting maturity defaults to ai-generated."""
+        # Given - plugin data with no maturity field
+        data = self.base.copy()
+
+        # When
+        plugin = PluginSchema.model_validate(data)
+
+        # Then
+        assert plugin.maturity == PluginMaturity.AI_GENERATED
+
+    def test_maturity_ai_generated_accepted(self) -> None:
+        """Verify that maturity: ai-generated is accepted."""
+        # Given
+        data = {**self.base, "maturity": "ai-generated"}
+
+        # When
+        plugin = PluginSchema.model_validate(data)
+
+        # Then
+        assert plugin.maturity == PluginMaturity.AI_GENERATED
+
+    def test_maturity_community_accepted(self) -> None:
+        """Verify that maturity: community is accepted."""
+        # Given
+        data = {**self.base, "maturity": "community"}
+
+        # When
+        plugin = PluginSchema.model_validate(data)
+
+        # Then
+        assert plugin.maturity == PluginMaturity.COMMUNITY
+
+    def test_maturity_verified_accepted(self) -> None:
+        """Verify that maturity: verified is accepted."""
+        # Given
+        data = {**self.base, "maturity": "verified"}
+
+        # When
+        plugin = PluginSchema.model_validate(data)
+
+        # Then
+        assert plugin.maturity == PluginMaturity.VERIFIED
+
+    def test_unknown_maturity_is_rejected(self) -> None:
+        """Verify that an unknown maturity value raises a validation error."""
+        # Given
+        data = {**self.base, "maturity": "trusted"}
+
+        # When/Then
+        with pytest.raises(ValueError, match="maturity"):
+            PluginSchema.model_validate(data)
+
+    def test_maturity_field_is_not_required_in_yaml(self) -> None:
+        """Verify that a real YAML without maturity parses with ai-generated default."""
+        # Given
+        yaml_content = """
+schema_version: "2026-03-03"
+name: my-plugin
+description: A plugin with no maturity set
+"""
+        # When
+        data = yaml.safe_load(yaml_content)
+        plugin = PluginSchema.model_validate(data)
+
+        # Then
+        assert plugin.maturity == PluginMaturity.AI_GENERATED
+
+    def test_maturity_verified_in_yaml(self) -> None:
+        """Verify that maturity: verified in YAML parses correctly."""
+        # Given
+        yaml_content = """
+schema_version: "2026-03-03"
+name: official-plugin
+description: An officially verified plugin
+maturity: verified
+"""
+        # When
+        data = yaml.safe_load(yaml_content)
+        plugin = PluginSchema.model_validate(data)
+
+        # Then
+        assert plugin.maturity == PluginMaturity.VERIFIED

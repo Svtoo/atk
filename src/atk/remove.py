@@ -23,6 +23,7 @@ class RemoveResult:
     stop_exit_code: int | None = None
     uninstall_failed: bool = False
     uninstall_exit_code: int | None = None
+    orphan_cleaned: bool = False
 
 
 def remove_plugin(identifier: str, atk_home: Path, force: bool = False) -> RemoveResult:
@@ -60,7 +61,13 @@ def remove_plugin(identifier: str, atk_home: Path, force: bool = False) -> Remov
     )
 
     if plugin_entry is None:
-        # Plugin not found - no-op (idempotent)
+        # Plugin not in manifest. Check for an orphaned directory on disk — a
+        # failed mid-install (files copied but manifest not written) leaves one
+        # that blocks subsequent `atk add` with "Plugin directory already exists".
+        orphan_dir = atk_home / "plugins" / identifier
+        if orphan_dir.exists():
+            shutil.rmtree(orphan_dir)
+            return RemoveResult(removed=True, orphan_cleaned=True)
         return RemoveResult(removed=False)
 
     # Capture plugin name before removal for commit message

@@ -612,8 +612,8 @@ class TestAddCLI:
         plugin_name = "CLI Test Plugin"
         source = self._create_plugin_source(plugin_name)
 
-        # When
-        result = runner.invoke(app, ["add", str(source)])
+        # When - use -y to skip the maturity confirmation prompt (testing add flow, not maturity)
+        result = runner.invoke(app, ["add", "-y", str(source)])
 
         # Then
         assert result.exit_code == SUCCESS
@@ -663,8 +663,8 @@ class TestAddAutoCommit:
         init_atk_home(self.atk_home)
         source = Path("tests/fixtures/plugins/minimal-plugin")
 
-        # When
-        result = runner.invoke(app, ["add", str(source)])
+        # When - use -y to skip the maturity confirmation prompt (testing commit flow, not maturity)
+        result = runner.invoke(app, ["add", "-y", str(source)])
 
         # Then - command succeeds
         assert result.exit_code == SUCCESS
@@ -706,8 +706,8 @@ class TestAddAutoCommit:
 
         source = Path("tests/fixtures/plugins/minimal-plugin")
 
-        # When
-        result = runner.invoke(app, ["add", str(source)])
+        # When - use -y to skip the maturity confirmation prompt (testing commit flow, not maturity)
+        result = runner.invoke(app, ["add", "-y", str(source)])
 
         # Then - command succeeds
         assert result.exit_code == SUCCESS
@@ -755,8 +755,8 @@ class TestAddInstallLifecycle:
         )
         write_plugin_yaml(plugin_dir, plugin)
 
-        # When
-        result = runner.invoke(app, ["add", str(plugin_dir)])
+        # When - use -y to skip the maturity confirmation prompt (testing install flow, not maturity)
+        result = runner.invoke(app, ["add", "-y", str(plugin_dir)])
 
         # Then - command succeeds
         assert result.exit_code == SUCCESS
@@ -772,8 +772,8 @@ class TestAddInstallLifecycle:
         # And - a plugin without install lifecycle
         source = Path("tests/fixtures/plugins/minimal-plugin")
 
-        # When
-        result = runner.invoke(app, ["add", str(source)])
+        # When - use -y to skip the maturity confirmation prompt (testing install flow, not maturity)
+        result = runner.invoke(app, ["add", "-y", str(source)])
 
         # Then - command succeeds without warning about missing install
         assert result.exit_code == SUCCESS
@@ -801,8 +801,8 @@ class TestAddInstallLifecycle:
         )
         write_plugin_yaml(plugin_dir, plugin)
 
-        # When
-        result = runner.invoke(app, ["add", str(plugin_dir)])
+        # When - use -y to skip the maturity confirmation prompt (testing install failure, not maturity)
+        result = runner.invoke(app, ["add", "-y", str(plugin_dir)])
 
         # Then - command fails with DOCKER_ERROR (exit code 6)
         assert result.exit_code == DOCKER_ERROR
