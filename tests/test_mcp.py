@@ -268,12 +268,8 @@ def test_generate_mcp_config_dotenv_value_takes_precedence_over_default(tmp_path
     assert var_name not in result.missing_vars
 
 
-def test_generate_mcp_config_omits_var_when_no_value_and_no_default(tmp_path: Path) -> None:
-    """A var with no .env value and no declared default is omitted from env and tracked in missing_vars.
-
-    Regression: previously the literal string '<NOT_SET>' was written into the env dict,
-    which caused MCP clients to inject it as an actual env var value.
-    """
+def test_generate_mcp_config_marks_not_set_when_no_value_and_no_default(tmp_path: Path) -> None:
+    """A var with no .env value and no declared default is marked NOT_SET in env and tracked in missing_vars."""
     # Given
     var_name = "API_KEY"
     plugin = _make_stdio_plugin(
@@ -287,7 +283,7 @@ def test_generate_mcp_config_omits_var_when_no_value_and_no_default(tmp_path: Pa
     result = generate_mcp_config(plugin, plugin_dir, "test-plugin")
 
     # Then
-    assert var_name not in result.env
+    assert result.env[var_name] == "<NOT_SET>"
     assert var_name in result.missing_vars
 
 

@@ -370,7 +370,7 @@ class TestGetPluginStatus:
         assert result.status == PluginStatus.MCP_ONLY
 
     def test_returns_running_for_sse_mcp_plugin_when_endpoint_reachable(
-        self, configure_atk_home, create_plugin: PluginFactory, monkeypatch: pytest.MonkeyPatch
+        self, configure_atk_home, create_plugin: PluginFactory
     ) -> None:
         """Verify status is RUNNING for an SSE MCP plugin whose endpoint responds."""
         # Given
@@ -383,16 +383,15 @@ class TestGetPluginStatus:
             mcp=McpPluginConfig(transport="sse", endpoint=endpoint_url),
         )
         create_plugin(plugin=plugin, directory="remote-mcp")
-        monkeypatch.setattr("atk.lifecycle.check_sse_reachable", lambda url, **kw: True)
 
         # When
-        result = get_plugin_status(atk_home, "remote-mcp")
+        result = get_plugin_status(atk_home, "remote-mcp", sse_reachable_fn=lambda _: True)
 
         # Then
         assert result.status == PluginStatus.RUNNING
 
     def test_returns_stopped_for_sse_mcp_plugin_when_endpoint_unreachable(
-        self, configure_atk_home, create_plugin: PluginFactory, monkeypatch: pytest.MonkeyPatch
+        self, configure_atk_home, create_plugin: PluginFactory
     ) -> None:
         """Verify status is STOPPED for an SSE MCP plugin whose endpoint is down."""
         # Given
@@ -405,10 +404,9 @@ class TestGetPluginStatus:
             mcp=McpPluginConfig(transport="sse", endpoint=endpoint_url),
         )
         create_plugin(plugin=plugin, directory="remote-mcp")
-        monkeypatch.setattr("atk.lifecycle.check_sse_reachable", lambda url, **kw: False)
 
         # When
-        result = get_plugin_status(atk_home, "remote-mcp")
+        result = get_plugin_status(atk_home, "remote-mcp", sse_reachable_fn=lambda _: False)
 
         # Then
         assert result.status == PluginStatus.STOPPED

@@ -1173,12 +1173,7 @@ class TestMcpCli:
     def test_cli_mcp_warns_on_missing_env_vars(
         self, create_plugin: PluginFactory, cli_runner
     ) -> None:
-        """Verify missing env vars produce a warning and are omitted from JSON output.
-
-        Regression: previously the literal '<NOT_SET>' was written into the env dict,
-        causing MCP clients to inject it as an actual env var value. Missing vars must
-        be absent from the JSON so MCP clients don't see them at all.
-        """
+        """Verify missing env vars produce a warning and appear as NOT_SET in JSON output."""
         # Given
         plugin_name = "MissingEnvPlugin"
         plugin_dir_name = "missing-env-plugin"
@@ -1199,9 +1194,7 @@ class TestMcpCli:
         json_start = result.output.find("{")
         json_output = result.output[json_start:]
         output = json.loads(json_output)
-        # The var must NOT appear in the JSON — MCP clients must not receive "<NOT_SET>" as a value.
-        plugin_env = output[plugin_name].get("env", {})
-        assert var_name not in plugin_env
+        assert output[plugin_name]["env"][var_name] == "<NOT_SET>"
 
     def test_cli_mcp_outputs_url_for_sse_transport(
         self, create_plugin: PluginFactory, cli_runner

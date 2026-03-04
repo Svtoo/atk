@@ -1,5 +1,7 @@
 """MCP (Model Context Protocol) configuration generation."""
 
+import urllib.error
+import urllib.request
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from pathlib import Path
@@ -27,7 +29,7 @@ class McpConfig(ABC):
 
     identifier: str       # Key used in MCP JSON output and agent CLI commands
     plugin_name: str      # Display name from the plugin schema
-    env: dict[str, str]   # Resolved env vars; vars without a value are omitted (tracked in missing_vars)
+    env: dict[str, str]   # Resolved env vars; NOT_SET sentinel for vars with no value and no default
     missing_vars: list[str]  # Names of variables that could not be resolved
 
     @abstractmethod
@@ -143,8 +145,7 @@ def generate_mcp_config(
             if value:
                 env[var_name] = value
             else:
-                # No value and no default — omit from env dict, track as missing.
-                # This prevents the literal string from being injected into MCP clients.
+                env[var_name] = NOT_SET
                 missing_vars.append(var_name)
 
     if mcp.transport == "stdio":
@@ -211,4 +212,24 @@ def format_mcp_plaintext(config: McpConfig) -> str:
                 lines.append(f"  {key}=[dim]{val}[/dim]")
 
     return "\n".join(lines)
+
+
+def check_sse_reachable(url: str, timeout: int = 3) -> bool:
+    """Return True if the SSE endpoint at url responds within timeout seconds.
+
+    Any HTTP response (including 4xx/5xx) counts as reachable; only connection
+    failures, timeouts, and DNS errors return False.
+
+    Args:
+        url: The SSE endpoint URL to probe.
+        timeout: Maximum seconds to wait for a response.
+    """
+    try:
+        urllib.request.urlopen(url, timeout=timeout)
+        return True
+    except urllib.error.HTTPError:
+        # Server replied with an error status — it is still reachable.
+        return True
+    except Exception:
+        return False
 

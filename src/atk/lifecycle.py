@@ -5,8 +5,7 @@ Handles running lifecycle commands defined in plugin.yaml.
 
 import os
 import subprocess
-import urllib.error
-import urllib.request
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from enum import Enum
 from pathlib import Path
@@ -15,6 +14,7 @@ from typing import Literal
 from atk.bootstrap import fetch_missing_plugin
 from atk.env import check_required_env_vars, get_env_status, load_env_file
 from atk.manifest_schema import load_manifest
+from atk.mcp import check_sse_reachable
 from atk.plugin import CUSTOM_DIR, PluginNotFoundError, load_plugin
 from atk.plugin_schema import PluginMaturity, PluginSchema
 
@@ -165,30 +165,6 @@ def is_port_listening(port: int) -> bool:
         capture_output=True,
     )
     return result.returncode == 0
-
-
-def check_sse_reachable(url: str, timeout: int = 3) -> bool:
-    """Check if an SSE endpoint URL is reachable.
-
-    Makes an HTTP GET request with a short timeout. Any HTTP response (including
-    4xx/5xx) means the server is up. Only connection failures return False.
-
-    Args:
-        url: The SSE endpoint URL to probe.
-        timeout: Seconds to wait before declaring unreachable (default 3).
-
-    Returns:
-        True if the server responded, False on connection error or timeout.
-    """
-    try:
-        urllib.request.urlopen(url, timeout=timeout)
-        return True
-    except urllib.error.HTTPError:
-        # Server responded with an error code — it's reachable.
-        return True
-    except Exception:
-        # Connection refused, timeout, DNS failure, etc.
-        return False
 
 
 def check_port_conflicts(plugin: PluginSchema) -> list[PortConflict]:
@@ -594,12 +570,23 @@ class PluginStatusResult:
     maturity: PluginMaturity = field(default=PluginMaturity.AI_GENERATED)
 
 
-def get_plugin_status(atk_home: Path, identifier: str) -> PluginStatusResult:
+def get_plugin_status(
+    atk_home: Path,
+    identifier: str,
+    sse_reachable_fn: Callable[[str], bool] = check_sse_reachable,
+) -> PluginStatusResult:
     """Get the status of a single plugin.
+
+    For plugins with a lifecycle status command, runs it and interprets the exit code.
+    For MCP-only plugins with no lifecycle, derives status from the MCP transport:
+    - SSE transport: probes the endpoint URL via sse_reachable_fn.
+    - stdio transport: reports MCP_ONLY (spawned on demand, no persistent process).
+    - No MCP either: reports UNKNOWN.
 
     Args:
         atk_home: Path to ATK Home directory.
         identifier: Plugin name or directory.
+        sse_reachable_fn: Callable used to probe SSE endpoints; injectable for testing.
 
     Returns:
         PluginStatusResult with status, ports, and env var information.
@@ -611,7 +598,6 @@ def get_plugin_status(atk_home: Path, identifier: str) -> PluginStatusResult:
 
     raw_ports = [p.port for p in plugin.ports]
 
-    # Get env var status
     env_statuses = get_env_status(plugin, plugin_dir)
     missing_required_vars = [s.name for s in env_statuses if s.required and not s.is_set]
     unset_optional_count = sum(1 for s in env_statuses if not s.required and not s.is_set)
@@ -620,14 +606,11 @@ def get_plugin_status(atk_home: Path, identifier: str) -> PluginStatusResult:
     if plugin.lifecycle is None or plugin.lifecycle.status is None:
         ports = [PortStatus(port=p, listening=None) for p in raw_ports]
 
-        # Determine a more informative status for MCP-only plugins.
         if plugin.mcp is not None:
             if plugin.mcp.transport == "sse" and plugin.mcp.endpoint:
-                # Remote SSE server — probe the endpoint to get a real running/stopped status.
-                reachable = check_sse_reachable(plugin.mcp.endpoint)
+                reachable = sse_reachable_fn(plugin.mcp.endpoint)
                 mcp_status = PluginStatus.RUNNING if reachable else PluginStatus.STOPPED
             else:
-                # stdio MCP — spawned on demand by the MCP client, no persistent service.
                 mcp_status = PluginStatus.MCP_ONLY
         else:
             mcp_status = PluginStatus.UNKNOWN
@@ -669,11 +652,15 @@ def get_plugin_status(atk_home: Path, identifier: str) -> PluginStatusResult:
     )
 
 
-def get_all_plugins_status(atk_home: Path) -> list[PluginStatusResult]:
+def get_all_plugins_status(
+    atk_home: Path,
+    sse_reachable_fn: Callable[[str], bool] = check_sse_reachable,
+) -> list[PluginStatusResult]:
     """Get the status of all plugins.
 
     Args:
         atk_home: Path to ATK Home directory.
+        sse_reachable_fn: Callable used to probe SSE endpoints; passed through to get_plugin_status.
 
     Returns:
         List of PluginStatusResult for each plugin in manifest order.
@@ -682,7 +669,7 @@ def get_all_plugins_status(atk_home: Path) -> list[PluginStatusResult]:
     results: list[PluginStatusResult] = []
 
     for plugin_entry in manifest.plugins:
-        result = get_plugin_status(atk_home, plugin_entry.directory)
+        result = get_plugin_status(atk_home, plugin_entry.directory, sse_reachable_fn=sse_reachable_fn)
         results.append(result)
 
     return results
