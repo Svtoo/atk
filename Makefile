@@ -1,4 +1,4 @@
-.PHONY: test check release
+.PHONY: test check release install-local install-pypi uninstall
 
 # TDD cycle - run often
 test:
@@ -14,4 +14,16 @@ check:
 release:
 	uv build
 	uv publish
+
+# Install from local source — editable, so changes are live without reinstalling
+install-local:
+	uv tool install --editable . --reinstall
+
+# Uninstall (works after either install-local or install-pypi)
+uninstall:
+	uv tool uninstall atk-cli
+
+# Install stable release from PyPI
+install-pypi:
+	uv tool install atk-cli --reinstall
 
