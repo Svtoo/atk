@@ -161,7 +161,12 @@ def _check_duplicate(atk_home: Path, directory: str, plugin_name: str) -> None:
 def _check_target_available(target_dir: Path, directory: str) -> None:
     """Raise if the target plugin directory already exists on disk."""
     if target_dir.exists():
-        raise ValueError(f"Plugin directory '{directory}' already exists at {target_dir}")
+        raise ValueError(
+            f"Plugin directory '{directory}' already exists at {target_dir}.\n"
+            f"This may be a leftover from a failed or partial installation.\n"
+            f"To clean it up:   atk remove {directory}\n"
+            f"Or manually:      rm -rf {target_dir}"
+        )
 
 
 def _add_local_plugin(
@@ -273,33 +278,37 @@ def _finalize_add(
 
     Runs maturity check, setup, install lifecycle, updates manifest, and commits.
     Raises AddCancelledError if the user declines to install an unverified plugin.
+    Cleans up the plugin directory on any failure (unless already_in_place).
     """
-    _check_maturity(schema, confirm_func)
-
-    if schema.env_vars:
-        run_setup(schema, target_dir, prompt_func)
-
     try:
-        exit_code = run_lifecycle_command(schema, target_dir, "install")
-        if exit_code != 0:
-            _cleanup_failed_add(atk_home, target_dir, directory, already_in_place)
-            raise InstallFailedError(schema.name, exit_code)
-    except LifecycleCommandNotDefinedError:
-        pass
+        _check_maturity(schema, confirm_func)
 
-    if add_gitignore:
-        add_gitignore_exemption(atk_home, directory)
+        if schema.env_vars:
+            run_setup(schema, target_dir, prompt_func)
 
-    if source.ref:
-        write_atk_ref(target_dir, source.ref)
+        try:
+            exit_code = run_lifecycle_command(schema, target_dir, "install")
+            if exit_code != 0:
+                raise InstallFailedError(schema.name, exit_code)
+        except LifecycleCommandNotDefinedError:
+            pass
 
-    auto_commit = _update_manifest(atk_home, schema.name, directory, source=source)
+        if add_gitignore:
+            add_gitignore_exemption(atk_home, directory)
 
-    if auto_commit:
-        git_add(atk_home)
-        git_commit(atk_home, f"Add plugin '{schema.name}'")
+        if source.ref:
+            write_atk_ref(target_dir, source.ref)
 
-    return directory
+        auto_commit = _update_manifest(atk_home, schema.name, directory, source=source)
+
+        if auto_commit:
+            git_add(atk_home)
+            git_commit(atk_home, f"Add plugin '{schema.name}'")
+
+        return directory
+    except Exception:
+        _cleanup_failed_add(atk_home, target_dir, directory, already_in_place)
+        raise
 
 
 def _cleanup_failed_add(atk_home: Path, target_dir: Path, directory: str, already_in_place: bool) -> None:

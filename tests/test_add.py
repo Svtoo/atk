@@ -6,7 +6,7 @@ import pytest
 import yaml
 from typer.testing import CliRunner
 
-from atk.add import AddSourceType, add_plugin, detect_source_type, load_plugin_schema
+from atk.add import AddCancelledError, AddSourceType, add_plugin, detect_source_type, load_plugin_schema
 from atk.cli import app
 from atk.exit_codes import DOCKER_ERROR, HOME_NOT_INITIALIZED, PLUGIN_INVALID, SUCCESS
 from atk.git import ATK_REF_FILE, read_atk_ref
@@ -17,6 +17,7 @@ from atk.plugin_schema import (
     PLUGIN_SCHEMA_VERSION,
     EnvVarConfig,
     LifecycleConfig,
+    PluginMaturity,
     PluginSchema,
 )
 from atk.registry import PluginNotFoundError
@@ -836,6 +837,70 @@ lifecycle:
         manifest_path = self.atk_home / "manifest.yaml"
         manifest_data = yaml.safe_load(manifest_path.read_text())
         manifest = ManifestSchema.model_validate(manifest_data)
+        assert len(manifest.plugins) == 0
+
+    def test_add_cleans_up_on_setup_failure(self) -> None:
+        """Verify add removes plugin directory when setup prompt raises (e.g. stdin exhausted)."""
+        # Given - initialized ATK home
+        init_atk_home(self.atk_home)
+
+        # And - a plugin with env vars so setup is triggered
+        plugin_dir = self.tmp_path / "eof-plugin"
+        plugin_dir.mkdir()
+        plugin = PluginSchema(
+            schema_version="2026-01-23",
+            name="EOF Plugin",
+            description="A plugin whose setup will raise",
+            env_vars=[EnvVarConfig(name="API_KEY", required=True)],
+        )
+        write_plugin_yaml(plugin_dir, plugin)
+
+        # And - a prompt that simulates stdin exhaustion
+        def exhausted_stdin(_text: str) -> str:
+            raise EOFError("stdin exhausted")
+
+        # When - add_plugin is called; setup raises mid-install
+        with pytest.raises(EOFError):
+            add_plugin(str(plugin_dir), self.atk_home, exhausted_stdin)
+
+        # Then - plugin directory should NOT exist (cleaned up by try/finally)
+        expected_dir = self.atk_home / "plugins" / "eof-plugin"
+        assert not expected_dir.exists(), "Orphan directory was left behind after setup failure"
+
+        # And - manifest should NOT contain the plugin
+        manifest = load_manifest(self.atk_home)
+        assert len(manifest.plugins) == 0
+
+    def test_add_cleans_up_on_maturity_cancel(self) -> None:
+        """Verify add removes copied directory when user declines the maturity confirmation."""
+        # Given - initialized ATK home
+        init_atk_home(self.atk_home)
+
+        # And - an unverified local plugin (ai_generated maturity triggers the confirmation)
+        plugin_dir = self.tmp_path / "cancel-plugin"
+        plugin_dir.mkdir()
+        plugin = PluginSchema(
+            schema_version="2026-01-23",
+            name="Cancel Plugin",
+            description="User will decline to install this",
+            maturity=PluginMaturity.AI_GENERATED,
+        )
+        write_plugin_yaml(plugin_dir, plugin)
+
+        # And - a confirm function that always says No
+        def user_says_no(_msg: str) -> bool:
+            return False
+
+        # When - user declines the maturity prompt
+        with pytest.raises(AddCancelledError):
+            add_plugin(str(plugin_dir), self.atk_home, noop_prompt, confirm_func=user_says_no)
+
+        # Then - plugin directory should NOT exist (cleaned up by try/finally)
+        expected_dir = self.atk_home / "plugins" / "cancel-plugin"
+        assert not expected_dir.exists(), "Orphan directory was left behind after maturity cancel"
+
+        # And - manifest should NOT contain the plugin
+        manifest = load_manifest(self.atk_home)
         assert len(manifest.plugins) == 0
 
 
