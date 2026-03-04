@@ -23,6 +23,17 @@ def run_claude_mcp_remove(plugin_name: str, scope: str = "user") -> int:
     ).returncode
 
 
+def run_gemini_mcp_remove(plugin_name: str, scope: str = "user") -> int:
+    """Invoke ``gemini mcp remove`` and return its exit code.
+
+    Raises:
+        FileNotFoundError: if ``gemini`` is not found on PATH.
+    """
+    return subprocess.run(
+        ["gemini", "mcp", "remove", "--scope", scope, plugin_name]
+    ).returncode
+
+
 def run_auggie_mcp_remove(plugin_name: str) -> int:
     """Invoke ``auggie mcp remove`` and return its exit code.
 
@@ -52,6 +63,21 @@ def run_claude_mcp_add(config: AgentMcpConfig) -> int:
 
     Raises:
         FileNotFoundError: if ``claude`` is not found on PATH.
+    """
+    return subprocess.run(config.argv).returncode
+
+
+def run_gemini_mcp_add(config: AgentMcpConfig) -> int:
+    """Invoke ``gemini mcp add`` and return its exit code.
+
+    Args:
+        config: The agent config produced by ``build_gemini_mcp_config()``.
+
+    Returns:
+        The exit code from the ``gemini`` process (0 = success).
+
+    Raises:
+        FileNotFoundError: if ``gemini`` is not found on PATH.
     """
     return subprocess.run(config.argv).returncode
 

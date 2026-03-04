@@ -18,6 +18,7 @@ from atk.commands.mcp import (
     inject_auggie_skill_md,
     inject_claude_skill_md,
     inject_codex_skill_md,
+    inject_gemini_skill_md,
     inject_opencode_skill_md,
     print_agent_summary,
     remove_auggie_skill_md,
@@ -25,6 +26,7 @@ from atk.commands.mcp import (
     remove_cli_agent_by_name,
     remove_codex_skill_md,
     remove_file_agent,
+    remove_gemini_skill_md,
     run_cli_agent,
     run_file_agent,
 )
@@ -56,6 +58,7 @@ from atk.mcp_agents import (
     build_auggie_mcp_config,
     build_claude_mcp_config,
     build_codex_mcp_config,
+    build_gemini_mcp_config,
     build_opencode_mcp_config,
 )
 from atk.mcp_configure import (
@@ -65,6 +68,8 @@ from atk.mcp_configure import (
     run_claude_mcp_remove,
     run_codex_mcp_add,
     run_codex_mcp_remove,
+    run_gemini_mcp_add,
+    run_gemini_mcp_remove,
 )
 from atk.plugin import PluginNotFoundError, load_plugin
 from atk.registry import PluginNotFoundError as RegistryPluginNotFoundError
@@ -419,6 +424,10 @@ def mcp_add(
         bool,
         typer.Option("--codex", help="Register with Codex via 'codex mcp add'."),
     ] = False,
+    gemini: Annotated[
+        bool,
+        typer.Option("--gemini", help="Register with Gemini CLI via 'gemini mcp add'."),
+    ] = False,
     auggie: Annotated[
         bool,
         typer.Option("--auggie", help="Register with Auggie via 'auggie mcp add-json'."),
@@ -442,14 +451,14 @@ def mcp_add(
     Pass -y / --force to skip all confirmation prompts.
 
     Multiple agent flags may be combined; agents are processed in order:
-    Claude → Codex → Auggie → OpenCode.
+    Claude → Codex → Gemini → Auggie → OpenCode.
     """
-    agent_flags = [claude, codex, auggie, opencode]
+    agent_flags = [claude, codex, gemini, auggie, opencode]
 
     if not any(agent_flags):
         cli_logger.warning(
             "No agent flags specified — pass one or more of "
-            "--claude, --codex, --auggie, --opencode"
+            "--claude, --codex, --gemini, --auggie, --opencode"
         )
         raise typer.Exit(exit_codes.SUCCESS)
 
@@ -486,6 +495,15 @@ def mcp_add(
         outcomes.append(("Codex", status, detail))
         if status == "configured":
             inject_codex_skill_md(plugin_schema.name, plugin_dir, force=force)
+
+    if gemini:
+        status, detail = run_cli_agent(
+            "Gemini CLI", build_gemini_mcp_config(result), "gemini", run_gemini_mcp_add,
+            force=force,
+        )
+        outcomes.append(("Gemini CLI", status, detail))
+        if status == "configured":
+            inject_gemini_skill_md(plugin_dir, force=force)
 
     if auggie:
         status, detail = run_cli_agent(
@@ -524,6 +542,10 @@ def mcp_remove(
         bool,
         typer.Option("--codex", help="Remove from Codex via 'codex mcp remove'."),
     ] = False,
+    gemini: Annotated[
+        bool,
+        typer.Option("--gemini", help="Remove from Gemini CLI via 'gemini mcp remove'."),
+    ] = False,
     auggie: Annotated[
         bool,
         typer.Option("--auggie", help="Remove from Auggie via 'auggie mcp remove'."),
@@ -546,14 +568,14 @@ def mcp_remove(
     Pass -y / --force to skip all confirmation prompts.
 
     Multiple agent flags may be combined; agents are processed in order:
-    Claude → Codex → Auggie → OpenCode.
+    Claude → Codex → Gemini → Auggie → OpenCode.
     """
-    agent_flags = [claude, codex, auggie, opencode]
+    agent_flags = [claude, codex, gemini, auggie, opencode]
 
     if not any(agent_flags):
         cli_logger.warning(
             "No agent flags specified — pass one or more of "
-            "--claude, --codex, --auggie, --opencode"
+            "--claude, --codex, --gemini, --auggie, --opencode"
         )
         raise typer.Exit(exit_codes.SUCCESS)
 
@@ -580,6 +602,15 @@ def mcp_remove(
         outcomes.append(("Codex", status, detail))
         if status == "removed":
             remove_codex_skill_md(plugin_schema.name, plugin_dir)
+
+    if gemini:
+        status, detail = remove_cli_agent_by_name(
+            "Gemini CLI", plugin_schema.name, "gemini", run_gemini_mcp_remove,
+            force=force,
+        )
+        outcomes.append(("Gemini CLI", status, detail))
+        if status == "removed":
+            remove_gemini_skill_md(plugin_dir)
 
     if auggie:
         status, detail = remove_cli_agent_by_name(

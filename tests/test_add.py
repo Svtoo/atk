@@ -6,7 +6,13 @@ import pytest
 import yaml
 from typer.testing import CliRunner
 
-from atk.add import AddCancelledError, AddSourceType, add_plugin, detect_source_type, load_plugin_schema
+from atk.add import (
+    AddCancelledError,
+    AddSourceType,
+    add_plugin,
+    detect_source_type,
+    load_plugin_schema,
+)
 from atk.cli import app
 from atk.exit_codes import DOCKER_ERROR, HOME_NOT_INITIALIZED, PLUGIN_INVALID, SUCCESS
 from atk.git import ATK_REF_FILE, read_atk_ref
@@ -369,7 +375,6 @@ class TestAddPlugin:
         with pytest.raises(ValueError, match="not initialized"):
             add_plugin(str(source), atk_home, noop_prompt)
 
-
     def test_add_local_plugin_does_not_write_atk_ref(self, tmp_path: Path) -> None:
         """Verify adding a local plugin does NOT create .atk-ref file."""
         # Given
@@ -388,13 +393,11 @@ class TestAddPlugin:
         assert not ref_path.exists()
 
 
-
-
 class TestAddRegistryPlugin:
     """Tests for adding plugins from the registry."""
 
     def test_add_registry_plugin_copies_files_and_updates_manifest(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+            self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
     ) -> None:
         """Verify adding a registry plugin fetches files and records source info."""
         # Given
@@ -423,7 +426,7 @@ class TestAddRegistryPlugin:
         assert manifest.plugins[0].source.ref == registry.commit_hash
 
     def test_add_registry_plugin_not_found_raises(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+            self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
     ) -> None:
         """Verify adding a nonexistent registry plugin raises PluginNotFoundError."""
         # Given
@@ -438,7 +441,7 @@ class TestAddRegistryPlugin:
             add_plugin(nonexistent_name, atk_home, noop_prompt)
 
     def test_add_registry_plugin_no_gitignore_exemption(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+            self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
     ) -> None:
         """Verify registry plugins do NOT get gitignore exemptions (only local plugins do)."""
         # Given
@@ -461,9 +464,8 @@ class TestAddRegistryPlugin:
         assert "plugins/*/*" in gitignore_content
         assert "!plugins/*/custom/" in gitignore_content
 
-
     def test_add_registry_plugin_writes_atk_ref(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+            self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
     ) -> None:
         """Verify adding a registry plugin writes .atk-ref with the commit hash."""
         # Given
@@ -483,13 +485,11 @@ class TestAddRegistryPlugin:
         assert actual_ref == registry.commit_hash
 
 
-
-
 class TestAddGitPlugin:
     """Tests for adding plugins from git repos with .atk/ convention."""
 
     def test_add_git_plugin_copies_files_and_updates_manifest(
-        self, tmp_path: Path,
+            self, tmp_path: Path,
     ) -> None:
         """Verify adding a git plugin fetches .atk/ files and records source info."""
         # Given
@@ -518,7 +518,7 @@ class TestAddGitPlugin:
         assert manifest.plugins[0].source.ref == repo.commit_hash
 
     def test_add_git_plugin_duplicate_raises(
-        self, tmp_path: Path,
+            self, tmp_path: Path,
     ) -> None:
         """Verify adding the same git plugin twice raises ValueError."""
         # Given
@@ -532,7 +532,7 @@ class TestAddGitPlugin:
             add_plugin(repo.url, atk_home, noop_prompt)
 
     def test_add_git_plugin_missing_atk_dir_raises(
-        self, tmp_path: Path,
+            self, tmp_path: Path,
     ) -> None:
         """Verify adding a git repo without .atk/ raises GitPluginNotFoundError."""
         # Given
@@ -545,7 +545,7 @@ class TestAddGitPlugin:
             add_plugin(repo.url, atk_home, noop_prompt)
 
     def test_add_git_plugin_no_gitignore_exemption(
-        self, tmp_path: Path,
+            self, tmp_path: Path,
     ) -> None:
         """Verify git plugins do NOT get gitignore exemptions (only local plugins do)."""
         # Given
@@ -562,9 +562,8 @@ class TestAddGitPlugin:
         gitignore_content = gitignore_path.read_text()
         assert f"!plugins/{expected_dir}/" not in gitignore_content
 
-
     def test_add_git_plugin_writes_atk_ref(
-        self, tmp_path: Path,
+            self, tmp_path: Path,
     ) -> None:
         """Verify adding a git plugin writes .atk-ref with the commit hash."""
         # Given
@@ -580,8 +579,6 @@ class TestAddGitPlugin:
         plugin_path = atk_home / "plugins" / expected_dir
         actual_ref = read_atk_ref(plugin_path)
         assert actual_ref == repo.commit_hash
-
-
 
 
 class TestAddCLI:

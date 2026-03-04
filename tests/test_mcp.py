@@ -20,6 +20,7 @@ from atk.mcp_agents import (
     build_auggie_mcp_config,
     build_claude_mcp_config,
     build_codex_mcp_config,
+    build_gemini_mcp_config,
     build_opencode_mcp_config,
 )
 from atk.mcp_configure import (
@@ -268,13 +269,13 @@ def test_generate_mcp_config_dotenv_value_takes_precedence_over_default(tmp_path
     assert var_name not in result.missing_vars
 
 
-def test_generate_mcp_config_marks_not_set_when_no_value_and_no_default(tmp_path: Path) -> None:
-    """A var with no .env value and no declared default is marked NOT_SET in env and tracked in missing_vars."""
+def test_generate_mcp_config_marks_not_set_when_required_var_has_no_value(tmp_path: Path) -> None:
+    """A required var with no .env value and no default is marked NOT_SET in env and tracked in missing_vars."""
     # Given
     var_name = "API_KEY"
     plugin = _make_stdio_plugin(
         mcp_env=[var_name],
-        env_vars=[EnvVarConfig(name=var_name)],  # no default
+        env_vars=[EnvVarConfig(name=var_name, required=True)],  # required, no default
     )
     plugin_dir = tmp_path / "test-plugin"
     plugin_dir.mkdir()
@@ -285,6 +286,56 @@ def test_generate_mcp_config_marks_not_set_when_no_value_and_no_default(tmp_path
     # Then
     assert result.env[var_name] == "<NOT_SET>"
     assert var_name in result.missing_vars
+    assert var_name not in result.optional_unset_vars
+
+
+def test_generate_mcp_config_omits_optional_unset_var_from_env(tmp_path: Path) -> None:
+    """An optional var with no .env value and no default is omitted from env and tracked in optional_unset_vars."""
+    # Given
+    var_name = "GITHUB_HOST"
+    plugin = _make_stdio_plugin(
+        mcp_env=[var_name],
+        env_vars=[EnvVarConfig(name=var_name, required=False)],  # optional, no default
+    )
+    plugin_dir = tmp_path / "test-plugin"
+    plugin_dir.mkdir()
+
+    # When
+    result = generate_mcp_config(plugin, plugin_dir, "test-plugin")
+
+    # Then — optional unset var must not pollute env or appear as NOT_SET
+    assert var_name not in result.env
+    assert var_name not in result.missing_vars
+    assert var_name in result.optional_unset_vars
+
+
+def test_format_mcp_plaintext_shows_optional_unset_vars_as_note(tmp_path: Path) -> None:
+    """Optional unset vars appear as a dim 'not set (optional, omitted)' note in plaintext; NOT_SET is never shown."""
+    # Given
+    set_var_name = "GITHUB_TOKEN"
+    set_var_value = "ghp_secret"
+    optional_var_name = "GITHUB_HOST"
+    plugin = _make_stdio_plugin(
+        command="npx",
+        mcp_env=[set_var_name, optional_var_name],
+        env_vars=[
+            EnvVarConfig(name=set_var_name, required=True),
+            EnvVarConfig(name=optional_var_name, required=False),
+        ],
+    )
+    plugin_dir = tmp_path / "plugin"
+    _write_env_file(plugin_dir, {set_var_name: set_var_value})
+    mcp_config = generate_mcp_config(plugin, plugin_dir, "test-plugin")
+
+    # When
+    rendered = _render_plaintext(mcp_config)
+
+    # Then
+    assert f"{set_var_name}={set_var_value}" in rendered
+    assert "not set (optional, omitted)" in rendered
+    assert optional_var_name in rendered
+    assert "<NOT_SET>" not in rendered
+
 
 
 # ---------------------------------------------------------------------------
@@ -343,15 +394,15 @@ def test_generate_mcp_config_substitutes_braces_env_var_in_args(tmp_path: Path) 
     assert result.args == expected_args
 
 
-def test_generate_mcp_config_leaves_not_set_var_unexpanded_in_args(tmp_path: Path) -> None:
-    """If a $VAR reference in args maps to a NOT_SET var, leave it unchanged."""
+def test_generate_mcp_config_leaves_required_unset_var_unexpanded_in_args(tmp_path: Path) -> None:
+    """If a $VAR reference in args maps to a required NOT_SET var, leave it unchanged."""
     # Given
     var_name = "MISSING_URL"
     plugin = _make_stdio_plugin(
         command="npx",
         args=["--url", f"${var_name}/mcp"],
         mcp_env=[var_name],
-        env_vars=[EnvVarConfig(name=var_name)],  # no default
+        env_vars=[EnvVarConfig(name=var_name, required=True)],  # required, no default
     )
     plugin_dir = tmp_path / "test-plugin"
     plugin_dir.mkdir()
@@ -359,10 +410,11 @@ def test_generate_mcp_config_leaves_not_set_var_unexpanded_in_args(tmp_path: Pat
     # When
     result = generate_mcp_config(plugin, plugin_dir, "test-plugin")
 
-    # Then — unresolvable var stays as the literal $VAR string
+    # Then — unresolvable required var stays as the literal $VAR string in args
     assert isinstance(result, StdioMcpConfig)
     assert result.args == ["--url", f"${var_name}/mcp"]
     assert var_name in result.missing_vars
+    assert var_name not in result.optional_unset_vars
 
 
 # ---------------------------------------------------------------------------
@@ -1138,6 +1190,126 @@ def test_run_auggie_mcp_remove_calls_correct_argv(monkeypatch) -> None:
     # Then
     assert code == 0
     assert captured_args == [["auggie", "mcp", "remove", plugin_name]]
+
+
+# ---------------------------------------------------------------------------
+# build_gemini_mcp_config — unit tests
+# ---------------------------------------------------------------------------
+
+def test_build_gemini_mcp_config_stdio_minimal(tmp_path: Path) -> None:
+    """Minimal stdio: argv has correct shape with name and command."""
+    # Given
+    plugin_name = "my-plugin"
+    command = "uv"
+    plugin = _make_stdio_plugin(name=plugin_name, command=command)
+    plugin_dir = tmp_path / "plugin"
+    plugin_dir.mkdir()
+    mcp_config = generate_mcp_config(plugin, plugin_dir, plugin_name)
+
+    # When
+    result = build_gemini_mcp_config(mcp_config)
+
+    # Then
+    assert result.argv == ["gemini", "mcp", "add", "--scope", "user", plugin_name, command]
+
+
+def test_build_gemini_mcp_config_stdio_with_args(tmp_path: Path) -> None:
+    """Stdio plugin with args: all args appended positionally after command."""
+    # Given
+    plugin_name = "my-plugin"
+    command = "uv"
+    plugin_args = ["run", "--directory", "/some/path", "server.py"]
+    plugin = _make_stdio_plugin(name=plugin_name, command=command, args=plugin_args)
+    plugin_dir = tmp_path / "plugin"
+    plugin_dir.mkdir()
+    mcp_config = generate_mcp_config(plugin, plugin_dir, plugin_name)
+
+    # When
+    result = build_gemini_mcp_config(mcp_config)
+
+    # Then
+    assert result.argv == [
+        "gemini", "mcp", "add", "--scope", "user",
+        plugin_name, command, *plugin_args,
+    ]
+
+
+def test_build_gemini_mcp_config_stdio_with_env_vars(tmp_path: Path) -> None:
+    """Set env vars each become a separate -e KEY=VAL flag."""
+    # Given
+    plugin_name = "my-plugin"
+    command = "uv"
+    var_name = "API_KEY"
+    var_value = "secret-123"
+    plugin = _make_stdio_plugin(name=plugin_name, command=command, mcp_env=[var_name])
+    plugin_dir = tmp_path / "plugin"
+    _write_env_file(plugin_dir, {var_name: var_value})
+    mcp_config = generate_mcp_config(plugin, plugin_dir, plugin_name)
+
+    # When
+    result = build_gemini_mcp_config(mcp_config)
+
+    # Then
+    assert result.argv == [
+        "gemini", "mcp", "add", "--scope", "user",
+        "-e", f"{var_name}={var_value}",
+        plugin_name, command,
+    ]
+
+
+def test_build_gemini_mcp_config_sse(tmp_path: Path) -> None:
+    """SSE plugin: --transport sse inserted and URL placed as positional."""
+    # Given
+    plugin_name = "my-plugin"
+    endpoint = "http://localhost:8080/mcp"
+    plugin = _make_sse_plugin(name=plugin_name, endpoint=endpoint)
+    plugin_dir = tmp_path / "plugin"
+    plugin_dir.mkdir()
+    mcp_config = generate_mcp_config(plugin, plugin_dir, plugin_name)
+
+    # When
+    result = build_gemini_mcp_config(mcp_config)
+
+    # Then
+    assert result.argv == [
+        "gemini", "mcp", "add", "--transport", "sse", "--scope", "user",
+        plugin_name, endpoint,
+    ]
+
+
+def test_build_gemini_mcp_config_scope_defaults_to_user(tmp_path: Path) -> None:
+    """Default scope is 'project' — --scope project always present when no scope given."""
+    # Given
+    plugin_name = "my-plugin"
+    plugin = _make_stdio_plugin(name=plugin_name)
+    plugin_dir = tmp_path / "plugin"
+    plugin_dir.mkdir()
+    mcp_config = generate_mcp_config(plugin, plugin_dir, plugin_name)
+
+    # When
+    result = build_gemini_mcp_config(mcp_config)
+
+    # Then
+    scope_index = result.argv.index("--scope")
+    assert result.argv[scope_index + 1] == "user"
+
+
+def test_build_gemini_mcp_config_custom_scope(tmp_path: Path) -> None:
+    """Passing scope='user' produces --scope user in the argv."""
+    # Given
+    plugin_name = "my-plugin"
+    custom_scope = "user"
+    plugin = _make_stdio_plugin(name=plugin_name)
+    plugin_dir = tmp_path / "plugin"
+    plugin_dir.mkdir()
+    mcp_config = generate_mcp_config(plugin, plugin_dir, plugin_name)
+
+    # When
+    result = build_gemini_mcp_config(mcp_config, scope=custom_scope)
+
+    # Then
+    scope_index = result.argv.index("--scope")
+    assert result.argv[scope_index + 1] == custom_scope
 
 
 # ---------------------------------------------------------------------------

@@ -13,12 +13,18 @@ from rich.console import Console
 
 from atk import cli_logger
 from atk.agents.auggie_skill import inject_skill_symlink, remove_skill_symlink
+from atk.agents.auggie_skill import skill_symlink_info as auggie_symlink_info
 from atk.agents.claude_skill import inject_skill_reference, remove_skill_reference
 from atk.agents.codex_skill import inject_skill_directive, remove_skill_directive
+from atk.agents.gemini_skill import inject_skill_symlink as inject_gemini_symlink
+from atk.agents.gemini_skill import remove_skill_symlink as remove_gemini_symlink
+from atk.agents.gemini_skill import skill_symlink_info as gemini_symlink_info
 from atk.agents.opencode_skill import inject_skill_instruction, remove_opencode_plugin
 from atk.commands.preconditions import stdin_prompt
 from atk.mcp_agents import AgentMcpConfig, OpenCodeMcpConfig
-from atk.mcp_configure import run_opencode_mcp_add
+from atk.mcp_configure import (
+    run_opencode_mcp_add,
+)
 
 console = Console()
 
@@ -146,29 +152,41 @@ def inject_claude_skill_md(plugin_dir: Path, *, force: bool = False) -> None:
         cli_logger.info("SKILL.md already referenced in ~/.claude/CLAUDE.md")
 
 
-def inject_auggie_skill_md(plugin_dir: Path, *, force: bool = False) -> None:
-    """Offer to inject the plugin's SKILL.md as a symlink in ~/.augment/rules/."""
+def _inject_symlink_skill_md(
+    label: str,
+    plugin_dir: Path,
+    inject_fn: Callable[[str, Path], bool],
+    symlink_info_fn: Callable[[str, Path], tuple[Path, Path]],
+    *,
+    force: bool = False,
+) -> None:
+    """Offer to create an ATK-managed symlink for a plugin's SKILL.md.
+
+    Generic helper shared by all symlink-based agent skill injectors (Auggie,
+    Gemini CLI).  *symlink_info_fn* encapsulates the agent-specific naming
+    convention and target resolution so this function stays agent-agnostic.
+    """
     skill_path = plugin_dir / "SKILL.md"
     if not skill_path.exists():
         return
-    symlink_name = f"atk-{plugin_dir.name}.md"
-    console.print(
-        f"\n[Auggie] Will create symlink:\n"
-        f"  ~/.augment/rules/{symlink_name} → {skill_path.resolve()}\n"
-    )
+    symlink, target = symlink_info_fn(plugin_dir.name, skill_path)
+    console.print(f"\n[{label}] Will create symlink:\n  {symlink} → {target}\n")
     if not force and stdin_prompt("Proceed? [y/N] ").strip().lower() != "y":
         return
     try:
-        injected = inject_skill_symlink(plugin_dir.name, skill_path)
+        injected = inject_fn(plugin_dir.name, skill_path)
     except FileExistsError:
-        cli_logger.error(
-            f"~/.augment/rules/{symlink_name} exists and is not a symlink managed by ATK"
-        )
+        cli_logger.error(f"{symlink} exists and is not a symlink managed by ATK")
         return
     if injected:
-        cli_logger.success(f"Created skill symlink ~/.augment/rules/{symlink_name}")
+        cli_logger.success(f"Created skill symlink {symlink}")
     else:
-        cli_logger.info(f"Skill symlink ~/.augment/rules/{symlink_name} already up to date")
+        cli_logger.info(f"Skill symlink {symlink} already up to date")
+
+
+def inject_auggie_skill_md(plugin_dir: Path, *, force: bool = False) -> None:
+    """Offer to inject the plugin's SKILL.md as a symlink in ~/.augment/rules/."""
+    _inject_symlink_skill_md("Auggie", plugin_dir, inject_skill_symlink, auggie_symlink_info, force=force)
 
 
 def inject_codex_skill_md(plugin_name: str, plugin_dir: Path, *, force: bool = False) -> None:
@@ -187,6 +205,11 @@ def inject_codex_skill_md(plugin_name: str, plugin_dir: Path, *, force: bool = F
         cli_logger.success("Added SKILL.md read-directive to ~/.codex/AGENTS.md")
     else:
         cli_logger.info("SKILL.md read-directive already present in ~/.codex/AGENTS.md")
+
+
+def inject_gemini_skill_md(plugin_dir: Path, *, force: bool = False) -> None:
+    """Offer to inject the plugin's SKILL.md as a symlink in ~/.gemini/skills/."""
+    _inject_symlink_skill_md("Gemini CLI", plugin_dir, inject_gemini_symlink, gemini_symlink_info, force=force)
 
 
 def inject_opencode_skill_md(plugin_dir: Path, *, force: bool = False) -> None:
@@ -222,14 +245,27 @@ def remove_claude_skill_md(plugin_dir: Path) -> None:
         cli_logger.info("SKILL.md reference not found in ~/.claude/CLAUDE.md")
 
 
+def _remove_symlink_skill_md(
+    remove_fn: Callable[[str], bool],
+    plugin_name: str,
+    symlink: Path,
+) -> None:
+    """Log the result of removing an ATK-managed skill symlink.
+
+    Generic helper shared by all symlink-based agent skill removers (Auggie,
+    Gemini CLI).
+    """
+    removed = remove_fn(plugin_name)
+    if removed:
+        cli_logger.success(f"Removed skill symlink {symlink}")
+    else:
+        cli_logger.info(f"Skill symlink {symlink} not found")
+
+
 def remove_auggie_skill_md(plugin_dir: Path) -> None:
     """Remove the plugin's SKILL.md symlink from ~/.augment/rules/."""
-    symlink_name = f"atk-{plugin_dir.name}.md"
-    removed = remove_skill_symlink(plugin_dir.name)
-    if removed:
-        cli_logger.success(f"Removed skill symlink ~/.augment/rules/{symlink_name}")
-    else:
-        cli_logger.info(f"Skill symlink ~/.augment/rules/{symlink_name} not found")
+    symlink, _ = auggie_symlink_info(plugin_dir.name, plugin_dir / "SKILL.md")
+    _remove_symlink_skill_md(remove_skill_symlink, plugin_dir.name, symlink)
 
 
 def remove_codex_skill_md(plugin_name: str, plugin_dir: Path) -> None:
@@ -242,6 +278,12 @@ def remove_codex_skill_md(plugin_name: str, plugin_dir: Path) -> None:
         cli_logger.success("Removed SKILL.md read-directive from ~/.codex/AGENTS.md")
     else:
         cli_logger.info("SKILL.md read-directive not found in ~/.codex/AGENTS.md")
+
+
+def remove_gemini_skill_md(plugin_dir: Path) -> None:
+    """Remove the plugin's SKILL.md symlink from ~/.gemini/skills/."""
+    symlink, _ = gemini_symlink_info(plugin_dir.name, plugin_dir / "SKILL.md")
+    _remove_symlink_skill_md(remove_gemini_symlink, plugin_dir.name, symlink)
 
 
 def remove_opencode_skill_md(plugin_name: str, plugin_dir: Path) -> None:

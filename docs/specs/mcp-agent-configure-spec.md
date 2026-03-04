@@ -1,6 +1,6 @@
 # MCP Agent Configuration
 
-> **Status**: MCP registration implemented for all four agents. Skill injection implemented for Claude Code only. Codex/Auggie/OpenCode skill injection and `atk mcp remove` pending.
+> **Status**: MCP registration and skill injection implemented for all five agents (Claude, Codex, Gemini, Auggie, OpenCode).
 
 ## Overview
 
@@ -11,11 +11,11 @@ When the user adds an ATK plugin, they typically want all their coding tools con
 ## User Interface
 
 ```
-atk mcp <plugin> [--claude] [--codex] [--auggie] [--opencode]
-atk mcp remove <plugin> [--claude] [--codex] [--auggie] [--opencode]
+atk mcp <plugin> [--claude] [--codex] [--gemini] [--auggie] [--opencode]
+atk mcp remove <plugin> [--claude] [--codex] [--gemini] [--auggie] [--opencode]
 ```
 
-Multiple agent flags may be passed simultaneously. ATK processes them in a fixed order: Claude, Codex, Auggie, OpenCode.
+Multiple agent flags may be passed simultaneously. ATK processes them in a fixed order: Claude, Codex, Gemini, Auggie, OpenCode.
 
 **Examples:**
 
@@ -23,17 +23,17 @@ Multiple agent flags may be passed simultaneously. ATK processes them in a fixed
 # Configure Claude Code only (MCP + skill)
 atk mcp openmemory --claude
 
-# Configure Claude and Codex together
-atk mcp openmemory --claude --codex
+# Configure Claude and Gemini together
+atk mcp openmemory --claude --gemini
 
-# Configure all four agents at once
-atk mcp openmemory --claude --codex --auggie --opencode
+# Configure all five agents at once
+atk mcp openmemory --claude --codex --gemini --auggie --opencode
 
 # Remove from a specific agent
-atk mcp remove openmemory --claude
+atk mcp remove openmemory --gemini
 
 # Remove from all agents
-atk mcp remove openmemory --claude --codex --auggie --opencode
+atk mcp remove openmemory --claude --codex --gemini --auggie --opencode
 ```
 
 Passing no agent flags preserves the existing behavior: ATK prints the MCP configuration as plaintext (or JSON with `--json`) for the user to copy manually.
@@ -84,6 +84,7 @@ This matters because ATK does not track which agents have been configured for a 
 Each agent below uses whatever reference mechanism it natively supports:
 - **Claude Code** — `@/abs/path` file-include syntax (native)
 - **Codex** — natural-language read directive pointing to the absolute path (Codex reads the file as an agent action; no native include syntax exists)
+- **Gemini CLI** — symlink in `~/.gemini/skills/` pointing to the directory containing SKILL.md
 - **Auggie** — symlink in `~/.augment/rules/` pointing to the installed SKILL.md
 - **OpenCode** — absolute path in the `instructions` array (native)
 
@@ -138,6 +139,28 @@ Read /absolute/path/to/SKILL.md for instructions on using the <plugin-name> MCP 
 ```
 
 Because Codex is an agent with file-reading capability, it follows this directive at session start and loads the live file content. The SKILL.md is never copied — only its absolute path is stored, so plugin updates are reflected automatically. The file and its parent directory are created if they do not exist.
+
+---
+
+### Gemini CLI
+
+**Mechanism:** `gemini mcp add` CLI.
+
+**Scope:** Defaults to `--scope project` (local configuration in the current workspace). ATK uses the default (`project`).
+
+**Stdio transport:**
+```
+gemini mcp add [--scope user/project] [-e KEY=VAL ...] <plugin-name> <command> [args...]
+```
+
+**SSE transport:**
+```
+gemini mcp add --transport sse [--scope user/project] [-e KEY=VAL ...] <plugin-name> <url>
+```
+
+Env vars are passed as individual `-e KEY=VAL` flags, one per variable. Only variables with resolved values are included.
+
+**Skill injection:** ATK creates a **symlink** at `~/.gemini/skills/atk-<plugin-name>` pointing to the directory containing the plugin's `SKILL.md`. Gemini CLI automatically discovers all skills in that directory at startup. Like Auggie, using a symlink ensures that updates via `atk upgrade` are reflected immediately.
 
 ---
 
@@ -196,7 +219,7 @@ Note: OpenCode uses `environment` (not `env`) for environment variables, and `co
 
 ## Removal
 
-`atk mcp remove <plugin> [--claude] [--codex] [--auggie] [--opencode]` undoes what `atk mcp` configured: it removes both the MCP server registration and the skill injection for each selected agent. Like the configure command, it asks for confirmation before acting on each agent.
+`atk mcp remove <plugin> [--claude] [--codex] [--gemini] [--auggie] [--opencode]` undoes what `atk mcp` configured: it removes both the MCP server registration and the skill injection for each selected agent. Like the configure command, it asks for confirmation before acting on each agent.
 
 If a flag is omitted, that agent is untouched. No flag means nothing is removed (the command is a no-op with a warning).
 
@@ -209,6 +232,11 @@ If a flag is omitted, that agent is untouched. No flag means nothing is removed 
 
 1. Run `codex mcp remove <plugin-name>` to deregister the MCP server.
 2. Remove the read-directive line for this plugin from the ATK-managed section in `~/.codex/AGENTS.md`. If the section becomes empty after removal, ATK leaves the (now empty) section in place.
+
+### Gemini CLI
+
+1. Run `gemini mcp remove --scope project <plugin-name>` to deregister the MCP server.
+2. Delete the symlink `~/.gemini/skills/atk-<plugin-name>` (the SKILL.md target is left untouched).
 
 ### Auggie
 

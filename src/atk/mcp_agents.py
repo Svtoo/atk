@@ -60,6 +60,42 @@ def build_claude_mcp_config(config: McpConfig, scope: str = "user") -> AgentMcpC
     return AgentMcpConfig(argv=argv)
 
 
+def build_gemini_mcp_config(config: McpConfig, scope: str = "user") -> AgentMcpConfig:
+    """Build the agent config for ``gemini mcp add`` from an McpConfig.
+
+    Gemini's ``mcp add`` command syntax:
+    ``gemini mcp add [--scope user/project] [--env K=V ...] <name> <cmd/url> [args...]``
+
+    Args:
+        config: The resolved MCP config from generate_mcp_config().
+        scope:  Gemini scope ('user' or 'project'). Defaults to 'user'.
+
+    Returns:
+        AgentMcpConfig with the full argv for subprocess.run().
+    """
+    argv: list[str] = ["gemini", "mcp", "add"]
+
+    if isinstance(config, SseMcpConfig):
+        argv += ["--transport", "sse"]
+
+    argv += ["--scope", scope]
+
+    # One -e KEY=VAL per resolved variable; skip unset ones.
+    for key, val in config.env.items():
+        if val != NOT_SET:
+            argv += ["-e", f"{key}={val}"]
+
+    argv.append(config.identifier)
+
+    if isinstance(config, SseMcpConfig):
+        argv.append(config.url)
+    elif isinstance(config, StdioMcpConfig):
+        argv.append(config.command)
+        argv.extend(config.args)
+
+    return AgentMcpConfig(argv=argv)
+
+
 def build_codex_mcp_config(config: McpConfig) -> AgentMcpConfig:
     """Build the agent config for ``codex mcp add`` from an McpConfig.
 

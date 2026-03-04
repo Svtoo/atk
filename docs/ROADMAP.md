@@ -22,7 +22,7 @@
 | 5     | Polish               | ⏳      | Error messages, help text, documentation    |
 | 6     | Community            | 🔄     | PyPI, contribution guide, CI/CD             |
 | 7     | AI Agent Integration | ⏳      | MCP server, agent-friendly output           |
-| 8     | MCP Management       | ⏳      | Auto-install to Claude Code, Codex, etc.    |
+| 8     | MCP Management       | ✅      | Auto-install to Claude Code, Codex, Gemini, etc. |
 | 9     | Data Backup          | ⏳      | Backup/restore plugin data                  |
 | 10    | Rules/Skills         | ⏳      | Agent.md management                         |
 
@@ -65,9 +65,10 @@ Publish to PyPI. Contribution guide. CI/CD for registry.
 
 MCP server for AI agent control. Agent-friendly documentation. Structured JSON output.
 
-### Phase 8: MCP Management ⏳
+### Phase 8: MCP Management ✅
 
-Auto-install managed MCP to Claude Code, Codex, Gemini CLI, etc.
+- [x] Auto-install managed MCP to Claude Code, Codex, Gemini CLI, etc.
+
 
 ### Phase 9: Data Backup ⏳
 

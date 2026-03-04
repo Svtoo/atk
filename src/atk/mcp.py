@@ -27,10 +27,11 @@ class McpConfig(ABC):
     directly; this base class is never instantiated on its own.
     """
 
-    identifier: str       # Key used in MCP JSON output and agent CLI commands
-    plugin_name: str      # Display name from the plugin schema
-    env: dict[str, str]   # Resolved env vars; NOT_SET sentinel for vars with no value and no default
-    missing_vars: list[str]  # Names of variables that could not be resolved
+    identifier: str              # Key used in MCP JSON output and agent CLI commands
+    plugin_name: str             # Display name from the plugin schema
+    env: dict[str, str]          # Resolved env vars; NOT_SET sentinel for required vars with no value
+    missing_vars: list[str]      # Required vars that have no value (appear as NOT_SET in env)
+    optional_unset_vars: list[str]  # Optional vars with no value; omitted from env and JSON entirely
 
     @abstractmethod
     def to_mcp_dict(self) -> dict[str, Any]:
@@ -119,7 +120,15 @@ def generate_mcp_config(
 
     Substitutes $ATK_PLUGIN_DIR and ${ATK_PLUGIN_DIR} in command and args.
     Resolves environment variables from the plugin's .env file and declared
-    defaults; marks unresolvable variables with NOT_SET.
+    defaults.
+
+    Required vars with no value are marked NOT_SET in the env dict and tracked
+    in missing_vars — they appear in both plaintext and JSON output so the user
+    can see exactly what is broken.
+
+    Optional vars with no value are omitted from the env dict entirely (and
+    therefore from JSON output) and tracked in optional_unset_vars for display
+    in the plaintext view only.
 
     Args:
         plugin: The plugin schema.
@@ -138,15 +147,19 @@ def generate_mcp_config(
 
     env: dict[str, str] = {}
     missing_vars: list[str] = []
+    optional_unset_vars: list[str] = []
     if mcp.env:
         env_var_defaults = {ev.name: ev.default for ev in plugin.env_vars if ev.default is not None}
+        env_var_required = {ev.name: ev.required for ev in plugin.env_vars}
         for var_name in mcp.env:
             value = env_values.get(var_name) or env_var_defaults.get(var_name)
             if value:
                 env[var_name] = value
-            else:
+            elif env_var_required.get(var_name, True):
                 env[var_name] = NOT_SET
                 missing_vars.append(var_name)
+            else:
+                optional_unset_vars.append(var_name)
 
     if mcp.transport == "stdio":
         if not mcp.command:
@@ -163,6 +176,7 @@ def generate_mcp_config(
             ],
             env=env,
             missing_vars=missing_vars,
+            optional_unset_vars=optional_unset_vars,
         )
 
     # sse
@@ -176,6 +190,7 @@ def generate_mcp_config(
         url=mcp.endpoint,
         env=env,
         missing_vars=missing_vars,
+        optional_unset_vars=optional_unset_vars,
     )
 
 
@@ -202,7 +217,7 @@ def format_mcp_plaintext(config: McpConfig) -> str:
     elif isinstance(config, SseMcpConfig):
         lines.append(f"[bold]URL:[/bold]     {config.url}")
 
-    if config.env:
+    if config.env or config.optional_unset_vars:
         lines.append("")
         lines.append("[bold]Environment Variables:[/bold]")
         for key, val in config.env.items():
@@ -210,6 +225,8 @@ def format_mcp_plaintext(config: McpConfig) -> str:
                 lines.append(f"  {key}=[red]{val}[/red]")
             else:
                 lines.append(f"  {key}=[dim]{val}[/dim]")
+        for var_name in config.optional_unset_vars:
+            lines.append(f"  {var_name}=[dim]not set (optional, omitted)[/dim]")
 
     return "\n".join(lines)
 

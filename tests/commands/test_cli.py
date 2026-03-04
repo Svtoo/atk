@@ -1412,3 +1412,40 @@ def test_mcp_claude_handles_claude_not_found(
 
     # Then
     assert result.exit_code == exit_codes.GENERAL_ERROR
+
+
+# ---------------------------------------------------------------------------
+# Flat tests: atk mcp --gemini flag
+# ---------------------------------------------------------------------------
+
+
+def test_mcp_gemini_confirms_and_runs_subprocess(
+    create_plugin: PluginFactory, cli_runner
+) -> None:
+    """Confirm 'y' triggers subprocess.run with the correct gemini argv."""
+    # Given
+    plugin_name = "GeminiPlugin"
+    plugin_dir_name = "gemini-plugin"
+    mcp_command = "docker"
+    mcp_args = ["run", "my-mcp-server"]
+
+    create_plugin(
+        plugin_name,
+        plugin_dir_name,
+        mcp=McpPluginConfig(transport="stdio", command=mcp_command, args=mcp_args),
+    )
+
+    expected_argv = ["gemini", "mcp", "add", "--scope", "user", plugin_name, mcp_command] + mcp_args
+
+    # When
+    with (
+        patch("atk.commands.preconditions.is_git_available", return_value=True),
+        patch("atk.mcp_configure.subprocess.run", return_value=type("R", (), {"returncode": 0})()) as mock_run,
+    ):
+        result = cli_runner.invoke(app, ["mcp", "add", plugin_dir_name, "--gemini"], input="y\n")
+
+    # Then
+    assert result.exit_code == exit_codes.SUCCESS
+    mock_run.assert_called_once()
+    called_argv = mock_run.call_args[0][0]
+    assert called_argv == expected_argv
