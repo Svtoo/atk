@@ -27,7 +27,7 @@ class McpConfig(ABC):
 
     identifier: str       # Key used in MCP JSON output and agent CLI commands
     plugin_name: str      # Display name from the plugin schema
-    env: dict[str, str]   # Resolved env vars; NOT_SET sentinel for missing ones
+    env: dict[str, str]   # Resolved env vars; vars without a value are omitted (tracked in missing_vars)
     missing_vars: list[str]  # Names of variables that could not be resolved
 
     @abstractmethod
@@ -143,7 +143,8 @@ def generate_mcp_config(
             if value:
                 env[var_name] = value
             else:
-                env[var_name] = NOT_SET
+                # No value and no default — omit from env dict, track as missing.
+                # This prevents the literal string from being injected into MCP clients.
                 missing_vars.append(var_name)
 
     if mcp.transport == "stdio":

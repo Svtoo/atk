@@ -18,7 +18,7 @@ from atk.lifecycle import (
 )
 from atk.manifest_schema import PluginEntry, load_manifest, save_manifest
 from atk.plugin import load_plugin
-from atk.plugin_schema import PLUGIN_SCHEMA_VERSION
+from atk.plugin_schema import PLUGIN_SCHEMA_VERSION, McpPluginConfig, PluginSchema
 
 # Type alias for the plugin factory fixture
 PluginFactory = Callable[..., Path]
@@ -348,6 +348,70 @@ class TestGetPluginStatus:
         result = get_plugin_status(atk_home, "test-plugin")
 
         assert result.status == PluginStatus.UNKNOWN
+
+    def test_returns_mcp_only_for_stdio_mcp_plugin_without_lifecycle(
+        self, configure_atk_home, create_plugin: PluginFactory
+    ) -> None:
+        """Verify status is MCP_ONLY for a stdio MCP plugin with no lifecycle commands."""
+        # Given
+        atk_home = configure_atk_home()
+        plugin = PluginSchema(
+            schema_version=PLUGIN_SCHEMA_VERSION,
+            name="GitHub MCP",
+            description="GitHub integration via MCP",
+            mcp=McpPluginConfig(transport="stdio", command="npx", args=["-y", "@github/mcp-server"]),
+        )
+        create_plugin(plugin=plugin, directory="github-mcp")
+
+        # When
+        result = get_plugin_status(atk_home, "github-mcp")
+
+        # Then
+        assert result.status == PluginStatus.MCP_ONLY
+
+    def test_returns_running_for_sse_mcp_plugin_when_endpoint_reachable(
+        self, configure_atk_home, create_plugin: PluginFactory, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Verify status is RUNNING for an SSE MCP plugin whose endpoint responds."""
+        # Given
+        atk_home = configure_atk_home()
+        endpoint_url = "http://remote-mcp.example.com/sse"
+        plugin = PluginSchema(
+            schema_version=PLUGIN_SCHEMA_VERSION,
+            name="Remote MCP",
+            description="SSE MCP server",
+            mcp=McpPluginConfig(transport="sse", endpoint=endpoint_url),
+        )
+        create_plugin(plugin=plugin, directory="remote-mcp")
+        monkeypatch.setattr("atk.lifecycle.check_sse_reachable", lambda url, **kw: True)
+
+        # When
+        result = get_plugin_status(atk_home, "remote-mcp")
+
+        # Then
+        assert result.status == PluginStatus.RUNNING
+
+    def test_returns_stopped_for_sse_mcp_plugin_when_endpoint_unreachable(
+        self, configure_atk_home, create_plugin: PluginFactory, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Verify status is STOPPED for an SSE MCP plugin whose endpoint is down."""
+        # Given
+        atk_home = configure_atk_home()
+        endpoint_url = "http://remote-mcp.example.com/sse"
+        plugin = PluginSchema(
+            schema_version=PLUGIN_SCHEMA_VERSION,
+            name="Remote MCP",
+            description="SSE MCP server",
+            mcp=McpPluginConfig(transport="sse", endpoint=endpoint_url),
+        )
+        create_plugin(plugin=plugin, directory="remote-mcp")
+        monkeypatch.setattr("atk.lifecycle.check_sse_reachable", lambda url, **kw: False)
+
+        # When
+        result = get_plugin_status(atk_home, "remote-mcp")
+
+        # Then
+        assert result.status == PluginStatus.STOPPED
 
     def test_includes_plugin_name(
         self, configure_atk_home, create_plugin: PluginFactory

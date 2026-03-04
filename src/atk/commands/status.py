@@ -70,6 +70,8 @@ def print_status_table(results: list[PluginStatusResult]) -> None:
             status_str = "[green]running[/green]"
         elif result.status == PluginStatus.STOPPED:
             status_str = "[red]stopped[/red]"
+        elif result.status == PluginStatus.MCP_ONLY:
+            status_str = "[blue]mcp-only[/blue]"
         else:
             status_str = "[yellow]unknown[/yellow]"
 

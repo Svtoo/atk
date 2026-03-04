@@ -5,6 +5,8 @@ Handles running lifecycle commands defined in plugin.yaml.
 
 import os
 import subprocess
+import urllib.error
+import urllib.request
 from dataclasses import dataclass, field
 from enum import Enum
 from pathlib import Path
@@ -136,6 +138,7 @@ class PluginStatus(str, Enum):
     RUNNING = "running"
     STOPPED = "stopped"
     UNKNOWN = "unknown"
+    MCP_ONLY = "mcp-only"  # stdio MCP plugin — spawned on demand, no persistent service
 
 
 @dataclass
@@ -162,6 +165,30 @@ def is_port_listening(port: int) -> bool:
         capture_output=True,
     )
     return result.returncode == 0
+
+
+def check_sse_reachable(url: str, timeout: int = 3) -> bool:
+    """Check if an SSE endpoint URL is reachable.
+
+    Makes an HTTP GET request with a short timeout. Any HTTP response (including
+    4xx/5xx) means the server is up. Only connection failures return False.
+
+    Args:
+        url: The SSE endpoint URL to probe.
+        timeout: Seconds to wait before declaring unreachable (default 3).
+
+    Returns:
+        True if the server responded, False on connection error or timeout.
+    """
+    try:
+        urllib.request.urlopen(url, timeout=timeout)
+        return True
+    except urllib.error.HTTPError:
+        # Server responded with an error code — it's reachable.
+        return True
+    except Exception:
+        # Connection refused, timeout, DNS failure, etc.
+        return False
 
 
 def check_port_conflicts(plugin: PluginSchema) -> list[PortConflict]:
@@ -592,10 +619,23 @@ def get_plugin_status(atk_home: Path, identifier: str) -> PluginStatusResult:
 
     if plugin.lifecycle is None or plugin.lifecycle.status is None:
         ports = [PortStatus(port=p, listening=None) for p in raw_ports]
+
+        # Determine a more informative status for MCP-only plugins.
+        if plugin.mcp is not None:
+            if plugin.mcp.transport == "sse" and plugin.mcp.endpoint:
+                # Remote SSE server — probe the endpoint to get a real running/stopped status.
+                reachable = check_sse_reachable(plugin.mcp.endpoint)
+                mcp_status = PluginStatus.RUNNING if reachable else PluginStatus.STOPPED
+            else:
+                # stdio MCP — spawned on demand by the MCP client, no persistent service.
+                mcp_status = PluginStatus.MCP_ONLY
+        else:
+            mcp_status = PluginStatus.UNKNOWN
+
         return PluginStatusResult(
             name=plugin.name,
             directory=plugin_dir.name,
-            status=PluginStatus.UNKNOWN,
+            status=mcp_status,
             ports=ports,
             missing_required_vars=missing_required_vars,
             unset_optional_count=unset_optional_count,
