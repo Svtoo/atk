@@ -376,6 +376,30 @@ mcp:
 
 No `service`, no lifecycle — just `atk setup` then `atk mcp`.
 
+### Pattern: mcp.sh wrapper (runtime env-var substitution in args)
+
+ATK only substitutes `$ATK_PLUGIN_DIR` in `mcp.command`/`mcp.args`. If the MCP server takes **positional
+path arguments or CLI flags** (not env vars), a wrapper script (`mcp.sh`) is the correct pattern:
+
+```bash
+#!/bin/bash
+# mcp.sh — split ALLOWED_PATHS env var into positional args for the MCP server
+IFS=':' read -ra PATHS <<< "${ALLOWED_PATHS:-}"
+exec npx -y @modelcontextprotocol/server-filesystem "${PATHS[@]}"
+```
+
+```yaml
+mcp:
+  transport: stdio
+  command: bash
+  args: ["$ATK_PLUGIN_DIR/mcp.sh"]
+```
+
+**Optional env vars in wrapper scripts**: When a user skips an optional env var, ATK does **not**
+write anything to `.env` for it — the var is simply absent from the MCP process environment. Use a
+standard bash empty-check.
+
+
 ### Pattern: Docker service with MCP bridge
 
 ```yaml
@@ -626,6 +650,8 @@ atk remove <name> --force
 - [ ] `install.sh` uses `set -e`; `stop.sh` and `uninstall.sh` do NOT use `set -e`
 - [ ] Health endpoint returns HTTP 200 when healthy
 - [ ] `README.md` exists and covers: purpose, prerequisites, env vars, usage
+- [ ] MCP plugin: run the server, call `tools/list`, verify every tool in README exists in the response and no documented tool is missing or misnamed
+- [ ] Server-side feature (e.g. GitLab, GitHub Actions): check upstream docs **History** section; document minimum server version in Prerequisites
 - [ ] Tested: full lifecycle cycle (add → status → stop → start → uninstall → install → remove)
 - [ ] Build-from-source plugins: pinned to a specific tag or commit (not `main`/`latest`)
 - [ ] Registry plugins: `make validate` passes
