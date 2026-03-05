@@ -11,6 +11,10 @@ Install MCP servers and local AI services with one command. Wire them into every
 > **Install. Wire. Done.**
 > `atk add github` → `atk mcp add github --claude --codex --auggie`
 
+<p align="center">
+  <img src="assets/demo-hero.gif" alt="ATK: wire one MCP into multiple agents" width="700px">
+</p>
+
 ---
 
 ## The problem
@@ -103,6 +107,10 @@ $ atk search
 
 All registry plugins are reviewed, schema-validated, and versioned. Installed plugins are marked with `✓`. Search by keyword: `atk search memory`, `atk search git`.
 
+<p align="center">
+  <img src="assets/demo-search.gif" alt="atk search — live registry" width="700px">
+</p>
+
 ---
 
 ## Getting started
@@ -140,6 +148,10 @@ atk mcp show openmemory
 ```
 
 Your entire setup lives in `~/.atk/` — a git repository. Push it. Clone it on another machine. Run `atk install --all`. Everything comes back exactly as you left it.
+
+<p align="center">
+  <img src="assets/demo-status.gif" alt="atk status — live service dashboard" width="700px">
+</p>
 
 ---
 
@@ -331,39 +343,22 @@ The agent doesn’t just have access — it has instructions. You decide what th
 
 ### How to add ATK support to your repo
 
-Create a `.atk/` directory at your repo root:
+You don’t need to write the plugin files by hand. ATK ships a dedicated skill file that tells your coding agent exactly what to build: the schema, lifecycle scripts, `SKILL.md` conventions, testing protocol, and all three distribution patterns.
 
+**[ATK Plugin Creation Skill →](skills/create-atk-plugin/SKILL.md)**
+
+Feed it to your agent and ask:
+
+> *"Create an ATK plugin for [your tool name]. Follow the skill file."*
+
+The agent will produce a complete `plugin.yaml`, install and lifecycle scripts, `SKILL.md`, and `README.md` — ready to ship.
+
+Once the files are ready, test locally then share via your existing repo:
+
+```bash
+atk add ./.atk                       # install locally to test
+atk add github.com/you/your-repo     # users install from your git URL
 ```
-your-mcp-server/
-└── .atk/
-    ├── plugin.yaml      # required: describes install, env, MCP config
-    ├── install.sh       # optional: custom install logic
-    ├── SKILL.md         # optional but recommended: agent instructions
-    └── README.md        # optional: shown by `atk help your-mcp-server`
-```
-
-A minimal `plugin.yaml` for a stdio MCP server:
-
-```yaml
-schema_version: "2026-01-23"
-name: your-mcp-server
-description: What your server does in one sentence
-
-env_vars:
-  - name: YOUR_API_KEY
-    required: true
-    secret: true
-    description: API key for the service
-
-mcp:
-  transport: stdio
-  command: npx
-  args: ["-y", "@your-org/your-mcp-server"]
-  env:
-    - YOUR_API_KEY
-```
-
-ATK will prompt users for `YOUR_API_KEY` at install time, store it in a gitignored `.env` file, and inject it when launching the MCP server.
 
 ### Getting listed in the registry
 
