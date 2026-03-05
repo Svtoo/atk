@@ -12,9 +12,34 @@ import yaml
 from atk.registry import (
     PluginNotFoundError,
     RegistryFetchError,
+    fetch_registry_index,
     fetch_registry_plugin,
 )
 from tests.conftest import create_fake_registry, git_commit_all
+
+
+class TestFetchRegistryIndex:
+    """Tests for fetching the registry index.
+
+    Uses a local git repo so no network access is required.
+    """
+
+    def test_returns_index_with_all_plugins(self, tmp_path: Path) -> None:
+        """Returns a parsed index containing the plugins present in the registry."""
+        registry = create_fake_registry(tmp_path)
+        plugin_name = "test-plugin"
+        plugin_description = "A test plugin"
+
+        index = fetch_registry_index(registry_url=registry.url)
+
+        assert len(index.plugins) == 1
+        assert index.plugins[0].name == plugin_name
+        assert index.plugins[0].description == plugin_description
+
+    def test_unreachable_url_raises_registry_fetch_error(self) -> None:
+        """Raises RegistryFetchError when the registry URL is not reachable."""
+        with pytest.raises(RegistryFetchError):
+            fetch_registry_index(registry_url="https://nonexistent.invalid/repo")
 
 
 class TestFetchRegistryPlugin:

@@ -13,7 +13,7 @@ import yaml
 from pydantic import ValidationError
 
 from atk.errors import format_validation_errors
-from atk.git import get_commit_hash, sparse_checkout, sparse_clone
+from atk.git import get_commit_hash, git_ls_remote, sparse_checkout, sparse_clone
 from atk.registry_schema import RegistryIndexSchema, RegistryPluginEntry
 
 REGISTRY_URL = "https://github.com/Svtoo/atk-registry"
@@ -32,6 +32,76 @@ class FetchResult:
     """Result of fetching a plugin from the registry."""
 
     commit_hash: str
+
+
+def _clone_and_load_index(url: str, clone_dir: Path, ref: str) -> RegistryIndexSchema:
+    """Sparse-clone the registry and parse index.yaml.
+
+    Clones the registry at the given ref with only index.yaml checked out,
+    then parses and validates it. The clone_dir is provided by the caller
+    so it can remain alive for subsequent sparse-checkouts in the same session.
+
+    Args:
+        url: Git URL of the registry repo.
+        clone_dir: Directory to clone into (must not yet exist).
+        ref: Commit hash to clone at.
+
+    Returns:
+        Parsed RegistryIndexSchema.
+
+    Raises:
+        RegistryFetchError: If the clone fails, index.yaml is missing, or
+            the schema is invalid.
+    """
+    try:
+        sparse_clone(url, clone_dir, ref)
+        sparse_checkout(clone_dir, ["/index.yaml"])
+    except subprocess.CalledProcessError as e:
+        msg = f"Failed to clone registry from {url}: {e.stderr.decode()}"
+        raise RegistryFetchError(msg) from e
+
+    index_path = clone_dir / "index.yaml"
+    if not index_path.exists():
+        msg = "Registry does not contain index.yaml"
+        raise RegistryFetchError(msg)
+
+    index_data = yaml.safe_load(index_path.read_text())
+    try:
+        return RegistryIndexSchema.model_validate(index_data)
+    except ValidationError as e:
+        clean_errors = format_validation_errors(e)
+        msg = f"Invalid registry index: {clean_errors}"
+        raise RegistryFetchError(msg) from e
+
+
+def fetch_registry_index(registry_url: str | None = None) -> RegistryIndexSchema:
+    """Fetch and return the parsed registry index.
+
+    Resolves the registry HEAD, sparse-clones only index.yaml, and returns
+    the validated index. All network and parse errors are raised as
+    RegistryFetchError so callers only need to handle one exception type.
+
+    Args:
+        registry_url: Git URL of the registry repo. Defaults to REGISTRY_URL.
+
+    Returns:
+        Parsed RegistryIndexSchema.
+
+    Raises:
+        RegistryFetchError: If the registry is unreachable, clone fails,
+            index.yaml is missing, or the index schema is invalid.
+    """
+    url = registry_url or REGISTRY_URL
+
+    try:
+        ref = git_ls_remote(url)
+    except (subprocess.CalledProcessError, ValueError) as e:
+        msg = f"Failed to reach registry at {url}: {e}"
+        raise RegistryFetchError(msg) from e
+
+    with tempfile.TemporaryDirectory() as tmp:
+        clone_dir = Path(tmp) / "registry"
+        return _clone_and_load_index(url, clone_dir, ref)
 
 
 def fetch_registry_plugin(
@@ -63,25 +133,7 @@ def fetch_registry_plugin(
     with tempfile.TemporaryDirectory() as tmp:
         clone_dir = Path(tmp) / "registry"
 
-        try:
-            sparse_clone(url, clone_dir, ref)
-            sparse_checkout(clone_dir, ["/index.yaml"])
-        except subprocess.CalledProcessError as e:
-            msg = f"Failed to clone registry from {url}: {e.stderr.decode()}"
-            raise RegistryFetchError(msg) from e
-
-        index_path = clone_dir / "index.yaml"
-        if not index_path.exists():
-            msg = "Registry does not contain index.yaml"
-            raise RegistryFetchError(msg)
-
-        index_data = yaml.safe_load(index_path.read_text())
-        try:
-            index = RegistryIndexSchema.model_validate(index_data)
-        except ValidationError as e:
-            clean_errors = format_validation_errors(e)
-            msg = f"Invalid registry index: {clean_errors}"
-            raise RegistryFetchError(msg) from e
+        index = _clone_and_load_index(url, clone_dir, ref)
 
         entry = _lookup_plugin(index, name)
 

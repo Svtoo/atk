@@ -39,6 +39,7 @@ from atk.commands.preconditions import (
     stdin_prompt,
 )
 from atk.commands.run import run_plugin_script
+from atk.commands.search import filter_registry_plugins, print_search_table
 from atk.commands.status import print_status_table
 from atk.commands.upgrade import upgrade_all_plugins, upgrade_single_plugin
 from atk.errors import handle_cli_error
@@ -72,7 +73,13 @@ from atk.mcp_configure import (
     run_gemini_mcp_remove,
 )
 from atk.plugin import PluginNotFoundError, load_plugin
-from atk.registry import PluginNotFoundError as RegistryPluginNotFoundError
+from atk.registry import (
+    PluginNotFoundError as RegistryPluginNotFoundError,
+)
+from atk.registry import (
+    RegistryFetchError,
+    fetch_registry_index,
+)
 from atk.remove import remove_plugin
 from atk.setup import run_setup
 from atk.update_check import get_update_notice
@@ -154,6 +161,38 @@ def init(
         for error in result.errors:
             cli_logger.dim(f"  • {error}")
         raise typer.Exit(exit_codes.GENERAL_ERROR)
+
+
+@app.command()
+def search(
+    query: Annotated[
+        str | None,
+        typer.Argument(
+            help="Filter plugins by name or description (case-insensitive). Lists all if omitted.",
+        ),
+    ] = None,
+) -> None:
+    """Search available plugins in the ATK registry.
+
+    With no arguments, lists all available plugins.
+    Provide a search term to filter by name or description.
+    """
+    atk_home = require_initialized_home()
+    manifest = load_manifest(atk_home)
+    installed = {p.directory for p in manifest.plugins}
+
+    try:
+        index = fetch_registry_index()
+    except RegistryFetchError as e:
+        cli_logger.error(f"Failed to fetch registry: {e}")
+        raise typer.Exit(exit_codes.GENERAL_ERROR) from e
+
+    plugins = index.plugins
+    if query:
+        plugins = filter_registry_plugins(plugins, query)
+
+    print_search_table(plugins, installed, query)
+    raise typer.Exit(exit_codes.SUCCESS)
 
 
 @app.command()
