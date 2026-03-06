@@ -2,8 +2,14 @@
   <img src="assets/logo.png" alt="ATK Logo" width="280px">
 </p>
 
-![PyPI - Downloads](https://img.shields.io/pypi/dm/atk-cli)
-[![Coverage](https://codecov.io/gh/Svtoo/atk/branch/main/graph/badge.svg)](https://codecov.io/gh/Svtoo/atk)
+<p align="center">
+  <a href="https://github.com/Svtoo/atk/actions/workflows/ci.yml"><img src="https://github.com/Svtoo/atk/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
+  <a href="https://codecov.io/gh/Svtoo/atk"><img src="https://codecov.io/gh/Svtoo/atk/branch/main/graph/badge.svg" alt="Coverage"></a>
+  <a href="https://pypi.org/project/atk-cli/"><img src="https://img.shields.io/pypi/v/atk-cli" alt="PyPI version"></a>
+  <a href="https://pypi.org/project/atk-cli/"><img src="https://img.shields.io/pypi/dm/atk-cli" alt="PyPI downloads"></a>
+  <a href="https://pypi.org/project/atk-cli/"><img src="https://img.shields.io/pypi/pyversions/atk-cli" alt="Python versions"></a>
+  <a href="LICENSE"><img src="https://img.shields.io/github/license/Svtoo/atk" alt="License"></a>
+</p>
 
 # ATK — AI Tool Kit for Developers
 
@@ -375,3 +381,5 @@ ATK is under active development.
 Expect fast iteration and opinionated choices.
 
 If this problem resonates with you, try it — and break it.
+
+If ATK saves you time, a ⭐ on [GitHub](https://github.com/Svtoo/atk) goes a long way.
