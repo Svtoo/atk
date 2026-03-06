@@ -27,3 +27,18 @@ jobs:
 
       - name: Run checks
         run: make check
+
+      - name: Run tests with coverage (3.11 only)
+        if: matrix.python-version == '3.11'
+        run: uv run coverage run -m pytest
+
+      - name: Generate XML coverage report (3.11 only)
+        if: matrix.python-version == '3.11'
+        run: uv run coverage xml
+
+      - name: Upload coverage to Codecov (3.11 only)
+        if: matrix.python-version == '3.11'
+        uses: codecov/codecov-action@v5
+        with:
+          files: ./coverage.xml
+          fail_ci_if_error: false

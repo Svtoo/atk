@@ -2,6 +2,9 @@
   <img src="assets/logo.png" alt="ATK Logo" width="280px">
 </p>
 
+![PyPI - Downloads](https://img.shields.io/pypi/dm/atk-cli)
+[![Coverage](https://codecov.io/gh/Svtoo/atk/branch/main/graph/badge.svg)](https://codecov.io/gh/Svtoo/atk)
+
 # ATK — AI Tool Kit for Developers
 
 ATK is a **CLI plugin manager for AI-assisted development**.
