@@ -82,6 +82,7 @@ def fetch_missing_plugin(plugin_entry: PluginEntry, atk_home: Path) -> None:
             target_dir=staging_dir,
             ref=source.ref,
             source_url=source.url,
+            atk_home=atk_home,
         )
         _install_fetched_files(plugin_dir, staging_dir)
 

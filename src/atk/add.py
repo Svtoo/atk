@@ -10,6 +10,7 @@ from enum import Enum
 from pathlib import Path
 
 import atk.registry as registry_mod
+from atk.config import get_registry_url
 from atk.git import add_gitignore_exemption, git_add, git_commit, git_ls_remote, write_atk_ref
 from atk.git_source import fetch_git_plugin, normalize_git_url
 from atk.home import validate_atk_home
@@ -212,8 +213,8 @@ def _add_registry_plugin(
     target_dir = atk_home / "plugins" / directory
     _check_target_available(target_dir, directory)
 
-    ref = git_ls_remote(registry_mod.REGISTRY_URL)
-    result = registry_mod.fetch_registry_plugin(name=name, target_dir=target_dir, ref=ref)
+    ref = git_ls_remote(get_registry_url(atk_home))
+    result = registry_mod.fetch_registry_plugin(name=name, target_dir=target_dir, ref=ref, atk_home=atk_home)
     schema = load_plugin_schema(target_dir)
 
     source_info = SourceInfo(type=SourceType.REGISTRY, ref=result.commit_hash)
