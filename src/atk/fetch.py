@@ -21,6 +21,7 @@ def fetch_plugin_source(
     target_dir: Path,
     ref: str,
     source_url: str | None = None,
+    atk_home: Path | None = None,
 ) -> str:
     """Fetch plugin files from a remote source into target_dir.
 
@@ -33,6 +34,7 @@ def fetch_plugin_source(
         target_dir: Where to write the fetched files.
         ref: Commit hash to check out.
         source_url: Git URL (required for git sources, ignored for registry).
+        atk_home: Path to ATK Home directory (required for registry sources).
 
     Returns:
         The commit hash of the fetched version.
@@ -46,7 +48,10 @@ def fetch_plugin_source(
         raise ValueError(msg)
 
     if source_type == SourceType.REGISTRY:
-        result = registry_mod.fetch_registry_plugin(name=directory, target_dir=target_dir, ref=ref,)
+        if atk_home is None:
+            msg = "atk_home is required for registry plugin fetching"
+            raise ValueError(msg)
+        result = registry_mod.fetch_registry_plugin(name=directory, target_dir=target_dir, ref=ref, atk_home=atk_home)
         return result.commit_hash
 
     if not source_url:

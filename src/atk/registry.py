@@ -12,6 +12,7 @@ from pathlib import Path
 import yaml
 from pydantic import ValidationError
 
+from atk.config import get_registry_url
 from atk.errors import format_validation_errors
 from atk.git import get_commit_hash, git_ls_remote, sparse_checkout, sparse_clone
 from atk.registry_schema import RegistryIndexSchema, RegistryPluginEntry
@@ -74,7 +75,7 @@ def _clone_and_load_index(url: str, clone_dir: Path, ref: str) -> RegistryIndexS
         raise RegistryFetchError(msg) from e
 
 
-def fetch_registry_index(registry_url: str | None = None) -> RegistryIndexSchema:
+def fetch_registry_index(atk_home: Path, registry_url: str | None = None) -> RegistryIndexSchema:
     """Fetch and return the parsed registry index.
 
     Resolves the registry HEAD, sparse-clones only index.yaml, and returns
@@ -82,7 +83,8 @@ def fetch_registry_index(registry_url: str | None = None) -> RegistryIndexSchema
     RegistryFetchError so callers only need to handle one exception type.
 
     Args:
-        registry_url: Git URL of the registry repo. Defaults to REGISTRY_URL.
+        atk_home: Path to ATK Home directory.
+        registry_url: Git URL of the registry repo. If not provided, resolves from config.
 
     Returns:
         Parsed RegistryIndexSchema.
@@ -91,7 +93,7 @@ def fetch_registry_index(registry_url: str | None = None) -> RegistryIndexSchema
         RegistryFetchError: If the registry is unreachable, clone fails,
             index.yaml is missing, or the index schema is invalid.
     """
-    url = registry_url or REGISTRY_URL
+    url = registry_url or get_registry_url(atk_home)
 
     try:
         ref = git_ls_remote(url)
@@ -108,6 +110,7 @@ def fetch_registry_plugin(
     name: str,
     target_dir: Path,
     ref: str,
+    atk_home: Path,
     registry_url: str | None = None,
 ) -> FetchResult:
     """Fetch a plugin by name from the registry using sparse checkout.
@@ -120,7 +123,8 @@ def fetch_registry_plugin(
         name: Plugin name to fetch (e.g., "piper").
         target_dir: Where to copy the plugin files.
         ref: Commit hash to check out.
-        registry_url: Git URL of the registry repo. Defaults to REGISTRY_URL.
+        atk_home: Path to ATK Home directory.
+        registry_url: Git URL of the registry repo. If not provided, resolves from config.
 
     Returns:
         FetchResult with the commit hash of the checked-out revision.
@@ -129,7 +133,7 @@ def fetch_registry_plugin(
         PluginNotFoundError: If the plugin name is not in the registry index.
         RegistryFetchError: If the clone fails or the plugin directory is missing.
     """
-    url = registry_url or REGISTRY_URL
+    url = registry_url or get_registry_url(atk_home)
     with tempfile.TemporaryDirectory() as tmp:
         clone_dir = Path(tmp) / "registry"
 

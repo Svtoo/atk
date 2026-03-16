@@ -404,7 +404,7 @@ class TestAddRegistryPlugin:
         atk_home = tmp_path / "atk-home"
         init_atk_home(atk_home)
         registry = create_fake_registry(tmp_path)
-        monkeypatch.setattr("atk.registry.REGISTRY_URL", registry.url)
+        monkeypatch.setenv("ATK_REGISTRY_URL", registry.url)
         plugin_name = "test-plugin"
         expected_dir = "test-plugin"
 
@@ -433,7 +433,7 @@ class TestAddRegistryPlugin:
         atk_home = tmp_path / "atk-home"
         init_atk_home(atk_home)
         registry = create_fake_registry(tmp_path)
-        monkeypatch.setattr("atk.registry.REGISTRY_URL", registry.url)
+        monkeypatch.setenv("ATK_REGISTRY_URL", registry.url)
         nonexistent_name = "nonexistent-plugin"
 
         # When/Then
@@ -448,7 +448,7 @@ class TestAddRegistryPlugin:
         atk_home = tmp_path / "atk-home"
         init_atk_home(atk_home)
         registry = create_fake_registry(tmp_path)
-        monkeypatch.setattr("atk.registry.REGISTRY_URL", registry.url)
+        monkeypatch.setenv("ATK_REGISTRY_URL", registry.url)
         plugin_name = "test-plugin"
         expected_dir = "test-plugin"
 
@@ -472,7 +472,7 @@ class TestAddRegistryPlugin:
         atk_home = tmp_path / "atk-home"
         init_atk_home(atk_home)
         registry = create_fake_registry(tmp_path)
-        monkeypatch.setattr("atk.registry.REGISTRY_URL", registry.url)
+        monkeypatch.setenv("ATK_REGISTRY_URL", registry.url)
         plugin_name = "test-plugin"
         expected_dir = "test-plugin"
 
