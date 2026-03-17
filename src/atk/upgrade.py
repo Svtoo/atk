@@ -96,6 +96,22 @@ def _restore_custom(plugin_dir: Path, backup_dir: Path) -> None:
         shutil.copytree(backup_custom, target_custom)
 
 
+def _preserve_env_file(plugin_dir: Path, backup_dir: Path) -> bool:
+    """Back up the .env file if it exists. Returns True if backed up."""
+    env_file = plugin_dir / ".env"
+    if env_file.is_file():
+        shutil.copy2(env_file, backup_dir / ".env")
+        return True
+    return False
+
+
+def _restore_env_file(plugin_dir: Path, backup_dir: Path) -> None:
+    """Restore the .env file from backup if one was saved."""
+    backup_env = backup_dir / ".env"
+    if backup_env.is_file():
+        shutil.copy2(backup_env, plugin_dir / ".env")
+
+
 IGNORED_FILES = {".atk-ref"}
 
 
@@ -237,8 +253,10 @@ def upgrade_plugin(
         new_env_var_names = _detect_new_env_vars(old_schema, new_schema)
 
         _preserve_custom(plugin_dir, backup_dir)
+        _preserve_env_file(plugin_dir, backup_dir)
         _replace_plugin_files(plugin_dir, staging_dir)
         _restore_custom(plugin_dir, backup_dir)
+        _restore_env_file(plugin_dir, backup_dir)
 
     write_atk_ref(plugin_dir, new_ref)
 

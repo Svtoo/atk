@@ -1,5 +1,7 @@
-from atk.plugin_schema import EnvVarConfig
-from atk.setup import mask_value, prompt_env_var
+from pathlib import Path
+
+from atk.plugin_schema import PLUGIN_SCHEMA_VERSION, EnvVarConfig, PluginSchema
+from atk.setup import mask_value, prompt_env_var, run_setup
 
 
 class TestMaskValue:
@@ -182,4 +184,49 @@ class TestPromptEnvVar:
         # Then
         prompt_text = prompts_received[0]
         assert description in prompt_text
+
+
+class TestRunSetup:
+    """Tests for the run_setup function."""
+
+    def test_merges_new_var_with_existing_env_file(self, tmp_path: Path) -> None:
+        """run_setup must preserve vars already in .env that are not in the schema.
+
+        This is the unit-level guard for Bug 2: during upgrade, run_setup is called
+        with a filtered schema containing only NEW env vars. The existing vars in
+        .env must survive — run_setup must not overwrite the file with only the
+        newly-prompted vars.
+        """
+        # Given — .env already has a configured var from a previous setup
+        plugin_dir = tmp_path / "plugin"
+        plugin_dir.mkdir()
+        existing_token = "sk-existingsecret"
+        env_file = plugin_dir / ".env"
+        env_file.write_text(f"EXISTING_TOKEN={existing_token}\n")
+
+        # Schema only contains the NEW var (simulating the filtered schema passed
+        # by upgrade_plugin when it detects a newly-added env var)
+        new_var_name = "NEW_API_KEY"
+        new_var_value = "new-value-789"
+        plugin = PluginSchema(
+            schema_version=PLUGIN_SCHEMA_VERSION,
+            name="Test Plugin",
+            description="A plugin",
+            env_vars=[EnvVarConfig(name=new_var_name, required=True)],
+        )
+
+        def capturing_prompt(text: str) -> str:
+            return new_var_value if new_var_name in text else ""
+
+        # When
+        run_setup(plugin, plugin_dir, capturing_prompt)
+
+        # Then — both the pre-existing and newly-prompted vars are in .env
+        env_content = env_file.read_text()
+        assert f"EXISTING_TOKEN={existing_token}" in env_content, (
+            f"Existing var was lost. .env contents:\n{env_content}"
+        )
+        assert f"{new_var_name}={new_var_value}" in env_content, (
+            f"New var not written. .env contents:\n{env_content}"
+        )
 

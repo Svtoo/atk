@@ -95,7 +95,9 @@ def run_setup(
     env_file = plugin_dir / ".env"
     current_env = load_env_file(env_file) if env_file.exists() else {}
 
-    new_env: dict[str, str] = {}
+    # Start with all existing vars so that vars not in this schema (e.g. during
+    # upgrade where the schema is filtered to only new vars) are not lost.
+    new_env: dict[str, str] = dict(current_env)
     descriptions: dict[str, str] = {}
     configured: list[str] = []
 

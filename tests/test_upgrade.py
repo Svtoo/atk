@@ -108,6 +108,97 @@ class TestUpgradeRegistryPlugin:
         # Then
         assert result.upgraded is False
 
+    def test_upgrade_preserves_env_file(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """Upgrade must NOT wipe the user's .env file — existing secrets must survive."""
+        # Given — registry plugin with a user-configured .env
+        atk_home = tmp_path / "atk-home"
+        init_atk_home(atk_home)
+        registry = create_fake_registry(tmp_path)
+        monkeypatch.setattr("atk.registry.REGISTRY_URL", registry.url)
+        plugin_name = "test-plugin"
+        add_plugin(plugin_name, atk_home, noop_prompt)
+        plugin_dir = atk_home / "plugins" / plugin_name
+
+        existing_token = "ghp_secrettoken123"
+        env_file = plugin_dir / ".env"
+        env_file.write_text(f"GITHUB_TOKEN={existing_token}\n")
+
+        # When — a new version is released and we upgrade
+        registry_work_dir = Path(registry.url.removeprefix("file://"))
+        plugin_yaml_path = registry_work_dir / "plugins" / "test-plugin" / "plugin.yaml"
+        data = yaml.safe_load(plugin_yaml_path.read_text())
+        data["description"] = "New improved version"
+        plugin_yaml_path.write_text(yaml.dump(data))
+        git_commit_all(registry_work_dir, "Release v2")
+
+        result = upgrade_plugin(plugin_name, atk_home, noop_prompt)
+
+        # Then — upgrade happened but .env was NOT wiped
+        assert result.upgraded is True
+        assert env_file.exists(), ".env file was deleted by upgrade"
+        env_content = env_file.read_text()
+        assert f"GITHUB_TOKEN={existing_token}" in env_content, (
+            f"GITHUB_TOKEN lost after upgrade. .env contents:\n{env_content}"
+        )
+
+    def test_upgrade_with_new_env_var_preserves_existing_vars(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """When upgrade adds a new env var, existing vars in .env must not be lost."""
+        # Given — registry plugin whose v1 already declares GITHUB_TOKEN, so the user
+        # has a configured .env. v2 adds NEW_API_KEY. Only NEW_API_KEY is "new".
+        atk_home = tmp_path / "atk-home"
+        init_atk_home(atk_home)
+        registry = create_fake_registry(tmp_path)
+        monkeypatch.setattr("atk.registry.REGISTRY_URL", registry.url)
+
+        # Patch the initial registry plugin to declare GITHUB_TOKEN (v1 schema)
+        registry_work_dir = Path(registry.url.removeprefix("file://"))
+        plugin_yaml_path = registry_work_dir / "plugins" / "test-plugin" / "plugin.yaml"
+        data = yaml.safe_load(plugin_yaml_path.read_text())
+        data["env_vars"] = [{"name": "GITHUB_TOKEN", "required": True}]
+        plugin_yaml_path.write_text(yaml.dump(data))
+        git_commit_all(registry_work_dir, "v1: add GITHUB_TOKEN")
+
+        plugin_name = "test-plugin"
+        add_plugin(plugin_name, atk_home, noop_prompt)
+        plugin_dir = atk_home / "plugins" / plugin_name
+
+        # User has already run setup and configured GITHUB_TOKEN
+        existing_token = "ghp_existingsecret"
+        env_file = plugin_dir / ".env"
+        env_file.write_text(f"GITHUB_TOKEN={existing_token}\n")
+
+        # When — v2 adds a second env var
+        new_var_name = "NEW_API_KEY"
+        new_var_value = "new-value-456"
+        data["description"] = "v2 with new env var"
+        data["env_vars"] = [
+            {"name": "GITHUB_TOKEN", "required": True},
+            {"name": new_var_name, "required": True},
+        ]
+        plugin_yaml_path.write_text(yaml.dump(data))
+        git_commit_all(registry_work_dir, "v2: add NEW_API_KEY")
+
+        def capturing_prompt(text: str) -> str:
+            return new_var_value if new_var_name in text else ""
+
+        result = upgrade_plugin(plugin_name, atk_home, capturing_prompt)
+
+        # Then — only NEW_API_KEY is detected as new; both vars survive in .env
+        assert result.upgraded is True
+        assert result.new_env_vars == [new_var_name]
+        assert env_file.exists(), ".env file was deleted by upgrade"
+        env_content = env_file.read_text()
+        assert f"GITHUB_TOKEN={existing_token}" in env_content, (
+            f"Existing var lost after upgrade. .env contents:\n{env_content}"
+        )
+        assert f"{new_var_name}={new_var_value}" in env_content, (
+            f"New var not written. .env contents:\n{env_content}"
+        )
+
 
 class TestUpgradeGitPlugin:
     """Tests for upgrading git plugins — verifies actual on-disk content changes."""
@@ -277,6 +368,94 @@ class TestUpgradeGitPlugin:
         # Then — upgrade happened and new env var detected
         assert result.upgraded is True
         assert result.new_env_vars == [new_env_var_name]
+
+    def test_upgrade_preserves_env_file(self, tmp_path: Path) -> None:
+        """Upgrade must NOT wipe the user's .env file — existing secrets must survive."""
+        # Given — baseline plugin with a user-configured .env
+        fix = _setup_git_plugin(tmp_path)
+        existing_token = "sk-abc123secret"
+        env_file = fix.plugin_dir / ".env"
+        env_file.write_text(f"API_TOKEN={existing_token}\n")
+
+        # When — upstream makes a change and we upgrade
+        plugin_yaml = fix.repo_work_dir / ".atk" / "plugin.yaml"
+        data = yaml.safe_load(plugin_yaml.read_text())
+        data["description"] = "New improved version"
+        plugin_yaml.write_text(yaml.dump(data))
+        git_commit_all(fix.repo_work_dir, "Release v2")
+
+        result = upgrade_plugin(fix.plugin_identifier, fix.atk_home, noop_prompt)
+
+        # Then — upgrade happened but .env was NOT wiped
+        assert result.upgraded is True
+        assert env_file.exists(), ".env file was deleted by upgrade"
+        env_content = env_file.read_text()
+        assert f"API_TOKEN={existing_token}" in env_content, (
+            f"API_TOKEN lost after upgrade. .env contents:\n{env_content}"
+        )
+
+    def test_upgrade_with_new_env_var_preserves_existing_vars(self, tmp_path: Path) -> None:
+        """When upgrade adds a new env var, existing vars in .env must not be lost."""
+        # Given — git plugin whose v1 already declares EXISTING_TOKEN, so the user
+        # has a configured .env. v2 adds NEW_API_KEY. Only NEW_API_KEY is "new".
+        atk_home = tmp_path / "atk-home"
+        init_atk_home(atk_home)
+
+        # Build the initial repo with EXISTING_TOKEN already in the schema (v1)
+        work_dir = tmp_path / "fake-repo"
+        work_dir.mkdir()
+        (work_dir / "README.md").write_text("# Fake repo\n")
+        atk_dir = work_dir / ".atk"
+        atk_dir.mkdir()
+        plugin_data: dict = {
+            "schema_version": PLUGIN_SCHEMA_VERSION,
+            "name": "Echo Tool",
+            "description": "A test plugin from git",
+            "env_vars": [{"name": "EXISTING_TOKEN", "required": True}],
+        }
+        (atk_dir / "plugin.yaml").write_text(yaml.dump(plugin_data))
+        install_script = atk_dir / "install.sh"
+        install_script.write_text("#!/bin/bash\necho 'Installing'\n")
+        install_script.chmod(0o755)
+        subprocess.run(["git", "init"], cwd=work_dir, check=True, capture_output=True)
+        git_commit_all(work_dir, "v1: plugin with EXISTING_TOKEN")
+        repo_url = f"file://{work_dir}"
+
+        add_plugin(repo_url, atk_home, noop_prompt)
+        plugin_dir = atk_home / "plugins" / "echo-tool"
+
+        # User has already run setup and configured EXISTING_TOKEN
+        existing_token = "sk-existing123"
+        env_file = plugin_dir / ".env"
+        env_file.write_text(f"EXISTING_TOKEN={existing_token}\n")
+
+        # When — v2 adds NEW_API_KEY
+        new_var_name = "NEW_API_KEY"
+        new_var_value = "new-value-456"
+        plugin_data["description"] = "v2 with new env var"
+        plugin_data["env_vars"] = [
+            {"name": "EXISTING_TOKEN", "required": True},
+            {"name": new_var_name, "required": True},
+        ]
+        (atk_dir / "plugin.yaml").write_text(yaml.dump(plugin_data))
+        git_commit_all(work_dir, "v2: add NEW_API_KEY")
+
+        def capturing_prompt(text: str) -> str:
+            return new_var_value if new_var_name in text else ""
+
+        result = upgrade_plugin("echo-tool", atk_home, capturing_prompt)
+
+        # Then — only NEW_API_KEY is detected as new; both vars survive in .env
+        assert result.upgraded is True
+        assert result.new_env_vars == [new_var_name]
+        assert env_file.exists(), ".env file was deleted by upgrade"
+        env_content = env_file.read_text()
+        assert f"EXISTING_TOKEN={existing_token}" in env_content, (
+            f"Existing var lost after upgrade. .env contents:\n{env_content}"
+        )
+        assert f"{new_var_name}={new_var_value}" in env_content, (
+            f"New var not written. .env contents:\n{env_content}"
+        )
 
 
 class TestUpgradeErrors:
