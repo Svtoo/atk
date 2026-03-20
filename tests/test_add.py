@@ -14,7 +14,7 @@ from atk.add import (
     load_plugin_schema,
 )
 from atk.cli import app
-from atk.exit_codes import DOCKER_ERROR, HOME_NOT_INITIALIZED, PLUGIN_INVALID, SUCCESS
+from atk.exit_codes import GENERAL_ERROR, HOME_NOT_INITIALIZED, PLUGIN_INVALID, SUCCESS
 from atk.git import ATK_REF_FILE, read_atk_ref
 from atk.git_source import GitPluginNotFoundError
 from atk.init import GITIGNORE_CONTENT, init_atk_home
@@ -780,7 +780,7 @@ class TestAddInstallLifecycle:
         assert "not defined" not in result.output.lower()
 
     def test_add_fails_when_install_lifecycle_fails(self) -> None:
-        """Verify add fails with exit code 6 when install lifecycle fails."""
+        """Verify add fails with GENERAL_ERROR when install lifecycle fails."""
         # Given - initialized ATK home
         init_atk_home(self.atk_home)
 
@@ -802,8 +802,8 @@ class TestAddInstallLifecycle:
         # When - use -y to skip the maturity confirmation prompt (testing install failure, not maturity)
         result = runner.invoke(app, ["add", "-y", str(plugin_dir)])
 
-        # Then - command fails with DOCKER_ERROR (exit code 6)
-        assert result.exit_code == DOCKER_ERROR
+        # Then - command fails with GENERAL_ERROR (install can fail for non-Docker reasons)
+        assert result.exit_code == GENERAL_ERROR
         assert "install" in result.output.lower() or "failed" in result.output.lower()
 
     def test_add_cleans_up_on_install_failure(self) -> None:

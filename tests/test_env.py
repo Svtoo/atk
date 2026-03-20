@@ -184,7 +184,7 @@ class TestGetEnvStatus:
     def _make_plugin(self, env_vars: list[dict]) -> PluginSchema:
         """Create a minimal plugin with env vars."""
         return PluginSchema(
-            schema_version="1.0",
+            schema_version="2026-01-23",
             name="TestPlugin",
             description="Test plugin",
             env_vars=[EnvVarConfig(**ev) for ev in env_vars],

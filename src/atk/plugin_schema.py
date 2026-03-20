@@ -4,10 +4,11 @@ This module defines the schema for plugin.yaml files that describe
 how to install and manage AI development tools.
 """
 
+import re
 from enum import Enum
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 
 class StrictModel(BaseModel):
@@ -83,7 +84,7 @@ class VendorConfig(StrictModel):
 class PortConfig(StrictModel):
     """Configuration for a network port exposed by the plugin."""
 
-    port: int = Field(description="Port number")
+    port: int = Field(ge=1, le=65535, description="Port number (1–65535)")
     name: str | None = Field(
         default=None,
         description="Human-readable port name",
@@ -98,10 +99,26 @@ class PortConfig(StrictModel):
     )
 
 
+_ENV_VAR_NAME_RE = re.compile(r"^[A-Z_][A-Z0-9_]*$")
+
+
 class EnvVarConfig(StrictModel):
     """Configuration for an environment variable."""
 
-    name: str = Field(description="Environment variable name")
+    name: str = Field(description="Environment variable name (POSIX: uppercase letters, digits, underscore; must not start with a digit)")
+
+    @field_validator("name")
+    @classmethod
+    def validate_env_var_name(cls, v: str) -> str:
+        """Enforce POSIX env var naming: ^[A-Z_][A-Z0-9_]*$."""
+        if not _ENV_VAR_NAME_RE.match(v):
+            msg = (
+                f"Invalid environment variable name '{v}'. "
+                "Names must match ^[A-Z_][A-Z0-9_]*$ "
+                "(uppercase letters, digits, and underscores only; must not start with a digit)."
+            )
+            raise ValueError(msg)
+        return v
     required: bool = Field(
         default=False,
         description="Whether the variable must be set",
@@ -176,11 +193,33 @@ class McpPluginConfig(StrictModel):
         description="Environment variable names to include in MCP config",
     )
 
+    @model_validator(mode="after")
+    def validate_transport_fields(self) -> "McpPluginConfig":
+        """Enforce transport-specific field requirements.
+
+        - stdio: command is required; endpoint must not be set.
+        - sse:   endpoint is required; command and args must not be set.
+        """
+        if self.transport == "stdio":
+            if self.command is None:
+                raise ValueError("'command' is required when transport is 'stdio'")
+            if self.endpoint is not None:
+                raise ValueError("'endpoint' must not be set when transport is 'stdio'")
+        elif self.transport == "sse":
+            if self.endpoint is None:
+                raise ValueError("'endpoint' is required when transport is 'sse'")
+            if self.command is not None:
+                raise ValueError("'command' must not be set when transport is 'sse'")
+            if self.args is not None:
+                raise ValueError("'args' must not be set when transport is 'sse'")
+        return self
+
 
 class PluginSchema(StrictModel):
     """Root schema for plugin.yaml files."""
 
     schema_version: str = Field(
+        pattern=r"^\d{4}-\d{2}-\d{2}$",
         description="Schema version in YYYY-MM-DD format",
     )
     name: str = Field(description="Plugin name")

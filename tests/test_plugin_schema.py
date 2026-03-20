@@ -67,6 +67,36 @@ class TestPluginSchemaMinimal:
         with pytest.raises(ValueError, match="description"):
             PluginSchema.model_validate(data)
 
+    @pytest.mark.parametrize("bad_version", [
+        "2026-1-23",    # no zero-padding on month
+        "2026-01-3",    # no zero-padding on day
+        "2026/01/23",   # wrong separator
+        "01-23-2026",   # wrong order (MM-DD-YYYY)
+        "not-a-date",   # completely invalid
+        "20260123",     # no separators
+        "",             # empty string
+    ])
+    def test_schema_version_invalid_formats_are_rejected(self, bad_version: str) -> None:
+        """Verify that schema_version values not matching YYYY-MM-DD are rejected."""
+        # Given
+        data = {"schema_version": bad_version, "name": "test", "description": "test"}
+
+        # When/Then
+        with pytest.raises(ValueError):
+            PluginSchema.model_validate(data)
+
+    def test_schema_version_valid_format_is_accepted(self) -> None:
+        """Verify that a correctly formatted YYYY-MM-DD schema_version is accepted."""
+        # Given
+        version = "2026-01-23"
+        data = {"schema_version": version, "name": "test", "description": "test"}
+
+        # When
+        plugin = PluginSchema.model_validate(data)
+
+        # Then
+        assert plugin.schema_version == version
+
 
 class TestServiceConfig:
     """Tests for service configuration."""
@@ -218,6 +248,55 @@ class TestPortConfig:
         with pytest.raises(ValueError, match="port"):
             PortConfig.model_validate(data)
 
+    def test_port_zero_is_invalid(self) -> None:
+        """Verify that port 0 is rejected (ports start at 1)."""
+        # Given
+        data = {"port": 0}
+
+        # When/Then
+        with pytest.raises(ValueError):
+            PortConfig.model_validate(data)
+
+    def test_port_negative_is_invalid(self) -> None:
+        """Verify that negative port numbers are rejected."""
+        # Given
+        data = {"port": -1}
+
+        # When/Then
+        with pytest.raises(ValueError):
+            PortConfig.model_validate(data)
+
+    def test_port_65536_is_invalid(self) -> None:
+        """Verify that port 65536 is rejected (max is 65535)."""
+        # Given
+        data = {"port": 65536}
+
+        # When/Then
+        with pytest.raises(ValueError):
+            PortConfig.model_validate(data)
+
+    def test_port_boundary_min_is_valid(self) -> None:
+        """Verify that port 1 (minimum) is accepted."""
+        # Given
+        data = {"port": 1}
+
+        # When
+        port = PortConfig.model_validate(data)
+
+        # Then
+        assert port.port == 1
+
+    def test_port_boundary_max_is_valid(self) -> None:
+        """Verify that port 65535 (maximum) is accepted."""
+        # Given
+        data = {"port": 65535}
+
+        # When
+        port = PortConfig.model_validate(data)
+
+        # Then
+        assert port.port == 65535
+
 
 class TestEnvVarConfig:
     """Tests for environment variable configuration."""
@@ -260,6 +339,63 @@ class TestEnvVarConfig:
         assert env_var.secret is False
         assert env_var.description is None
         assert env_var.default is None
+
+    def test_env_var_name_starting_with_digit_is_invalid(self) -> None:
+        """Verify that env var names starting with a digit are rejected."""
+        # Given
+        data = {"name": "123VAR"}
+
+        # When/Then
+        with pytest.raises(ValueError, match="Invalid environment variable name"):
+            EnvVarConfig.model_validate(data)
+
+    def test_env_var_name_with_hyphen_is_invalid(self) -> None:
+        """Verify that env var names with hyphens are rejected."""
+        # Given
+        data = {"name": "MY-VAR"}
+
+        # When/Then
+        with pytest.raises(ValueError, match="Invalid environment variable name"):
+            EnvVarConfig.model_validate(data)
+
+    def test_env_var_name_with_dot_is_invalid(self) -> None:
+        """Verify that env var names with dots are rejected."""
+        # Given
+        data = {"name": "MY.VAR"}
+
+        # When/Then
+        with pytest.raises(ValueError, match="Invalid environment variable name"):
+            EnvVarConfig.model_validate(data)
+
+    def test_env_var_name_with_space_is_invalid(self) -> None:
+        """Verify that env var names with spaces are rejected."""
+        # Given
+        data = {"name": "MY VAR"}
+
+        # When/Then
+        with pytest.raises(ValueError, match="Invalid environment variable name"):
+            EnvVarConfig.model_validate(data)
+
+    def test_env_var_name_lowercase_is_invalid(self) -> None:
+        """Verify that lowercase env var names are rejected."""
+        # Given
+        data = {"name": "my_var"}
+
+        # When/Then
+        with pytest.raises(ValueError, match="Invalid environment variable name"):
+            EnvVarConfig.model_validate(data)
+
+    @pytest.mark.parametrize("name", ["MY_VAR", "_VAR", "MY_VAR_123", "A", "_"])
+    def test_env_var_name_valid_patterns(self, name: str) -> None:
+        """Verify that valid POSIX env var names are accepted."""
+        # Given
+        data = {"name": name}
+
+        # When
+        env_var = EnvVarConfig.model_validate(data)
+
+        # Then
+        assert env_var.name == name
 
 
 class TestLifecycleConfig:
@@ -370,6 +506,50 @@ class TestMcpPluginConfig:
         assert mcp.args is None
         assert mcp.env is None
 
+    def test_stdio_without_command_is_invalid(self) -> None:
+        """Verify that stdio transport without a command is rejected."""
+        # Given
+        data = {"transport": "stdio"}
+
+        # When/Then
+        with pytest.raises(ValueError, match="'command' is required when transport is 'stdio'"):
+            McpPluginConfig.model_validate(data)
+
+    def test_stdio_with_endpoint_is_invalid(self) -> None:
+        """Verify that stdio transport with an endpoint set is rejected."""
+        # Given
+        data = {"transport": "stdio", "command": "python", "endpoint": "http://localhost:8080/mcp"}
+
+        # When/Then
+        with pytest.raises(ValueError, match="'endpoint' must not be set when transport is 'stdio'"):
+            McpPluginConfig.model_validate(data)
+
+    def test_sse_without_endpoint_is_invalid(self) -> None:
+        """Verify that sse transport without an endpoint is rejected."""
+        # Given
+        data = {"transport": "sse"}
+
+        # When/Then
+        with pytest.raises(ValueError, match="'endpoint' is required when transport is 'sse'"):
+            McpPluginConfig.model_validate(data)
+
+    def test_sse_with_command_is_invalid(self) -> None:
+        """Verify that sse transport with a command set is rejected."""
+        # Given
+        data = {"transport": "sse", "endpoint": "http://localhost:8080/mcp", "command": "python"}
+
+        # When/Then
+        with pytest.raises(ValueError, match="'command' must not be set when transport is 'sse'"):
+            McpPluginConfig.model_validate(data)
+
+    def test_sse_with_args_is_invalid(self) -> None:
+        """Verify that sse transport with args set is rejected."""
+        # Given
+        data = {"transport": "sse", "endpoint": "http://localhost:8080/mcp", "args": ["--port", "8080"]}
+
+        # When/Then
+        with pytest.raises(ValueError, match="'args' must not be set when transport is 'sse'"):
+            McpPluginConfig.model_validate(data)
 
 
 class TestPluginSchemaFull:

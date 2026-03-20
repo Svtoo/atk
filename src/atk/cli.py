@@ -235,7 +235,7 @@ def add(
         raise typer.Exit(exit_codes.PLUGIN_INVALID) from e
     except InstallFailedError as e:
         cli_logger.error(f"Install failed for plugin '{e.plugin_name}' (exit code {e.exit_code})")
-        raise typer.Exit(exit_codes.DOCKER_ERROR) from e
+        raise typer.Exit(exit_codes.GENERAL_ERROR) from e
     except (ValueError, FileNotFoundError) as e:
         cli_logger.error(f"Failed to add plugin: {e}")
         raise typer.Exit(exit_codes.PLUGIN_INVALID) from e
@@ -244,7 +244,7 @@ def add(
         raise typer.Exit(exit_codes.PLUGIN_INVALID) from e
     except GitSourceError as e:
         cli_logger.error(f"Failed to fetch from git: {e}")
-        raise typer.Exit(exit_codes.GENERAL_ERROR) from e
+        raise typer.Exit(exit_codes.GIT_ERROR) from e
 
 
 @app.command()

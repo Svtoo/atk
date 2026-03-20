@@ -5,6 +5,7 @@ from io import StringIO
 from pathlib import Path
 
 import pytest
+from pydantic import ValidationError
 from rich.console import Console
 
 from atk import exit_codes
@@ -698,37 +699,17 @@ def test_build_claude_mcp_config_custom_scope(tmp_path: Path) -> None:
 # ---------------------------------------------------------------------------
 
 def test_generate_mcp_config_stdio_raises_when_command_missing(tmp_path: Path) -> None:
-    """stdio transport with no command is a misconfiguration — raises ValueError immediately."""
-    # Given
-    plugin_dir = tmp_path / "plugin"
-    plugin_dir.mkdir()
-    plugin = PluginSchema(
-        schema_version=PLUGIN_SCHEMA_VERSION,
-        name="BrokenPlugin",
-        description="missing command",
-        mcp=McpPluginConfig(transport="stdio"),  # no command
-    )
-
-    # When / Then
-    with pytest.raises(ValueError, match="no command"):
-        generate_mcp_config(plugin, plugin_dir, "broken-plugin")
+    """stdio transport with no command is caught at schema construction — raises ValidationError."""
+    # When / Then — validation now happens at McpPluginConfig construction, not generate_mcp_config
+    with pytest.raises(ValidationError, match="'command' is required when transport is 'stdio'"):
+        McpPluginConfig(transport="stdio")  # no command
 
 
 def test_generate_mcp_config_sse_raises_when_endpoint_missing(tmp_path: Path) -> None:
-    """sse transport with no endpoint is a misconfiguration — raises ValueError immediately."""
-    # Given
-    plugin_dir = tmp_path / "plugin"
-    plugin_dir.mkdir()
-    plugin = PluginSchema(
-        schema_version=PLUGIN_SCHEMA_VERSION,
-        name="BrokenPlugin",
-        description="missing endpoint",
-        mcp=McpPluginConfig(transport="sse"),  # no endpoint
-    )
-
-    # When / Then
-    with pytest.raises(ValueError, match="no endpoint"):
-        generate_mcp_config(plugin, plugin_dir, "broken-plugin")
+    """sse transport with no endpoint is caught at schema construction — raises ValidationError."""
+    # When / Then — validation now happens at McpPluginConfig construction, not generate_mcp_config
+    with pytest.raises(ValidationError, match="'endpoint' is required when transport is 'sse'"):
+        McpPluginConfig(transport="sse")  # no endpoint
 
 
 
