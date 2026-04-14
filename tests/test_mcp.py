@@ -1323,3 +1323,40 @@ def test_mcp_remove_plugin_not_found(configure_atk_home, cli_runner) -> None:
     # Then
     assert result.exit_code == exit_codes.PLUGIN_NOT_FOUND
     assert "not found" in result.output
+
+
+# ---------------------------------------------------------------------------
+# Deprecation warnings — mcp add / mcp remove
+# ---------------------------------------------------------------------------
+
+
+def test_mcp_add_emits_deprecation_warning(create_plugin, cli_runner) -> None:
+    """``atk mcp add`` emits a deprecation warning directing to ``atk plug``."""
+    # Given
+    plugin = _make_stdio_plugin(name="TestPlugin", command="uv")
+    create_plugin(plugin=plugin, directory="test-plugin")
+
+    # When
+    result = cli_runner.invoke(app, ["mcp", "add", "test-plugin"])
+
+    # Then — deprecation warning present regardless of outcome
+    deprecation_message = "deprecated"
+    assert deprecation_message in result.output.lower()
+    plug_message = "atk plug"
+    assert plug_message in result.output
+
+
+def test_mcp_remove_emits_deprecation_warning(create_plugin, cli_runner) -> None:
+    """``atk mcp remove`` emits a deprecation warning directing to ``atk unplug``."""
+    # Given
+    plugin = _make_stdio_plugin(name="TestPlugin", command="uv")
+    create_plugin(plugin=plugin, directory="test-plugin")
+
+    # When
+    result = cli_runner.invoke(app, ["mcp", "remove", "test-plugin"])
+
+    # Then
+    deprecation_message = "deprecated"
+    assert deprecation_message in result.output.lower()
+    unplug_message = "atk unplug"
+    assert unplug_message in result.output

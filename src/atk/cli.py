@@ -13,23 +13,6 @@ from atk import __version__, cli_logger, exit_codes
 from atk.add import AddCancelledError, InstallFailedError, add_plugin
 from atk.banner import print_banner
 from atk.commands.lifecycle import run_lifecycle_cli, run_restart_single_cli, run_uninstall_cli
-from atk.commands.mcp import (
-    AgentStatus,
-    inject_auggie_skill_md,
-    inject_claude_skill_md,
-    inject_codex_skill_md,
-    inject_gemini_skill_md,
-    inject_opencode_skill_md,
-    print_agent_summary,
-    remove_auggie_skill_md,
-    remove_claude_skill_md,
-    remove_cli_agent_by_name,
-    remove_codex_skill_md,
-    remove_file_agent,
-    remove_gemini_skill_md,
-    run_cli_agent,
-    run_file_agent,
-)
 from atk.commands.preconditions import (
     assert_plugin_or_all,
     require_git,
@@ -56,23 +39,6 @@ from atk.lifecycle import (
 )
 from atk.manifest_schema import load_manifest
 from atk.mcp import format_mcp_plaintext, generate_mcp_config
-from atk.mcp_agents import (
-    build_auggie_mcp_config,
-    build_claude_mcp_config,
-    build_codex_mcp_config,
-    build_gemini_mcp_config,
-    build_opencode_mcp_config,
-)
-from atk.mcp_configure import (
-    run_auggie_mcp_add,
-    run_auggie_mcp_remove,
-    run_claude_mcp_add,
-    run_claude_mcp_remove,
-    run_codex_mcp_add,
-    run_codex_mcp_remove,
-    run_gemini_mcp_add,
-    run_gemini_mcp_remove,
-)
 from atk.plugin import PluginNotFoundError, load_plugin
 from atk.registry import (
     PluginNotFoundError as RegistryPluginNotFoundError,
@@ -99,11 +65,10 @@ app.add_typer(
     mcp_app,
     name="mcp",
     help=(
-        "Manage MCP (Model Context Protocol) server configurations for plugins.\n\n"
+        "Display MCP (Model Context Protocol) server configuration for plugins.\n\n"
         "Commands:\n\n"
         "  show    — Display the MCP config for a plugin (plaintext or JSON).\n\n"
-        "  add     — Register a plugin's MCP server with one or more coding agents.\n\n"
-        "  remove  — Unregister a plugin's MCP server from coding agents."
+        "For wiring plugins into coding agents, use 'atk plug' / 'atk unplug'."
     ),
 )
 
@@ -450,7 +415,7 @@ def mcp_show(
     raise typer.Exit(exit_codes.SUCCESS)
 
 
-@mcp_app.command(name="add")
+@mcp_app.command(name="add", deprecated=True)
 def mcp_add(
     plugin: Annotated[
         str,
@@ -458,41 +423,32 @@ def mcp_add(
     ],
     claude: Annotated[
         bool,
-        typer.Option("--claude", help="Register with Claude Code via 'claude mcp add'."),
+        typer.Option("--claude", help="Plug into Claude Code."),
     ] = False,
     codex: Annotated[
         bool,
-        typer.Option("--codex", help="Register with Codex via 'codex mcp add'."),
+        typer.Option("--codex", help="Plug into Codex."),
     ] = False,
     gemini: Annotated[
         bool,
-        typer.Option("--gemini", help="Register with Gemini CLI via 'gemini mcp add'."),
+        typer.Option("--gemini", help="Plug into Gemini CLI."),
     ] = False,
     auggie: Annotated[
         bool,
-        typer.Option("--auggie", help="Register with Auggie via 'auggie mcp add-json'."),
+        typer.Option("--auggie", help="Plug into Augment Code."),
     ] = False,
     opencode: Annotated[
         bool,
-        typer.Option("--opencode", help="Register with OpenCode by writing to opencode.jsonc."),
+        typer.Option("--opencode", help="Plug into OpenCode."),
     ] = False,
     force: Annotated[
         bool,
         typer.Option("-y", "--force", help="Skip all confirmation prompts."),
     ] = False,
 ) -> None:
-    """Register a plugin's MCP server with one or more coding agents.
+    """Deprecated: use ``atk plug`` instead."""
+    cli_logger.warning("'atk mcp add' is deprecated — use 'atk plug' instead")
 
-    Reads the MCP config from plugin.yaml, then configures each selected
-    agent.  ATK asks for confirmation before taking any action.  If the
-    plugin ships a SKILL.md, ATK also offers to inject it so the agent
-    understands how to use the plugin's tools.
-
-    Pass -y / --force to skip all confirmation prompts.
-
-    Multiple agent flags may be combined; agents are processed in order:
-    Claude → Codex → Gemini → Auggie → OpenCode.
-    """
     agent_flags = [claude, codex, gemini, auggie, opencode]
 
     if not any(agent_flags):
@@ -503,72 +459,17 @@ def mcp_add(
         raise typer.Exit(exit_codes.SUCCESS)
 
     atk_home = require_ready_home()
-
     plugin_schema, plugin_dir = require_plugin(atk_home, plugin)
 
-    if plugin_schema.mcp is None:
-        cli_logger.error(f"Plugin '{plugin_schema.name}' has no MCP configuration")
-        raise typer.Exit(exit_codes.PLUGIN_INVALID)
-
-    result = generate_mcp_config(plugin_schema, plugin_dir, plugin_schema.name)
-
-    for var in result.missing_vars:
-        cli_logger.warning(f"Environment variable '{var}' is not set")
-
-    # --- Multi-agent configuration ---
-    outcomes: list[tuple[str, AgentStatus, str]] = []  # (label, status, detail)
-
-    if claude:
-        status, detail = run_cli_agent(
-            "Claude Code", build_claude_mcp_config(result), "claude", run_claude_mcp_add,
-            force=force,
-        )
-        outcomes.append(("Claude Code", status, detail))
-        if status == "configured":
-            inject_claude_skill_md(plugin_dir, force=force)
-
-    if codex:
-        status, detail = run_cli_agent(
-            "Codex", build_codex_mcp_config(result), "codex", run_codex_mcp_add,
-            force=force,
-        )
-        outcomes.append(("Codex", status, detail))
-        if status == "configured":
-            inject_codex_skill_md(plugin_schema.name, plugin_dir, force=force)
-
-    if gemini:
-        status, detail = run_cli_agent(
-            "Gemini CLI", build_gemini_mcp_config(result), "gemini", run_gemini_mcp_add,
-            force=force,
-        )
-        outcomes.append(("Gemini CLI", status, detail))
-        if status == "configured":
-            inject_gemini_skill_md(plugin_dir, force=force)
-
-    if auggie:
-        status, detail = run_cli_agent(
-            "Auggie", build_auggie_mcp_config(result), "auggie", run_auggie_mcp_add,
-            force=force,
-        )
-        outcomes.append(("Auggie", status, detail))
-        if status == "configured":
-            inject_auggie_skill_md(plugin_dir, force=force)
-
-    if opencode:
-        status, detail = run_file_agent(
-            "OpenCode", build_opencode_mcp_config(result), force=force,
-        )
-        outcomes.append(("OpenCode", status, detail))
-        if status == "configured":
-            inject_opencode_skill_md(plugin_dir, force=force)
-
-    print_agent_summary(outcomes)
-
-    has_failures = any(s in ("failed", "not_found") for _, s, _ in outcomes)
-    raise typer.Exit(exit_codes.GENERAL_ERROR if has_failures else exit_codes.SUCCESS)
+    code = plug_plugin(
+        plugin_schema, plugin_dir,
+        claude=claude, codex=codex, gemini=gemini,
+        auggie=auggie, opencode=opencode, force=force,
+    )
+    raise typer.Exit(code)
 
 
-@mcp_app.command(name="remove")
+@mcp_app.command(name="remove", deprecated=True)
 def mcp_remove(
     plugin: Annotated[
         str,
@@ -576,40 +477,32 @@ def mcp_remove(
     ],
     claude: Annotated[
         bool,
-        typer.Option("--claude", help="Remove from Claude Code via 'claude mcp remove'."),
+        typer.Option("--claude", help="Unplug from Claude Code."),
     ] = False,
     codex: Annotated[
         bool,
-        typer.Option("--codex", help="Remove from Codex via 'codex mcp remove'."),
+        typer.Option("--codex", help="Unplug from Codex."),
     ] = False,
     gemini: Annotated[
         bool,
-        typer.Option("--gemini", help="Remove from Gemini CLI via 'gemini mcp remove'."),
+        typer.Option("--gemini", help="Unplug from Gemini CLI."),
     ] = False,
     auggie: Annotated[
         bool,
-        typer.Option("--auggie", help="Remove from Auggie via 'auggie mcp remove'."),
+        typer.Option("--auggie", help="Unplug from Augment Code."),
     ] = False,
     opencode: Annotated[
         bool,
-        typer.Option("--opencode", help="Remove from OpenCode by editing opencode.jsonc."),
+        typer.Option("--opencode", help="Unplug from OpenCode."),
     ] = False,
     force: Annotated[
         bool,
         typer.Option("-y", "--force", help="Skip all confirmation prompts."),
     ] = False,
 ) -> None:
-    """Unregister a plugin's MCP server from one or more coding agents.
+    """Deprecated: use ``atk unplug`` instead."""
+    cli_logger.warning("'atk mcp remove' is deprecated — use 'atk unplug' instead")
 
-    Removes both the MCP server registration and any injected SKILL.md
-    reference for each selected agent.  ATK asks for confirmation before
-    taking any action.
-
-    Pass -y / --force to skip all confirmation prompts.
-
-    Multiple agent flags may be combined; agents are processed in order:
-    Claude → Codex → Gemini → Auggie → OpenCode.
-    """
     agent_flags = [claude, codex, gemini, auggie, opencode]
 
     if not any(agent_flags):
@@ -620,58 +513,14 @@ def mcp_remove(
         raise typer.Exit(exit_codes.SUCCESS)
 
     atk_home = require_ready_home()
-
     plugin_schema, plugin_dir = require_plugin(atk_home, plugin)
 
-    outcomes: list[tuple[str, AgentStatus, str]] = []
-
-    if claude:
-        status, detail = remove_cli_agent_by_name(
-            "Claude Code", plugin_schema.name, "claude", run_claude_mcp_remove,
-            force=force,
-        )
-        outcomes.append(("Claude Code", status, detail))
-        if status == "removed":
-            remove_claude_skill_md(plugin_dir)
-
-    if codex:
-        status, detail = remove_cli_agent_by_name(
-            "Codex", plugin_schema.name, "codex", run_codex_mcp_remove,
-            force=force,
-        )
-        outcomes.append(("Codex", status, detail))
-        if status == "removed":
-            remove_codex_skill_md(plugin_schema.name, plugin_dir)
-
-    if gemini:
-        status, detail = remove_cli_agent_by_name(
-            "Gemini CLI", plugin_schema.name, "gemini", run_gemini_mcp_remove,
-            force=force,
-        )
-        outcomes.append(("Gemini CLI", status, detail))
-        if status == "removed":
-            remove_gemini_skill_md(plugin_dir)
-
-    if auggie:
-        status, detail = remove_cli_agent_by_name(
-            "Auggie", plugin_schema.name, "auggie", run_auggie_mcp_remove,
-            force=force,
-        )
-        outcomes.append(("Auggie", status, detail))
-        if status == "removed":
-            remove_auggie_skill_md(plugin_dir)
-
-    if opencode:
-        status, detail = remove_file_agent(
-            "OpenCode", plugin_schema.name, plugin_dir,
-            force=force,
-        )
-        outcomes.append(("OpenCode", status, detail))
-
-    print_agent_summary(outcomes)
-
-    has_failures = any(s in ("failed", "not_found") for _, s, _ in outcomes)
-    raise typer.Exit(exit_codes.GENERAL_ERROR if has_failures else exit_codes.SUCCESS)
+    code = unplug_plugin(
+        plugin_schema, plugin_dir,
+        claude=claude, codex=codex, gemini=gemini,
+        auggie=auggie, opencode=opencode, force=force,
+    )
+    raise typer.Exit(code)
 
 
 # ---------------------------------------------------------------------------
