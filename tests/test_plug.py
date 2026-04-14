@@ -242,7 +242,7 @@ def test_unplug_skill_only_plugin(create_plugin, cli_runner) -> None:
 
 
 # ---------------------------------------------------------------------------
-# atk unplug — MCP + SKILL.md plugin
+# atk unplug — skill-only plugin (opencode regression)
 # ---------------------------------------------------------------------------
 
 
@@ -260,6 +260,11 @@ def test_unplug_skill_only_plugin_opencode(create_plugin, cli_runner) -> None:
     # Then
     assert result.exit_code == exit_codes.SUCCESS
     mock_remove.assert_called_once()
+
+
+# ---------------------------------------------------------------------------
+# atk unplug — MCP + SKILL.md plugin
+# ---------------------------------------------------------------------------
 
 
 def test_unplug_mcp_and_skill_plugin(create_plugin, cli_runner) -> None:

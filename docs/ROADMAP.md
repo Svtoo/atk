@@ -23,7 +23,7 @@
 | 6     | Community            | 🔄     | PyPI, contribution guide, CI/CD             |
 | 7     | AI Agent Integration | ⏳      | MCP server, agent-friendly output           |
 | 8     | MCP Management       | ✅      | Auto-install to Claude Code, Codex, Gemini, etc. |
-| 9     | Plug/Unplug          | 🔜     | `atk plug`/`unplug` — unified agent wiring  |
+| 9     | Plug/Unplug          | ✅      | `atk plug`/`unplug` — unified agent wiring  |
 | 10    | Data Backup          | ⏳      | Backup/restore plugin data                  |
 
 ## Phase Summaries
@@ -70,7 +70,7 @@ MCP server for AI agent control. Agent-friendly documentation. Structured JSON o
 - [x] Auto-install managed MCP to Claude Code, Codex, Gemini CLI, etc.
 
 
-### Phase 9: Plug/Unplug 🔜
+### Phase 9: Plug/Unplug ✅
 
 Unified `atk plug`/`unplug` commands that wire any plugin into coding agents. Adapts to what the plugin offers:
 - Plugins with MCP + SKILL.md → register MCP server + inject skill

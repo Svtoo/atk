@@ -1,6 +1,6 @@
 # Plugin-to-Agent Wiring
 
-> **Status**: MCP registration and skill injection implemented for all five agents (Claude, Codex, Gemini, Auggie, OpenCode). `atk plug`/`unplug` commands planned (currently available as `atk mcp add`/`atk mcp remove`).
+> **Status**: Implemented. `atk plug`/`unplug` commands handle all agent wiring. `atk mcp add`/`atk mcp remove` have been removed.
 
 ## Overview
 
@@ -56,10 +56,6 @@ atk mcp <plugin> --json   # Machine-readable JSON for manual copy-paste
 ```
 
 `atk mcp` is a read-only diagnostic tool for inspecting and exporting a plugin's MCP configuration. It does not perform any wiring.
-
-### Deprecated Commands
-
-`atk mcp add` and `atk mcp remove` are deprecated aliases for `atk plug` and `atk unplug` respectively. They will emit a deprecation warning directing users to the new commands. `atk mcp` (no subcommand, with a plugin argument) reverts to its original behavior: displaying the MCP config.
 
 ## Confirmation Flow
 
