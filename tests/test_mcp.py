@@ -698,14 +698,14 @@ def test_build_claude_mcp_config_custom_scope(tmp_path: Path) -> None:
 # generate_mcp_config — fail-fast for missing transport-required fields
 # ---------------------------------------------------------------------------
 
-def test_generate_mcp_config_stdio_raises_when_command_missing(tmp_path: Path) -> None:
+def test_generate_mcp_config_stdio_raises_when_command_missing() -> None:
     """stdio transport with no command is caught at schema construction — raises ValidationError."""
     # When / Then — validation now happens at McpPluginConfig construction, not generate_mcp_config
     with pytest.raises(ValidationError, match="'command' is required when transport is 'stdio'"):
         McpPluginConfig(transport="stdio")  # no command
 
 
-def test_generate_mcp_config_sse_raises_when_endpoint_missing(tmp_path: Path) -> None:
+def test_generate_mcp_config_sse_raises_when_endpoint_missing() -> None:
     """sse transport with no endpoint is caught at schema construction — raises ValidationError."""
     # When / Then — validation now happens at McpPluginConfig construction, not generate_mcp_config
     with pytest.raises(ValidationError, match="'endpoint' is required when transport is 'sse'"):

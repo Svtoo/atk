@@ -2,13 +2,11 @@
 
 from __future__ import annotations
 
-from pathlib import Path
 from unittest.mock import patch
 
 from atk import exit_codes
 from atk.cli import app
 from atk.plugin_schema import PLUGIN_SCHEMA_VERSION, McpPluginConfig, PluginSchema
-
 
 # ---------------------------------------------------------------------------
 # Helpers

@@ -13,6 +13,7 @@ from atk import __version__, cli_logger, exit_codes
 from atk.add import AddCancelledError, InstallFailedError, add_plugin
 from atk.banner import print_banner
 from atk.commands.lifecycle import run_lifecycle_cli, run_restart_single_cli, run_uninstall_cli
+from atk.commands.plug import plug_plugin, unplug_plugin
 from atk.commands.preconditions import (
     assert_plugin_or_all,
     require_git,
@@ -21,7 +22,6 @@ from atk.commands.preconditions import (
     require_ready_home,
     stdin_prompt,
 )
-from atk.commands.plug import plug_plugin, unplug_plugin
 from atk.commands.run import run_plugin_script
 from atk.commands.search import filter_registry_plugins, print_search_table
 from atk.commands.status import print_status_table
