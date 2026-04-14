@@ -1261,11 +1261,11 @@ class TestMcpCli:
 
 
 # ---------------------------------------------------------------------------
-# Flat tests: atk mcp --claude flag
+# Flat tests: atk plug --claude flag
 # ---------------------------------------------------------------------------
 
 
-def test_mcp_claude_confirms_and_runs_subprocess(
+def test_plug_claude_confirms_and_runs_subprocess(
     create_plugin: PluginFactory, cli_runner
 ) -> None:
     """Confirm 'y' triggers subprocess.run with the correct claude argv."""
@@ -1297,7 +1297,7 @@ def test_mcp_claude_confirms_and_runs_subprocess(
     assert called_argv == expected_argv
 
 
-def test_mcp_claude_skips_on_decline(
+def test_plug_claude_skips_on_decline(
     create_plugin: PluginFactory, cli_runner
 ) -> None:
     """Confirm 'n' skips subprocess.run and exits 0."""
@@ -1323,7 +1323,7 @@ def test_mcp_claude_skips_on_decline(
     mock_run.assert_not_called()
 
 
-def test_mcp_claude_reports_failure_on_nonzero_subprocess_exit_code(
+def test_plug_claude_reports_failure_on_nonzero_subprocess_exit_code(
     create_plugin: PluginFactory, cli_runner
 ) -> None:
     """Confirm subprocess non-zero exit code causes atk to exit with GENERAL_ERROR.
@@ -1358,7 +1358,7 @@ def test_mcp_claude_reports_failure_on_nonzero_subprocess_exit_code(
     assert f"exit code {subprocess_exit_code}" in result.output
 
 
-def test_mcp_claude_warns_missing_vars_before_confirmation(
+def test_plug_claude_warns_missing_vars_before_confirmation(
     create_plugin: PluginFactory, cli_runner
 ) -> None:
     """Confirm missing env var warning appears before the Proceed? prompt."""
@@ -1389,7 +1389,7 @@ def test_mcp_claude_warns_missing_vars_before_confirmation(
     assert warning_pos < proceed_pos, "Warning must appear before Proceed?"
 
 
-def test_mcp_claude_handles_claude_not_found(
+def test_plug_claude_handles_claude_not_found(
     create_plugin: PluginFactory, cli_runner
 ) -> None:
     """Confirm FileNotFoundError from subprocess exits with GENERAL_ERROR."""
@@ -1415,11 +1415,11 @@ def test_mcp_claude_handles_claude_not_found(
 
 
 # ---------------------------------------------------------------------------
-# Flat tests: atk mcp --gemini flag
+# Flat tests: atk plug --gemini flag
 # ---------------------------------------------------------------------------
 
 
-def test_mcp_gemini_confirms_and_runs_subprocess(
+def test_plug_gemini_confirms_and_runs_subprocess(
     create_plugin: PluginFactory, cli_runner
 ) -> None:
     """Confirm 'y' triggers subprocess.run with the correct gemini argv."""

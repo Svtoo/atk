@@ -23,6 +23,7 @@ from atk.commands.mcp import (
     remove_codex_skill_md,
     remove_file_agent,
     remove_gemini_skill_md,
+    remove_opencode_skill_md,
     run_cli_agent,
     run_file_agent,
 )
@@ -238,7 +239,7 @@ def unplug_plugin(
             )
             outcomes.append(("OpenCode", status, detail))
         else:
-            remove_codex_skill_md(plugin_schema.name, plugin_dir)
+            remove_opencode_skill_md(plugin_schema.name, plugin_dir)
             outcomes.append(("OpenCode", "removed", "skill only"))
 
     print_agent_summary(outcomes)

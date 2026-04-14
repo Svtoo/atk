@@ -62,9 +62,6 @@ console = Console()
 
 
 
-
-
-
 def version_callback(value: bool) -> None:
     """Show version and exit."""
     if value:

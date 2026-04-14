@@ -246,6 +246,22 @@ def test_unplug_skill_only_plugin(create_plugin, cli_runner) -> None:
 # ---------------------------------------------------------------------------
 
 
+def test_unplug_skill_only_plugin_opencode(create_plugin, cli_runner) -> None:
+    """``atk unplug`` on a skill-only plugin with --opencode removes opencode skill reference."""
+    # Given
+    plugin = _make_skill_only_plugin(name="PersonaPlugin")
+    plugin_dir = create_plugin(plugin=plugin, directory="persona-plugin-oc")
+    (plugin_dir / "SKILL.md").write_text("# My Persona\n")
+
+    # When
+    with patch("atk.commands.plug.remove_opencode_skill_md") as mock_remove:
+        result = cli_runner.invoke(app, ["unplug", "persona-plugin-oc", "--opencode", "-y"])
+
+    # Then
+    assert result.exit_code == exit_codes.SUCCESS
+    mock_remove.assert_called_once()
+
+
 def test_unplug_mcp_and_skill_plugin(create_plugin, cli_runner) -> None:
     """``atk unplug`` on a plugin with MCP + SKILL.md removes both."""
     # Given

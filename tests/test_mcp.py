@@ -1293,33 +1293,3 @@ def test_build_gemini_mcp_config_custom_scope(tmp_path: Path) -> None:
     assert result.argv[scope_index + 1] == custom_scope
 
 
-# ---------------------------------------------------------------------------
-# mcp-remove CLI command — E2E tests
-# ---------------------------------------------------------------------------
-
-
-def test_unplug_no_flags_warns_in_mcp_tests(create_plugin, cli_runner) -> None:
-    """``atk unplug`` with no agent flags prints a warning and exits successfully."""
-    # Given
-    plugin = _make_stdio_plugin(name="TestPlugin", command="uv")
-    create_plugin(plugin=plugin, directory="test-plugin")
-
-    # When
-    result = cli_runner.invoke(app, ["unplug", "test-plugin"])
-
-    # Then
-    assert result.exit_code == exit_codes.SUCCESS
-    assert "No agent flags" in result.output
-
-
-def test_unplug_plugin_not_found_in_mcp_tests(configure_atk_home, cli_runner) -> None:
-    """``atk unplug`` with a nonexistent plugin exits with PLUGIN_NOT_FOUND."""
-    # Given
-    configure_atk_home()
-
-    # When
-    result = cli_runner.invoke(app, ["unplug", "nonexistent", "--claude"])
-
-    # Then
-    assert result.exit_code == exit_codes.PLUGIN_NOT_FOUND
-    assert "not found" in result.output
