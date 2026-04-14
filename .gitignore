@@ -208,3 +208,9 @@ __marimo__/
 
 .idea
 img
+
+# Derived skill copies (source of truth: skills/)
+.claude/skills/
+
+# Codanna index
+.codanna/
