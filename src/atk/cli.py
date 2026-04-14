@@ -38,6 +38,7 @@ from atk.commands.preconditions import (
     require_ready_home,
     stdin_prompt,
 )
+from atk.commands.plug import plug_plugin, unplug_plugin
 from atk.commands.run import run_plugin_script
 from atk.commands.search import filter_registry_plugins, print_search_table
 from atk.commands.status import print_status_table
@@ -671,6 +672,134 @@ def mcp_remove(
 
     has_failures = any(s in ("failed", "not_found") for _, s, _ in outcomes)
     raise typer.Exit(exit_codes.GENERAL_ERROR if has_failures else exit_codes.SUCCESS)
+
+
+# ---------------------------------------------------------------------------
+# atk plug / atk unplug
+# ---------------------------------------------------------------------------
+
+
+@app.command()
+def plug(
+    plugin: Annotated[
+        str,
+        typer.Argument(help="Plugin name or directory."),
+    ],
+    claude: Annotated[
+        bool,
+        typer.Option("--claude", help="Plug into Claude Code."),
+    ] = False,
+    codex: Annotated[
+        bool,
+        typer.Option("--codex", help="Plug into Codex."),
+    ] = False,
+    gemini: Annotated[
+        bool,
+        typer.Option("--gemini", help="Plug into Gemini CLI."),
+    ] = False,
+    auggie: Annotated[
+        bool,
+        typer.Option("--auggie", help="Plug into Augment Code."),
+    ] = False,
+    opencode: Annotated[
+        bool,
+        typer.Option("--opencode", help="Plug into OpenCode."),
+    ] = False,
+    force: Annotated[
+        bool,
+        typer.Option("-y", "--force", help="Skip all confirmation prompts."),
+    ] = False,
+) -> None:
+    """Plug a plugin into one or more coding agents.
+
+    Adapts to what the plugin offers: registers the MCP server, injects
+    the SKILL.md, or both.  Plugins with only a SKILL.md (no MCP server)
+    are supported — enabling instruction-only plugins like coding personas.
+
+    Pass -y / --force to skip all confirmation prompts.
+
+    Multiple agent flags may be combined; agents are processed in order:
+    Claude → Codex → Gemini → Auggie → OpenCode.
+    """
+    agent_flags = [claude, codex, gemini, auggie, opencode]
+
+    if not any(agent_flags):
+        cli_logger.warning(
+            "No agent flags specified — pass one or more of "
+            "--claude, --codex, --gemini, --auggie, --opencode"
+        )
+        raise typer.Exit(exit_codes.SUCCESS)
+
+    atk_home = require_ready_home()
+    plugin_schema, plugin_dir = require_plugin(atk_home, plugin)
+
+    code = plug_plugin(
+        plugin_schema, plugin_dir,
+        claude=claude, codex=codex, gemini=gemini,
+        auggie=auggie, opencode=opencode, force=force,
+    )
+    raise typer.Exit(code)
+
+
+@app.command()
+def unplug(
+    plugin: Annotated[
+        str,
+        typer.Argument(help="Plugin name or directory."),
+    ],
+    claude: Annotated[
+        bool,
+        typer.Option("--claude", help="Unplug from Claude Code."),
+    ] = False,
+    codex: Annotated[
+        bool,
+        typer.Option("--codex", help="Unplug from Codex."),
+    ] = False,
+    gemini: Annotated[
+        bool,
+        typer.Option("--gemini", help="Unplug from Gemini CLI."),
+    ] = False,
+    auggie: Annotated[
+        bool,
+        typer.Option("--auggie", help="Unplug from Augment Code."),
+    ] = False,
+    opencode: Annotated[
+        bool,
+        typer.Option("--opencode", help="Unplug from OpenCode."),
+    ] = False,
+    force: Annotated[
+        bool,
+        typer.Option("-y", "--force", help="Skip all confirmation prompts."),
+    ] = False,
+) -> None:
+    """Unplug a plugin from one or more coding agents.
+
+    Removes MCP server registration, SKILL.md references, or both —
+    depending on what the plugin offers.
+
+    Pass -y / --force to skip all confirmation prompts.
+
+    Multiple agent flags may be combined; agents are processed in order:
+    Claude → Codex → Gemini → Auggie → OpenCode.
+    """
+    agent_flags = [claude, codex, gemini, auggie, opencode]
+
+    if not any(agent_flags):
+        cli_logger.warning(
+            "No agent flags specified — pass one or more of "
+            "--claude, --codex, --gemini, --auggie, --opencode"
+        )
+        raise typer.Exit(exit_codes.SUCCESS)
+
+    atk_home = require_ready_home()
+    plugin_schema, plugin_dir = require_plugin(atk_home, plugin)
+
+    code = unplug_plugin(
+        plugin_schema, plugin_dir,
+        claude=claude, codex=codex, gemini=gemini,
+        auggie=auggie, opencode=opencode, force=force,
+    )
+    raise typer.Exit(code)
 
 
 @app.command()

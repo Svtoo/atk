@@ -1,0 +1,3 @@
+schema_version: "2026-01-23"
+name: Skill Only Plugin
+description: A plugin with only a SKILL.md and no MCP configuration. Used for testing instruction-only plugins.
