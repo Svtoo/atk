@@ -1140,7 +1140,7 @@ class TestMcpCli:
         (plugin_dir / ".env").write_text(f"{var_name}={var_value}\n")
 
         # When
-        result = cli_runner.invoke(app, ["mcp", "show", plugin_dir_name, "--json"])
+        result = cli_runner.invoke(app, ["mcp", plugin_dir_name, "--json"])
 
         # Then
         assert result.exit_code == exit_codes.SUCCESS
@@ -1164,7 +1164,7 @@ class TestMcpCli:
         create_plugin(plugin_name, plugin_dir_name)
 
         # When
-        result = cli_runner.invoke(app, ["mcp", "show", plugin_dir_name])
+        result = cli_runner.invoke(app, ["mcp", plugin_dir_name])
 
         # Then
         assert result.exit_code == exit_codes.PLUGIN_INVALID
@@ -1186,7 +1186,7 @@ class TestMcpCli:
         )
 
         # When
-        result = cli_runner.invoke(app, ["mcp", "show", plugin_dir_name, "--json"])
+        result = cli_runner.invoke(app, ["mcp", plugin_dir_name, "--json"])
 
         # Then
         assert result.exit_code == exit_codes.SUCCESS
@@ -1212,7 +1212,7 @@ class TestMcpCli:
         )
 
         # When
-        result = cli_runner.invoke(app, ["mcp", "show", plugin_dir_name, "--json"])
+        result = cli_runner.invoke(app, ["mcp", plugin_dir_name, "--json"])
 
         # Then
         assert result.exit_code == exit_codes.SUCCESS
@@ -1243,7 +1243,7 @@ class TestMcpCli:
         )
 
         # When
-        result = cli_runner.invoke(app, ["mcp", "show", plugin_dir_name, "--json"])
+        result = cli_runner.invoke(app, ["mcp", plugin_dir_name, "--json"])
 
         # Then
         assert result.exit_code == exit_codes.SUCCESS
@@ -1288,7 +1288,7 @@ def test_mcp_claude_confirms_and_runs_subprocess(
         patch("atk.commands.preconditions.is_git_available", return_value=True),
         patch("atk.mcp_configure.subprocess.run", return_value=type("R", (), {"returncode": 0})()) as mock_run,
     ):
-        result = cli_runner.invoke(app, ["mcp", "add", plugin_dir_name, "--claude"], input="y\n")
+        result = cli_runner.invoke(app, ["plug", plugin_dir_name, "--claude"], input="y\n")
 
     # Then
     assert result.exit_code == exit_codes.SUCCESS
@@ -1316,7 +1316,7 @@ def test_mcp_claude_skips_on_decline(
         patch("atk.commands.preconditions.is_git_available", return_value=True),
         patch("atk.mcp_configure.subprocess.run") as mock_run,
     ):
-        result = cli_runner.invoke(app, ["mcp", "add", plugin_dir_name, "--claude"], input="n\n")
+        result = cli_runner.invoke(app, ["plug", plugin_dir_name, "--claude"], input="n\n")
 
     # Then
     assert result.exit_code == exit_codes.SUCCESS
@@ -1351,7 +1351,7 @@ def test_mcp_claude_reports_failure_on_nonzero_subprocess_exit_code(
             return_value=type("R", (), {"returncode": subprocess_exit_code})(),
         ),
     ):
-        result = cli_runner.invoke(app, ["mcp", "add", plugin_dir_name, "--claude"], input="y\n")
+        result = cli_runner.invoke(app, ["plug", plugin_dir_name, "--claude"], input="y\n")
 
     # Then — atk exits with GENERAL_ERROR; the subprocess code appears in summary output
     assert result.exit_code == exit_codes.GENERAL_ERROR
@@ -1378,7 +1378,7 @@ def test_mcp_claude_warns_missing_vars_before_confirmation(
         patch("atk.commands.preconditions.is_git_available", return_value=True),
         patch("atk.mcp_configure.subprocess.run", return_value=type("R", (), {"returncode": 0})()),
     ):
-        result = cli_runner.invoke(app, ["mcp", "add", plugin_dir_name, "--claude"], input="y\n")
+        result = cli_runner.invoke(app, ["plug", plugin_dir_name, "--claude"], input="y\n")
 
     # Then
     assert result.exit_code == exit_codes.SUCCESS
@@ -1408,7 +1408,7 @@ def test_mcp_claude_handles_claude_not_found(
         patch("atk.commands.preconditions.is_git_available", return_value=True),
         patch("atk.mcp_configure.subprocess.run", side_effect=FileNotFoundError),
     ):
-        result = cli_runner.invoke(app, ["mcp", "add", plugin_dir_name, "--claude"], input="y\n")
+        result = cli_runner.invoke(app, ["plug", plugin_dir_name, "--claude"], input="y\n")
 
     # Then
     assert result.exit_code == exit_codes.GENERAL_ERROR
@@ -1442,7 +1442,7 @@ def test_mcp_gemini_confirms_and_runs_subprocess(
         patch("atk.commands.preconditions.is_git_available", return_value=True),
         patch("atk.mcp_configure.subprocess.run", return_value=type("R", (), {"returncode": 0})()) as mock_run,
     ):
-        result = cli_runner.invoke(app, ["mcp", "add", plugin_dir_name, "--gemini"], input="y\n")
+        result = cli_runner.invoke(app, ["plug", plugin_dir_name, "--gemini"], input="y\n")
 
     # Then
     assert result.exit_code == exit_codes.SUCCESS

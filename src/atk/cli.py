@@ -60,17 +60,6 @@ app = typer.Typer(
 console = Console()
 
 
-mcp_app = typer.Typer(no_args_is_help=True)
-app.add_typer(
-    mcp_app,
-    name="mcp",
-    help=(
-        "Display MCP (Model Context Protocol) server configuration for plugins.\n\n"
-        "Commands:\n\n"
-        "  show    — Display the MCP config for a plugin (plaintext or JSON).\n\n"
-        "For wiring plugins into coding agents, use 'atk plug' / 'atk unplug'."
-    ),
-)
 
 
 
@@ -375,8 +364,8 @@ def setup(
     raise typer.Exit(exit_codes.SUCCESS)
 
 
-@mcp_app.command(name="show")
-def mcp_show(
+@app.command()
+def mcp(
     plugin: Annotated[
         str,
         typer.Argument(help="Plugin name or directory."),
@@ -393,6 +382,8 @@ def mcp_show(
     copied directly into an IDE or tool configuration file.
 
     Use --json to get machine-readable JSON output.
+
+    To wire plugins into coding agents, use 'atk plug' / 'atk unplug'.
     """
     atk_home = require_ready_home()
 
@@ -413,114 +404,6 @@ def mcp_show(
         console.print(format_mcp_plaintext(result))
 
     raise typer.Exit(exit_codes.SUCCESS)
-
-
-@mcp_app.command(name="add", deprecated=True)
-def mcp_add(
-    plugin: Annotated[
-        str,
-        typer.Argument(help="Plugin name or directory."),
-    ],
-    claude: Annotated[
-        bool,
-        typer.Option("--claude", help="Plug into Claude Code."),
-    ] = False,
-    codex: Annotated[
-        bool,
-        typer.Option("--codex", help="Plug into Codex."),
-    ] = False,
-    gemini: Annotated[
-        bool,
-        typer.Option("--gemini", help="Plug into Gemini CLI."),
-    ] = False,
-    auggie: Annotated[
-        bool,
-        typer.Option("--auggie", help="Plug into Augment Code."),
-    ] = False,
-    opencode: Annotated[
-        bool,
-        typer.Option("--opencode", help="Plug into OpenCode."),
-    ] = False,
-    force: Annotated[
-        bool,
-        typer.Option("-y", "--force", help="Skip all confirmation prompts."),
-    ] = False,
-) -> None:
-    """Deprecated: use ``atk plug`` instead."""
-    cli_logger.warning("'atk mcp add' is deprecated — use 'atk plug' instead")
-
-    agent_flags = [claude, codex, gemini, auggie, opencode]
-
-    if not any(agent_flags):
-        cli_logger.warning(
-            "No agent flags specified — pass one or more of "
-            "--claude, --codex, --gemini, --auggie, --opencode"
-        )
-        raise typer.Exit(exit_codes.SUCCESS)
-
-    atk_home = require_ready_home()
-    plugin_schema, plugin_dir = require_plugin(atk_home, plugin)
-
-    code = plug_plugin(
-        plugin_schema, plugin_dir,
-        claude=claude, codex=codex, gemini=gemini,
-        auggie=auggie, opencode=opencode, force=force,
-    )
-    raise typer.Exit(code)
-
-
-@mcp_app.command(name="remove", deprecated=True)
-def mcp_remove(
-    plugin: Annotated[
-        str,
-        typer.Argument(help="Plugin name or directory."),
-    ],
-    claude: Annotated[
-        bool,
-        typer.Option("--claude", help="Unplug from Claude Code."),
-    ] = False,
-    codex: Annotated[
-        bool,
-        typer.Option("--codex", help="Unplug from Codex."),
-    ] = False,
-    gemini: Annotated[
-        bool,
-        typer.Option("--gemini", help="Unplug from Gemini CLI."),
-    ] = False,
-    auggie: Annotated[
-        bool,
-        typer.Option("--auggie", help="Unplug from Augment Code."),
-    ] = False,
-    opencode: Annotated[
-        bool,
-        typer.Option("--opencode", help="Unplug from OpenCode."),
-    ] = False,
-    force: Annotated[
-        bool,
-        typer.Option("-y", "--force", help="Skip all confirmation prompts."),
-    ] = False,
-) -> None:
-    """Deprecated: use ``atk unplug`` instead."""
-    cli_logger.warning("'atk mcp remove' is deprecated — use 'atk unplug' instead")
-
-    agent_flags = [claude, codex, gemini, auggie, opencode]
-
-    if not any(agent_flags):
-        cli_logger.warning(
-            "No agent flags specified — pass one or more of "
-            "--claude, --codex, --gemini, --auggie, --opencode"
-        )
-        raise typer.Exit(exit_codes.SUCCESS)
-
-    atk_home = require_ready_home()
-    plugin_schema, plugin_dir = require_plugin(atk_home, plugin)
-
-    code = unplug_plugin(
-        plugin_schema, plugin_dir,
-        claude=claude, codex=codex, gemini=gemini,
-        auggie=auggie, opencode=opencode, force=force,
-    )
-    raise typer.Exit(code)
 
 
 # ---------------------------------------------------------------------------
