@@ -10,11 +10,25 @@ from enum import Enum
 from pathlib import Path
 
 import atk.registry as registry_mod
-from atk.git import add_gitignore_exemption, git_add, git_commit, git_ls_remote, write_atk_ref
+from atk.git import (
+    add_gitignore_exemption,
+    git_add,
+    git_commit,
+    git_ls_remote,
+    git_push,
+    write_atk_ref,
+)
 from atk.git_source import fetch_git_plugin, normalize_git_url
 from atk.home import validate_atk_home
 from atk.lifecycle import LifecycleCommandNotDefinedError, run_lifecycle_command
-from atk.manifest_schema import PluginEntry, SourceInfo, SourceType, load_manifest, save_manifest
+from atk.manifest_schema import (
+    ConfigSection,
+    PluginEntry,
+    SourceInfo,
+    SourceType,
+    load_manifest,
+    save_manifest,
+)
 from atk.plugin import load_plugin_schema
 from atk.plugin_schema import PluginMaturity, PluginSchema
 from atk.sanitize import sanitize_directory_name
@@ -299,11 +313,13 @@ def _finalize_add(
         if source.ref:
             write_atk_ref(target_dir, source.ref)
 
-        auto_commit = _update_manifest(atk_home, schema.name, directory, source=source)
+        config = _update_manifest(atk_home, schema.name, directory, source=source)
 
-        if auto_commit:
+        if config.auto_commit:
             git_add(atk_home)
             git_commit(atk_home, f"Add plugin '{schema.name}'")
+            if config.auto_push:
+                git_push(atk_home)
 
         return directory
     except Exception:
@@ -338,7 +354,9 @@ def _cleanup_failed_add(atk_home: Path, target_dir: Path, directory: str, alread
         pass
 
 
-def _update_manifest(atk_home: Path, plugin_name: str, directory: str, source: SourceInfo) -> bool:
+def _update_manifest(
+    atk_home: Path, plugin_name: str, directory: str, source: SourceInfo,
+) -> ConfigSection:
     """Update manifest.yaml with new plugin entry.
 
     Args:
@@ -348,7 +366,7 @@ def _update_manifest(atk_home: Path, plugin_name: str, directory: str, source: S
         source: Source metadata (type, ref, url).
 
     Returns:
-        True if auto_commit is enabled in config, False otherwise.
+        The manifest's config section.
     """
     manifest = load_manifest(atk_home)
 
@@ -358,7 +376,7 @@ def _update_manifest(atk_home: Path, plugin_name: str, directory: str, source: S
     # Write back
     save_manifest(manifest, atk_home)
 
-    return manifest.config.auto_commit
+    return manifest.config
 
 
 

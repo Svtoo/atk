@@ -13,7 +13,7 @@ from pathlib import Path
 
 import atk.registry as registry_mod
 from atk.fetch import fetch_plugin_source
-from atk.git import git_add, git_commit, git_ls_remote, read_atk_ref, write_atk_ref
+from atk.git import git_add, git_commit, git_ls_remote, git_push, read_atk_ref, write_atk_ref
 from atk.git_source import normalize_git_url
 from atk.home import validate_atk_home
 from atk.lifecycle import LifecycleCommandNotDefinedError, run_lifecycle_command
@@ -280,6 +280,8 @@ def upgrade_plugin(
     if manifest.config.auto_commit:
         git_add(atk_home)
         git_commit(atk_home, f"Upgrade plugin '{plugin_entry.name}'")
+        if manifest.config.auto_push:
+            git_push(atk_home)
 
     return UpgradeResult(
         plugin_name=plugin_entry.name,

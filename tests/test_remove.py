@@ -672,6 +672,53 @@ class TestRemoveAutoCommit:
         assert final_count == initial_count
 
 
+class TestRemoveAutoPush:
+    """Tests for auto_push behavior in remove command."""
+
+    @pytest.fixture(autouse=True)
+    def setup_method(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+        """Set up ATK_HOME for each test."""
+        self.tmp_path = tmp_path
+        self.atk_home = tmp_path / "atk-home"
+        monkeypatch.setenv("ATK_HOME", str(self.atk_home))
+
+    def test_remove_calls_git_push_when_auto_push_enabled(self) -> None:
+        """Verify remove calls git_push when auto_push is enabled."""
+        from unittest.mock import patch
+
+        # Given - initialized ATK home with a plugin and auto_push enabled
+        init_atk_home(self.atk_home)
+        _add_plugin_to_home(self.atk_home, "Test Plugin", "test-plugin")
+        manifest_path = self.atk_home / "manifest.yaml"
+        manifest_data = yaml.safe_load(manifest_path.read_text())
+        manifest_data["config"]["auto_push"] = True
+        manifest_path.write_text(yaml.dump(manifest_data))
+
+        # When
+        with patch("atk.remove.git_push") as mock_push:
+            result = runner.invoke(app, ["remove", "test-plugin"])
+
+        # Then
+        assert result.exit_code == exit_codes.SUCCESS
+        mock_push.assert_called_once_with(self.atk_home)
+
+    def test_remove_skips_git_push_when_auto_push_disabled(self) -> None:
+        """Verify remove does not call git_push when auto_push is disabled."""
+        from unittest.mock import patch
+
+        # Given - initialized ATK home with a plugin (auto_push default=false)
+        init_atk_home(self.atk_home)
+        _add_plugin_to_home(self.atk_home, "Test Plugin", "test-plugin")
+
+        # When
+        with patch("atk.remove.git_push") as mock_push:
+            result = runner.invoke(app, ["remove", "test-plugin"])
+
+        # Then
+        assert result.exit_code == exit_codes.SUCCESS
+        mock_push.assert_not_called()
+
+
 class TestRemoveStopLifecycle:
     """Tests for stop lifecycle integration in remove command."""
 

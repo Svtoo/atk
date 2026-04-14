@@ -26,7 +26,7 @@ def _create_initial_manifest() -> str:
     """
     manifest = ManifestSchema(
         schema_version=MANIFEST_SCHEMA_VERSION,
-        config=ConfigSection(auto_commit=True),
+        config=ConfigSection(auto_commit=True, auto_push=False),
         plugins=[],
     )
     return yaml.dump(manifest.model_dump(), default_flow_style=False, sort_keys=False)

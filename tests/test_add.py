@@ -722,6 +722,54 @@ class TestAddAutoCommit:
         assert final_count == initial_count
 
 
+class TestAddAutoPush:
+    """Tests for auto_push behavior in add command."""
+
+    @pytest.fixture(autouse=True)
+    def setup_method(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+        """Set up ATK_HOME for each test."""
+        self.tmp_path = tmp_path
+        self.atk_home = tmp_path / "atk-home"
+        monkeypatch.setenv("ATK_HOME", str(self.atk_home))
+
+    def test_add_calls_git_push_when_auto_push_enabled(self) -> None:
+        """Verify add calls git_push when auto_push is enabled."""
+        from unittest.mock import patch
+
+        # Given - initialized ATK home with auto_push enabled
+        init_atk_home(self.atk_home)
+        manifest_path = self.atk_home / "manifest.yaml"
+        manifest_data = yaml.safe_load(manifest_path.read_text())
+        manifest_data["config"]["auto_push"] = True
+        manifest_path.write_text(yaml.dump(manifest_data))
+
+        source = Path("tests/fixtures/plugins/minimal-plugin")
+
+        # When
+        with patch("atk.add.git_push") as mock_push:
+            result = runner.invoke(app, ["add", "-y", str(source)])
+
+        # Then
+        assert result.exit_code == SUCCESS
+        mock_push.assert_called_once_with(self.atk_home)
+
+    def test_add_skips_git_push_when_auto_push_disabled(self) -> None:
+        """Verify add does not call git_push when auto_push is disabled (default)."""
+        from unittest.mock import patch
+
+        # Given - initialized ATK home with auto_push=false (default)
+        init_atk_home(self.atk_home)
+        source = Path("tests/fixtures/plugins/minimal-plugin")
+
+        # When
+        with patch("atk.add.git_push") as mock_push:
+            result = runner.invoke(app, ["add", "-y", str(source)])
+
+        # Then
+        assert result.exit_code == SUCCESS
+        mock_push.assert_not_called()
+
+
 class TestAddInstallLifecycle:
     """Tests for install lifecycle integration in add command."""
 

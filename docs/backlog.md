@@ -8,10 +8,9 @@ This document collects ideas, deferred features, and future enhancements. Items 
 For the master plan, see `ROADMAP.md`.
 ---
 
-## Git push 
+## ~~Git push~~ -> Promoted to Phase 11
 
-For .atk registries with remote repositories, enable a config parameter alongside with auto_commit and auto_push to automatically push changes to the remote. 
-also add command to pull changes from the remote. just a proxy for git, but useful so that the user does not need to navigate to the .atk directory to pull/push changes.
+Addressed by Phase 11: Git Sync. `atk git` proxy command replaces dedicated push/pull commands. `auto_push` config parameter enables automatic push after mutations. `atk status` shows repository state. See `ROADMAP.md` Phase 11 and `specs/git-sync-spec.md`.
 ---
 ## ~~Manage Agents.md and other prompts through atk~~ → Promoted to Phase 9
 

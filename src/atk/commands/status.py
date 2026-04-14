@@ -1,8 +1,19 @@
 """Status table rendering for the `atk status` command."""
 
+from __future__ import annotations
+
+from pathlib import Path
+
 from rich.console import Console
 from rich.table import Table
 
+from atk.git import (
+    git_ahead_behind,
+    git_get_branch,
+    git_get_remote_url,
+    git_last_commit_info,
+    git_working_dir_status,
+)
 from atk.lifecycle import PluginStatus, PluginStatusResult, PortStatus
 from atk.plugin_schema import PluginMaturity
 
@@ -120,4 +131,48 @@ def print_status_table(results: list[PluginStatusResult]) -> None:
             console.print(
                 "[dim]Note: Port checks verify if something is listening, not that it's the plugin.[/dim]"
             )
+
+
+def print_repo_status(atk_home: Path) -> None:
+    """Print git repository status section after the plugin table."""
+    console.print()
+    console.print("[bold]Repository:[/bold]")
+
+    # Branch
+    branch = git_get_branch(atk_home)
+    branch_str = branch if branch else "(detached)"
+    console.print(f"  Branch:      {branch_str}")
+
+    # Remote
+    remote_info = git_get_remote_url(atk_home)
+    if remote_info:
+        remote_name, remote_url = remote_info
+        console.print(f"  Remote:      {remote_name} -> {remote_url}")
+    else:
+        console.print("  Remote:      [dim](none)[/dim]")
+
+    # Sync (only if remote exists)
+    if remote_info:
+        ab = git_ahead_behind(atk_home)
+        if ab:
+            console.print(f"  Sync:        {ab.ahead} ahead, {ab.behind} behind")
+        else:
+            console.print("  Sync:        [dim](no tracking branch)[/dim]")
+
+    # Last commit
+    commit = git_last_commit_info(atk_home)
+    if commit:
+        console.print(f"  Last commit: {commit.subject} ({commit.relative_time})")
+
+    # Working directory
+    wd = git_working_dir_status(atk_home)
+    if wd.is_clean:
+        console.print("  Working dir: [green]clean[/green]")
+    else:
+        parts = []
+        if wd.modified:
+            parts.append(f"{wd.modified} modified")
+        if wd.untracked:
+            parts.append(f"{wd.untracked} untracked")
+        console.print(f"  Working dir: [yellow]{', '.join(parts)}[/yellow]")
 

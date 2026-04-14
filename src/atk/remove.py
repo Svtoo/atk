@@ -7,7 +7,7 @@ import shutil
 from dataclasses import dataclass
 from pathlib import Path
 
-from atk.git import git_add, git_commit, remove_gitignore_exemption
+from atk.git import git_add, git_commit, git_push, remove_gitignore_exemption
 from atk.home import validate_atk_home
 from atk.lifecycle import LifecycleCommandNotDefinedError, run_lifecycle_command
 from atk.manifest_schema import SourceType, load_manifest, save_manifest
@@ -70,9 +70,10 @@ def remove_plugin(identifier: str, atk_home: Path, force: bool = False) -> Remov
             return RemoveResult(removed=True, orphan_cleaned=True)
         return RemoveResult(removed=False)
 
-    # Capture plugin name before removal for commit message
+    # Capture plugin name and config before removal for commit message
     plugin_name = plugin_entry.name
     auto_commit = manifest.config.auto_commit
+    auto_push = manifest.config.auto_push
 
     # Get plugin directory
     plugin_dir = atk_home / "plugins" / plugin_entry.directory
@@ -133,6 +134,8 @@ def remove_plugin(identifier: str, atk_home: Path, force: bool = False) -> Remov
     if auto_commit:
         git_add(atk_home)
         git_commit(atk_home, f"Remove plugin '{plugin_name}'")
+        if auto_push:
+            git_push(atk_home)
 
     return RemoveResult(
         removed=True,

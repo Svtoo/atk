@@ -62,6 +62,7 @@ flowchart TB
         plug[atk plug]
         mcp[atk mcp]
         help[atk help]
+        git[atk git]
     end
 
     init --> add
@@ -708,6 +709,42 @@ Continue? [y/N]:
 - 3: ATK Home not initialized
 - 4: Plugin not found
 - 6: Uninstall command failed
+
+---
+
+## `atk git [args...]`
+
+Run git commands in ATK Home. Thin proxy — passes all arguments to `git` executed in ATK_HOME.
+
+**Arguments:**
+- `[args...]`: Any git arguments (passed through verbatim)
+
+**Usage:**
+```bash
+atk git remote add origin git@github.com:user/dotfiles-atk.git
+atk git remote show origin
+atk git push
+atk git pull
+atk git log --oneline -5
+atk git status
+atk git diff
+```
+
+**Behavior:**
+1. Validate ATK Home is initialized (exit 3 if not)
+2. Require git available (exit 7 if not)
+3. Execute `git <args>` in ATK_HOME with stdin/stdout/stderr passed through
+4. Return git's exit code
+
+**Notes:**
+- No argument validation — git handles its own errors
+- Interactive commands work (stdin is passed through)
+- Destructive commands are the user's responsibility
+
+**Exit Codes:**
+- 3: ATK Home not initialized
+- 7: Git not available
+- (other): Git's own exit code passed through
 
 ---
 

@@ -24,7 +24,7 @@ from atk.commands.preconditions import (
 )
 from atk.commands.run import run_plugin_script
 from atk.commands.search import filter_registry_plugins, print_search_table
-from atk.commands.status import print_status_table
+from atk.commands.status import print_repo_status, print_status_table
 from atk.commands.upgrade import upgrade_all_plugins, upgrade_single_plugin
 from atk.errors import handle_cli_error
 from atk.git_source import GitPluginNotFoundError, GitSourceError
@@ -726,9 +726,10 @@ def status(
 
     if not results:
         cli_logger.dim("No plugins installed.")
-        raise typer.Exit(exit_codes.SUCCESS)
+    else:
+        print_status_table(results)
 
-    print_status_table(results)
+    print_repo_status(atk_home)
     raise typer.Exit(exit_codes.SUCCESS)
 
 
@@ -813,6 +814,33 @@ def run(
     _, plugin_dir = require_plugin(atk_home, plugin)
 
     run_plugin_script(plugin_dir, script, ctx.args)
+
+
+@app.command(
+    name="git",
+    context_settings={"allow_extra_args": True, "ignore_unknown_options": True},
+)
+def git_proxy(ctx: typer.Context) -> None:
+    """Run git commands in ATK Home.
+
+    Thin proxy that passes all arguments to git executed in the ATK Home
+    directory. Useful for managing remotes, pushing, pulling, and inspecting
+    the repository without navigating to it.
+
+    Examples:
+        atk git remote add origin <url>
+        atk git push
+        atk git log --oneline -5
+    """
+    import subprocess
+
+    atk_home = require_ready_home()
+
+    result = subprocess.run(
+        ["git", *ctx.args],
+        cwd=atk_home,
+    )
+    raise typer.Exit(result.returncode)
 
 
 def _show_update_notice() -> None:

@@ -96,6 +96,7 @@ schema_version: "2026-01-22"
 
 config:
   auto_commit: true               # Commit after mutations (default: true)
+  auto_push: false                # Push after auto-commit (default: false)
 
 plugins:
   - name: "OpenMemory"            # Display name (user-friendly)
@@ -164,6 +165,8 @@ Display names (`name` field) have no restrictions—they are for human readabili
 | `atk run <plugin> <script>` | No       | Executes script, no file changes                          |
 
 If `auto_commit: false`, user must manually commit changes.
+
+If `auto_push: true` and `auto_commit: true` and a remote is configured, ATK pushes after each auto-commit. Push failures warn but do not fail the mutation. If no remote is configured, auto-push silently no-ops with a warning.
 
 ## User Customizations
 

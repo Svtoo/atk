@@ -10,9 +10,16 @@ from atk.git import (
     ATK_REF_FILE,
     add_gitignore_exemption,
     git_add,
+    git_ahead_behind,
     git_commit,
+    git_get_branch,
+    git_get_remote_url,
     git_init,
+    git_last_commit_info,
     git_ls_remote,
+    git_push,
+    git_working_dir_status,
+    has_remote,
     has_staged_changes,
     is_git_available,
     is_git_repo,
@@ -438,3 +445,299 @@ class TestRemoveGitignoreExemption:
         # When/Then
         with pytest.raises(FileNotFoundError, match=".gitignore not found"):
             remove_gitignore_exemption(tmp_path, plugin_dir)
+
+
+# ---------------------------------------------------------------------------
+# Phase 11: Git Sync helpers
+# ---------------------------------------------------------------------------
+
+
+def _init_repo(tmp_path: Path, name: str = "repo") -> Path:
+    """Create and return an initialized git repo with one commit."""
+    repo = tmp_path / name
+    repo.mkdir()
+    (repo / "README.md").write_text("# test\n")
+    subprocess.run(["git", "init"], cwd=repo, check=True, capture_output=True)
+    git_commit_all(repo, "Initial commit")
+    return repo
+
+
+class TestHasRemote:
+    """Tests for has_remote function."""
+
+    def test_returns_false_when_no_remote(self, tmp_path: Path) -> None:
+        """Verify has_remote returns False for repo without remotes."""
+        # Given
+        repo = _init_repo(tmp_path)
+
+        # When
+        result = has_remote(repo)
+
+        # Then
+        assert result is False
+
+    def test_returns_true_when_remote_exists(self, tmp_path: Path) -> None:
+        """Verify has_remote returns True after adding a remote."""
+        # Given
+        repo = _init_repo(tmp_path)
+        bare = tmp_path / "bare.git"
+        subprocess.run(
+            ["git", "clone", "--bare", str(repo), str(bare)],
+            check=True, capture_output=True,
+        )
+        subprocess.run(
+            ["git", "remote", "add", "origin", str(bare)],
+            cwd=repo, check=True, capture_output=True,
+        )
+
+        # When
+        result = has_remote(repo)
+
+        # Then
+        assert result is True
+
+
+class TestGitPush:
+    """Tests for git_push function."""
+
+    def test_push_succeeds_with_remote(self, tmp_path: Path) -> None:
+        """Verify git_push returns True when push succeeds."""
+        # Given — repo with a bare remote and tracking branch
+        repo = _init_repo(tmp_path)
+        bare = tmp_path / "bare.git"
+        subprocess.run(
+            ["git", "clone", "--bare", str(repo), str(bare)],
+            check=True, capture_output=True,
+        )
+        subprocess.run(
+            ["git", "remote", "add", "origin", str(bare)],
+            cwd=repo, check=True, capture_output=True,
+        )
+        # Determine default branch name (may be main or master)
+        branch = subprocess.run(
+            ["git", "branch", "--show-current"],
+            cwd=repo, capture_output=True, text=True, check=True,
+        ).stdout.strip()
+        subprocess.run(
+            ["git", "push", "-u", "origin", branch],
+            cwd=repo, check=True, capture_output=True,
+        )
+        # Create a new commit to push
+        (repo / "new.txt").write_text("new content")
+        git_commit_all(repo, "New commit")
+
+        # When
+        result = git_push(repo)
+
+        # Then
+        assert result is True
+
+    def test_push_returns_false_without_remote(self, tmp_path: Path) -> None:
+        """Verify git_push returns False and warns when no remote."""
+        # Given
+        repo = _init_repo(tmp_path)
+
+        # When
+        result = git_push(repo)
+
+        # Then
+        assert result is False
+
+
+class TestGitGetBranch:
+    """Tests for git_get_branch function."""
+
+    def test_returns_branch_name(self, tmp_path: Path) -> None:
+        """Verify git_get_branch returns the current branch name."""
+        # Given
+        repo = _init_repo(tmp_path)
+
+        # When
+        branch = git_get_branch(repo)
+
+        # Then — branch name depends on git config but should be non-empty
+        assert branch is not None
+        assert len(branch) > 0
+
+
+class TestGitGetRemoteUrl:
+    """Tests for git_get_remote_url function."""
+
+    def test_returns_none_without_remote(self, tmp_path: Path) -> None:
+        """Verify git_get_remote_url returns None when no remotes."""
+        # Given
+        repo = _init_repo(tmp_path)
+
+        # When
+        result = git_get_remote_url(repo)
+
+        # Then
+        assert result is None
+
+    def test_returns_name_and_url_with_remote(self, tmp_path: Path) -> None:
+        """Verify git_get_remote_url returns (name, url) tuple."""
+        # Given — use file:// to avoid insteadOf rewrites
+        repo = _init_repo(tmp_path)
+        remote_url = f"file://{tmp_path}/bare.git"
+        subprocess.run(
+            ["git", "remote", "add", "origin", remote_url],
+            cwd=repo, check=True, capture_output=True,
+        )
+
+        # When
+        result = git_get_remote_url(repo)
+
+        # Then
+        expected_name = "origin"
+        assert result is not None
+        assert result[0] == expected_name
+        assert result[1] == remote_url
+
+
+class TestGitAheadBehind:
+    """Tests for git_ahead_behind function."""
+
+    def test_returns_none_without_tracking(self, tmp_path: Path) -> None:
+        """Verify git_ahead_behind returns None when no upstream."""
+        # Given
+        repo = _init_repo(tmp_path)
+
+        # When
+        result = git_ahead_behind(repo)
+
+        # Then
+        assert result is None
+
+    def test_returns_ahead_count(self, tmp_path: Path) -> None:
+        """Verify git_ahead_behind reports correct ahead count."""
+        # Given — repo with tracking branch, then a local-only commit
+        repo = _init_repo(tmp_path)
+        bare = tmp_path / "bare.git"
+        subprocess.run(
+            ["git", "clone", "--bare", str(repo), str(bare)],
+            check=True, capture_output=True,
+        )
+        subprocess.run(
+            ["git", "remote", "add", "origin", str(bare)],
+            cwd=repo, check=True, capture_output=True,
+        )
+        branch = subprocess.run(
+            ["git", "branch", "--show-current"],
+            cwd=repo, capture_output=True, text=True, check=True,
+        ).stdout.strip()
+        subprocess.run(
+            ["git", "push", "-u", "origin", branch],
+            cwd=repo, check=True, capture_output=True,
+        )
+        # Now create a local commit (not pushed)
+        (repo / "ahead.txt").write_text("local only")
+        git_commit_all(repo, "Local commit")
+
+        # When
+        result = git_ahead_behind(repo)
+
+        # Then
+        expected_ahead = 1
+        expected_behind = 0
+        assert result is not None
+        assert result.ahead == expected_ahead
+        assert result.behind == expected_behind
+
+
+class TestGitLastCommitInfo:
+    """Tests for git_last_commit_info function."""
+
+    def test_returns_commit_info(self, tmp_path: Path) -> None:
+        """Verify git_last_commit_info returns subject and relative time."""
+        # Given
+        repo = _init_repo(tmp_path)
+
+        # When
+        info = git_last_commit_info(repo)
+
+        # Then
+        expected_subject = "Initial commit"
+        assert info is not None
+        assert info.subject == expected_subject
+        assert len(info.relative_time) > 0
+
+    def test_returns_none_for_empty_repo(self, tmp_path: Path) -> None:
+        """Verify git_last_commit_info returns None for repo with no commits."""
+        # Given
+        repo = tmp_path / "empty"
+        repo.mkdir()
+        subprocess.run(["git", "init"], cwd=repo, check=True, capture_output=True)
+
+        # When
+        info = git_last_commit_info(repo)
+
+        # Then
+        assert info is None
+
+
+class TestGitWorkingDirStatus:
+    """Tests for git_working_dir_status function."""
+
+    def test_clean_repo(self, tmp_path: Path) -> None:
+        """Verify clean working directory returns all zeros."""
+        # Given
+        repo = _init_repo(tmp_path)
+
+        # When
+        status = git_working_dir_status(repo)
+
+        # Then
+        assert status.is_clean is True
+        expected_modified = 0
+        expected_untracked = 0
+        assert status.modified == expected_modified
+        assert status.untracked == expected_untracked
+
+    def test_modified_file(self, tmp_path: Path) -> None:
+        """Verify modified file is counted."""
+        # Given
+        repo = _init_repo(tmp_path)
+        (repo / "README.md").write_text("changed\n")
+
+        # When
+        status = git_working_dir_status(repo)
+
+        # Then
+        expected_modified = 1
+        expected_untracked = 0
+        assert status.modified == expected_modified
+        assert status.untracked == expected_untracked
+        assert status.is_clean is False
+
+    def test_untracked_file(self, tmp_path: Path) -> None:
+        """Verify untracked file is counted."""
+        # Given
+        repo = _init_repo(tmp_path)
+        (repo / "new-file.txt").write_text("new\n")
+
+        # When
+        status = git_working_dir_status(repo)
+
+        # Then
+        expected_modified = 0
+        expected_untracked = 1
+        assert status.modified == expected_modified
+        assert status.untracked == expected_untracked
+        assert status.is_clean is False
+
+    def test_mixed_changes(self, tmp_path: Path) -> None:
+        """Verify both modified and untracked are counted."""
+        # Given
+        repo = _init_repo(tmp_path)
+        (repo / "README.md").write_text("changed\n")
+        (repo / "new1.txt").write_text("new1\n")
+        (repo / "new2.txt").write_text("new2\n")
+
+        # When
+        status = git_working_dir_status(repo)
+
+        # Then
+        expected_modified = 1
+        expected_untracked = 2
+        assert status.modified == expected_modified
+        assert status.untracked == expected_untracked

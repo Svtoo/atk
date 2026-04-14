@@ -25,6 +25,7 @@
 | 8     | MCP Management       | ✅      | Auto-install to Claude Code, Codex, Gemini, etc. |
 | 9     | Plug/Unplug          | ✅      | `atk plug`/`unplug` — unified agent wiring  |
 | 10    | Data Backup          | ⏳      | Backup/restore plugin data                  |
+| 11    | Git Sync             | 🔄     | Remote sync, auto-push, repo status         |
 
 ## Phase Summaries
 
@@ -82,6 +83,10 @@ Deprecates `atk mcp add`/`atk mcp remove`. `atk mcp <plugin>` reverts to its ori
 ### Phase 10: Data Backup ⏳
 
 Backup and restore plugin data (databases, state files).
+
+### Phase 11: Git Sync 🔄
+
+`atk git` proxy command for managing the .atk repository without navigating to it. `auto_push` config parameter for automatic push after mutations. Enhanced `atk status` with repository section showing branch, remote, sync state, and working directory status.
 
 ---
 

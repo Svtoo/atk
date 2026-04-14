@@ -70,6 +70,10 @@ class ConfigSection(BaseModel):
         default=True,
         description="Commit after mutations (default: true)",
     )
+    auto_push: bool = Field(
+        default=False,
+        description="Push after auto-commit (requires remote, default: false)",
+    )
 
 
 class ManifestSchema(BaseModel):

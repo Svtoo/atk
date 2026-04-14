@@ -143,6 +143,25 @@ class TestConfigSection:
         # Then
         assert config.auto_commit is False
 
+    def test_config_auto_push_defaults_false(self) -> None:
+        """Verify auto_push defaults to False."""
+        # Given/When
+        config = ConfigSection()
+
+        # Then
+        assert config.auto_push is False
+
+    def test_config_auto_push_can_be_enabled(self) -> None:
+        """Verify auto_push can be set to True."""
+        # Given
+        auto_push = True
+
+        # When
+        config = ConfigSection(auto_push=auto_push)
+
+        # Then
+        assert config.auto_push is True
+
 
 class TestManifestSchema:
     """Tests for full manifest schema."""
