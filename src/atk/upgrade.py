@@ -11,7 +11,7 @@ from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
 
-import atk.registry as registry_mod
+from atk.config import get_registry_url
 from atk.fetch import fetch_plugin_source
 from atk.git import git_add, git_commit, git_ls_remote, read_atk_ref, write_atk_ref
 from atk.git_source import normalize_git_url
@@ -44,14 +44,14 @@ class UpgradeResult:
     install_exit_code: int | None = None
 
 
-def _get_remote_url(source_type: SourceType, source_url: str) -> str:
+def _get_remote_url(source_type: SourceType, source_url: str, atk_home: Path) -> str:
     """Get the git URL to check for updates.
 
     For registry plugins, this is the registry repo URL.
     For git plugins, this is the stored source URL (normalized).
     """
     if source_type == SourceType.REGISTRY:
-        return registry_mod.REGISTRY_URL
+        return get_registry_url(atk_home)
     return normalize_git_url(source_url)
 
 
@@ -139,6 +139,7 @@ def _fetch_to_staging(
     directory: str,
     staging_dir: Path,
     ref: str,
+    atk_home: Path,
 ) -> str:
     """Fetch a specific plugin version to a staging directory.
 
@@ -151,6 +152,7 @@ def _fetch_to_staging(
         target_dir=staging_dir,
         ref=ref,
         source_url=source_url,
+        atk_home=atk_home,
     )
 
 
@@ -212,7 +214,7 @@ def upgrade_plugin(
     current_ref = _get_current_ref(plugin_dir, plugin_entry.source.ref)
 
     # Quick check: if remote HEAD hasn't changed, plugin is definitely up to date
-    remote_url = _get_remote_url(plugin_entry.source.type, source_url)
+    remote_url = _get_remote_url(plugin_entry.source.type, source_url, atk_home)
     latest_ref = git_ls_remote(remote_url)
     if current_ref == latest_ref:
         return UpgradeResult(
@@ -234,6 +236,7 @@ def upgrade_plugin(
             plugin_entry.directory,
             staging_dir,
             ref=latest_ref,
+            atk_home=atk_home,
         )
 
         if not _plugin_content_changed(plugin_dir, staging_dir):

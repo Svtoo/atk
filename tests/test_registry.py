@@ -30,16 +30,24 @@ class TestFetchRegistryIndex:
         plugin_name = "test-plugin"
         plugin_description = "A test plugin"
 
-        index = fetch_registry_index(registry_url=registry.url)
+        # Create a mock ATK home for the test
+        atk_home = tmp_path / "atk-home"
+        atk_home.mkdir()
+
+        index = fetch_registry_index(atk_home=atk_home, registry_url=registry.url)
 
         assert len(index.plugins) == 1
         assert index.plugins[0].name == plugin_name
         assert index.plugins[0].description == plugin_description
 
-    def test_unreachable_url_raises_registry_fetch_error(self) -> None:
+    def test_unreachable_url_raises_registry_fetch_error(self, tmp_path: Path) -> None:
         """Raises RegistryFetchError when the registry URL is not reachable."""
+        # Create a mock ATK home for the test
+        atk_home = tmp_path / "atk-home"
+        atk_home.mkdir()
+
         with pytest.raises(RegistryFetchError):
-            fetch_registry_index(registry_url="https://nonexistent.invalid/repo")
+            fetch_registry_index(atk_home=atk_home, registry_url="https://nonexistent.invalid/repo")
 
 
 class TestFetchRegistryPlugin:
@@ -55,10 +63,15 @@ class TestFetchRegistryPlugin:
         plugin_name = "test-plugin"
         target_dir = tmp_path / "target"
 
+        # Create a mock ATK home for the test
+        atk_home = tmp_path / "atk-home"
+        atk_home.mkdir()
+
         result = fetch_registry_plugin(
             name=plugin_name,
             target_dir=target_dir,
             ref=registry.commit_hash,
+            atk_home=atk_home,
             registry_url=registry.url,
         )
 
@@ -72,10 +85,15 @@ class TestFetchRegistryPlugin:
         registry = create_fake_registry(tmp_path)
         target_dir = tmp_path / "target"
 
+        # Create a mock ATK home for the test
+        atk_home = tmp_path / "atk-home"
+        atk_home.mkdir()
+
         result = fetch_registry_plugin(
             name="test-plugin",
             target_dir=target_dir,
             ref=registry.commit_hash,
+            atk_home=atk_home,
             registry_url=registry.url,
         )
 
@@ -87,11 +105,16 @@ class TestFetchRegistryPlugin:
         nonexistent_name = "nonexistent"
         target_dir = tmp_path / "target"
 
+        # Create a mock ATK home for the test
+        atk_home = tmp_path / "atk-home"
+        atk_home.mkdir()
+
         with pytest.raises(PluginNotFoundError, match=nonexistent_name):
             fetch_registry_plugin(
                 name=nonexistent_name,
                 target_dir=target_dir,
                 ref=registry.commit_hash,
+                atk_home=atk_home,
                 registry_url=registry.url,
             )
 
@@ -99,11 +122,16 @@ class TestFetchRegistryPlugin:
         """Fetch raises RegistryFetchError when registry URL is unreachable."""
         target_dir = tmp_path / "target"
 
+        # Create a mock ATK home for the test
+        atk_home = tmp_path / "atk-home"
+        atk_home.mkdir()
+
         with pytest.raises(RegistryFetchError):
             fetch_registry_plugin(
                 name="test-plugin",
                 target_dir=target_dir,
                 ref="deadbeef" * 5,
+                atk_home=atk_home,
                 registry_url="https://nonexistent.invalid/repo",
             )
 
@@ -121,6 +149,10 @@ class TestFetchRegistryPlugin:
         registry_url = f"file://{work_dir}"
         target_dir = tmp_path / "target"
 
+        # Create a mock ATK home for the test
+        atk_home = tmp_path / "atk-home"
+        atk_home.mkdir()
+
         # When/Then
         expected_match = "Invalid registry index"
         with pytest.raises(RegistryFetchError, match=expected_match):
@@ -128,6 +160,6 @@ class TestFetchRegistryPlugin:
                 name="test-plugin",
                 target_dir=target_dir,
                 ref=commit_hash,
+                atk_home=atk_home,
                 registry_url=registry_url,
             )
-

@@ -67,7 +67,7 @@ class TestUpgradeRegistryPlugin:
         atk_home = tmp_path / "atk-home"
         init_atk_home(atk_home)
         registry = create_fake_registry(tmp_path)
-        monkeypatch.setattr("atk.registry.REGISTRY_URL", registry.url)
+        monkeypatch.setenv("ATK_REGISTRY_URL", registry.url)
         plugin_name = "test-plugin"
         add_plugin(plugin_name, atk_home, noop_prompt)
         plugin_dir = atk_home / "plugins" / plugin_name
@@ -98,7 +98,7 @@ class TestUpgradeRegistryPlugin:
         atk_home = tmp_path / "atk-home"
         init_atk_home(atk_home)
         registry = create_fake_registry(tmp_path)
-        monkeypatch.setattr("atk.registry.REGISTRY_URL", registry.url)
+        monkeypatch.setenv("ATK_REGISTRY_URL", registry.url)
         plugin_name = "test-plugin"
         add_plugin(plugin_name, atk_home, noop_prompt)
 

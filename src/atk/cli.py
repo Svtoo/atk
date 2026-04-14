@@ -134,7 +134,7 @@ def search(
     installed = {p.directory for p in manifest.plugins}
 
     try:
-        index = fetch_registry_index()
+        index = fetch_registry_index(atk_home)
     except RegistryFetchError as e:
         cli_logger.error(f"Failed to fetch registry: {e}")
         raise typer.Exit(exit_codes.GENERAL_ERROR) from e

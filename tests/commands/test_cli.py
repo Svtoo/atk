@@ -6,6 +6,7 @@ from collections.abc import Callable
 from pathlib import Path
 from unittest.mock import patch
 
+import pytest
 import yaml
 
 from atk import exit_codes
@@ -338,7 +339,7 @@ class TestInstallCli:
         assert "Missing required" in result.output
 
     def test_cli_install_pulls_plugin_from_registry(
-        self, configure_atk_home, cli_runner, tmp_path: Path
+        self, configure_atk_home, cli_runner, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         """Verify CLI pulls pinned (older) commit from registry, not latest."""
 
@@ -366,8 +367,8 @@ class TestInstallCli:
         assert not plugin_dir.exists()
 
         # When
-        with patch("atk.registry.REGISTRY_URL", fake_registry.url):
-            result = cli_runner.invoke(app, ["install", plugin_dir_name])
+        monkeypatch.setenv("ATK_REGISTRY_URL", fake_registry.url)
+        result = cli_runner.invoke(app, ["install", plugin_dir_name])
 
         # Then - plugin files match the older commit, not latest
         assert result.exit_code == exit_codes.SUCCESS, f"Output: {result.output}"
@@ -413,7 +414,7 @@ class TestInstallCli:
         assert read_atk_ref(plugin_dir) == second_commit
 
     def test_cli_install_pulls_plugin_and_preserves_custom_dir(
-        self, configure_atk_home, cli_runner, tmp_path: Path
+        self, configure_atk_home, cli_runner, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         """Verify CLI pulls pinned (older) commit and preserves custom/ directory."""
         # Given - registry with two commits; manifest pins to the first (older) one
@@ -448,8 +449,8 @@ class TestInstallCli:
         assert custom_file.exists()
 
         # When
-        with patch("atk.registry.REGISTRY_URL", fake_registry.url):
-            result = cli_runner.invoke(app, ["install", plugin_dir_name])
+        monkeypatch.setenv("ATK_REGISTRY_URL", fake_registry.url)
+        result = cli_runner.invoke(app, ["install", plugin_dir_name])
 
         # Then - plugin files match the older commit
         assert result.exit_code == exit_codes.SUCCESS, f"Output: {result.output}"
@@ -462,7 +463,8 @@ class TestInstallCli:
         assert custom_file.read_text() == custom_content
 
     def test_cli_install_all_pulls_all_missing_plugins(
-        self, configure_atk_home, cli_runner, tmp_path: Path, create_plugin) -> None:
+        self, configure_atk_home, cli_runner, tmp_path: Path, create_plugin, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
         """Verify install --all: registry pinned to older commit, git pinned to latest."""
 
         # Given - registry with two commits; pin to older
@@ -516,8 +518,8 @@ class TestInstallCli:
         assert local_plugin_dir.exists()
 
         # When
-        with patch("atk.registry.REGISTRY_URL", fake_registry.url):
-            result = cli_runner.invoke(app, ["install", "--all"])
+        monkeypatch.setenv("ATK_REGISTRY_URL", fake_registry.url)
+        result = cli_runner.invoke(app, ["install", "--all"])
 
         # Then - registry plugin has older content
         assert result.exit_code == exit_codes.SUCCESS, f"Output: {result.output}"
