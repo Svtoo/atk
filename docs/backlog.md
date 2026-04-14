@@ -13,11 +13,10 @@ For the master plan, see `ROADMAP.md`.
 For .atk registries with remote repositories, enable a config parameter alongside with auto_commit and auto_push to automatically push changes to the remote. 
 also add command to pull changes from the remote. just a proxy for git, but useful so that the user does not need to navigate to the .atk directory to pull/push changes.
 ---
-## Manage Agents.md and other prompts through atk
+## ~~Manage Agents.md and other prompts through atk~~ → Promoted to Phase 9
 
-- Deploy/update Agents and skills for coding agents via atk.
-- Plugins MCPs define agents rule that are appended to global rules.
-- 
+Addressed by `atk plug`/`unplug` (Phase 9). Plugins with only a SKILL.md (no MCP) can now be plugged into agents, enabling instruction-only plugins like coding personas and behavioral rules. See `ROADMAP.md` Phase 9 and `specs/mcp-agent-configure-spec.md`.
+
 ---
 
 ## Documentation, description and tags/categories for plugins

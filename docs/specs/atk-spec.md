@@ -136,7 +136,9 @@ atk restart <plugin>       # Restart a plugin's service (--all for all plugins)
 atk status [plugin]        # Show plugin status (all plugins if none specified)
 atk logs <plugin>          # View plugin logs
 atk run <plugin> <script>  # Run a plugin script (e.g., atk run openmemory backup)
-atk mcp <plugin>           # Show MCP config for IDE integration
+atk plug <plugin>          # Plug a plugin into coding agents (MCP + skill, adapts to what plugin offers)
+atk unplug <plugin>        # Unplug a plugin from coding agents
+atk mcp <plugin>           # Show MCP config for manual copy-paste
 ```
 
 All commands return structured output suitable for AI agent consumption.

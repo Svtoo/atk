@@ -59,6 +59,7 @@ flowchart TB
 
     subgraph Execute["Execution"]
         run[atk run]
+        plug[atk plug]
         mcp[atk mcp]
         help[atk help]
     end
@@ -484,16 +485,94 @@ Run a custom script defined by a plugin.
 
 ---
 
-## `atk mcp <plugin>`
+## `atk plug <plugin>`
 
-Generate MCP (Model Context Protocol) configuration JSON for a plugin.
+Plug a plugin into one or more coding agents. ATK adapts to what the plugin offers — registering the MCP server, injecting the SKILL.md, or both.
 
 **Arguments:**
 - `<plugin>`: Plugin name or directory (required)
 
+**Flags:**
+- `--claude`: Plug into Claude Code
+- `--codex`: Plug into Codex
+- `--gemini`: Plug into Gemini CLI
+- `--auggie`: Plug into Augment Code
+- `--opencode`: Plug into OpenCode
+- `-y` / `--force`: Skip confirmation prompts
+
+At least one agent flag is required.
+
 **Usage:**
 ```bash
-atk mcp openmemory          # Output MCP config JSON for openmemory
+atk plug openmemory --claude                           # Claude only
+atk plug openmemory --claude --codex --auggie          # Multiple agents
+atk plug sasha-persona --claude --codex --auggie       # Skill-only plugin
+atk plug openmemory --claude -y                        # Skip confirmations
+```
+
+**Behavior:**
+1. Validate ATK Home exists
+2. Find plugin by name or directory
+3. Check plugin has MCP config and/or SKILL.md (exit if neither)
+4. For each selected agent (in order: Claude, Codex, Gemini, Auggie, OpenCode):
+   - If plugin has MCP config: build agent-specific MCP config, confirm, register
+   - If plugin has SKILL.md: confirm, inject skill reference
+5. Report per-agent outcome (configured, skipped, failed)
+
+See [Plugin-to-Agent Wiring spec](mcp-agent-configure-spec.md) for per-agent details.
+
+**Exit Codes:**
+- 0: Success
+- 3: ATK Home not initialized
+- 4: Plugin not found
+- 5: Plugin has no MCP config and no SKILL.md
+
+---
+
+## `atk unplug <plugin>`
+
+Unplug a plugin from one or more coding agents. Reverse of `atk plug`.
+
+**Arguments:**
+- `<plugin>`: Plugin name or directory (required)
+
+**Flags:**
+- `--claude`, `--codex`, `--gemini`, `--auggie`, `--opencode`: Agent flags (at least one required)
+- `-y` / `--force`: Skip confirmation prompts
+
+**Usage:**
+```bash
+atk unplug openmemory --claude                # Remove from Claude only
+atk unplug openmemory --claude --codex        # Remove from multiple agents
+```
+
+**Behavior:**
+1. Validate ATK Home exists
+2. Find plugin by name or directory
+3. For each selected agent: remove MCP registration and/or skill reference
+4. Report per-agent outcome
+
+**Exit Codes:**
+- 0: Success
+- 3: ATK Home not initialized
+- 4: Plugin not found
+
+---
+
+## `atk mcp <plugin>`
+
+Display MCP configuration for a plugin. Read-only diagnostic/export tool.
+
+**Arguments:**
+- `<plugin>`: Plugin name or directory (required)
+
+**Flags:**
+- `--json`: Output machine-readable JSON (for copy-paste into agent configs)
+
+**Usage:**
+```bash
+atk mcp openmemory          # Human-readable MCP config
+atk mcp openmemory --json   # JSON for manual copy-paste
 ```
 
 **Behavior:**
@@ -501,24 +580,10 @@ atk mcp openmemory          # Output MCP config JSON for openmemory
 2. Find plugin by name or directory
 3. Read plugin's MCP configuration from plugin.yaml
 4. Resolve environment variable values from `.env` file
-5. Output JSON in MCP standard format
-
-**Output Format:**
-```json
-{
-  "plugin-name": {
-    "command": "docker",
-    "args": ["exec", "-i", "container", "npx", "@org/mcp-server"],
-    "env": {
-      "API_KEY": "resolved-value-from-env-file"
-    }
-  }
-}
-```
+5. Output in requested format
 
 **Notes:**
-- Output follows MCP standard JSON format for client configuration
-- Environment variables are resolved from `.env` file and substituted
+- Does not perform any wiring — use `atk plug` for that
 - If required env vars are missing, outputs with placeholder `<NOT_SET>` and warns
 - Plugin name is used as the server identifier key
 

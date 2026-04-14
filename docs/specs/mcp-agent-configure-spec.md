@@ -1,44 +1,65 @@
-# MCP Agent Configuration
+# Plugin-to-Agent Wiring
 
-> **Status**: MCP registration and skill injection implemented for all five agents (Claude, Codex, Gemini, Auggie, OpenCode).
+> **Status**: MCP registration and skill injection implemented for all five agents (Claude, Codex, Gemini, Auggie, OpenCode). `atk plug`/`unplug` commands planned (currently available as `atk mcp add`/`atk mcp remove`).
 
 ## Overview
 
-The `atk mcp` command configures coding agents to use a plugin's MCP server. Each supported agent is configured in two steps: (1) **MCP registration** — the agent learns how to connect to the plugin's tool server; and (2) **skill injection** — the plugin's `SKILL.md` is surfaced in the agent's context so it understands how to use those tools.
+The `atk plug` command wires an installed plugin into one or more coding agents. ATK adapts to what the plugin offers:
 
-When the user adds an ATK plugin, they typically want all their coding tools configured to use it — not just one. This feature lets the user specify any combination of supported agents and ATK will configure all of them in a single invocation, with the user confirming each action before it is taken.
+| Plugin has… | `atk plug` does… |
+|---|---|
+| MCP + SKILL.md | Register MCP server + inject skill |
+| MCP only (no SKILL.md) | Register MCP server only |
+| SKILL.md only (no MCP) | Inject skill only |
+| Neither | Error: "Nothing to plug — plugin has no MCP config or SKILL.md" |
+
+The user does not need to know what a plugin contains. They just say "plug it in" and ATK does the right thing.
+
+When a plugin has an MCP server, it is configured in two steps: (1) **MCP registration** — the agent learns how to connect to the plugin's tool server; and (2) **skill injection** — the plugin's `SKILL.md` is surfaced in the agent's context. When a plugin has only a SKILL.md (e.g., behavioral instructions or coding conventions), only skill injection is performed.
 
 ## User Interface
 
 ```
-atk mcp <plugin> [--claude] [--codex] [--gemini] [--auggie] [--opencode]
-atk mcp remove <plugin> [--claude] [--codex] [--gemini] [--auggie] [--opencode]
+atk plug <plugin> [--claude] [--codex] [--gemini] [--auggie] [--opencode] [-y/--force]
+atk unplug <plugin> [--claude] [--codex] [--gemini] [--auggie] [--opencode] [-y/--force]
 ```
 
-Multiple agent flags may be passed simultaneously. ATK processes them in a fixed order: Claude, Codex, Gemini, Auggie, OpenCode.
+At least one agent flag is required. Multiple agent flags may be passed simultaneously. ATK processes them in a fixed order: Claude, Codex, Gemini, Auggie, OpenCode.
 
 **Examples:**
 
 ```
-# Configure Claude Code only (MCP + skill)
-atk mcp openmemory --claude
+# Plug into Claude Code only
+atk plug openmemory --claude
 
-# Configure Claude and Gemini together
-atk mcp openmemory --claude --gemini
+# Plug into Claude and Gemini together
+atk plug openmemory --claude --gemini
 
-# Configure all five agents at once
-atk mcp openmemory --claude --codex --gemini --auggie --opencode
+# Plug into all five agents at once
+atk plug openmemory --claude --codex --gemini --auggie --opencode
 
-# Remove from a specific agent
-atk mcp remove openmemory --gemini
+# Plug a skill-only plugin (no MCP server)
+atk plug sasha-persona --claude --codex --auggie
 
-# Remove from all agents
-atk mcp remove openmemory --claude --codex --gemini --auggie --opencode
+# Unplug from a specific agent
+atk unplug openmemory --gemini
+
+# Unplug from all agents
+atk unplug openmemory --claude --codex --gemini --auggie --opencode
 ```
 
-Passing no agent flags preserves the existing behavior: ATK prints the MCP configuration as plaintext (or JSON with `--json`) for the user to copy manually.
+### `atk mcp` (Diagnostic/Export)
 
-The `--json` flag and any agent flag are mutually exclusive. ATK exits with an error if both are provided.
+```
+atk mcp <plugin>          # Human-readable MCP config
+atk mcp <plugin> --json   # Machine-readable JSON for manual copy-paste
+```
+
+`atk mcp` is a read-only diagnostic tool for inspecting and exporting a plugin's MCP configuration. It does not perform any wiring.
+
+### Deprecated Commands
+
+`atk mcp add` and `atk mcp remove` are deprecated aliases for `atk plug` and `atk unplug` respectively. They will emit a deprecation warning directing users to the new commands. `atk mcp` (no subcommand, with a plugin argument) reverts to its original behavior: displaying the MCP config.
 
 ## Confirmation Flow
 
@@ -219,9 +240,9 @@ Note: OpenCode uses `environment` (not `env`) for environment variables, and `co
 
 ## Removal
 
-`atk mcp remove <plugin> [--claude] [--codex] [--gemini] [--auggie] [--opencode]` undoes what `atk mcp` configured: it removes both the MCP server registration and the skill injection for each selected agent. Like the configure command, it asks for confirmation before acting on each agent.
+`atk unplug <plugin> [--claude] [--codex] [--gemini] [--auggie] [--opencode]` undoes what `atk plug` configured: it removes both the MCP server registration and the skill injection for each selected agent. Like `atk plug`, it asks for confirmation before acting on each agent.
 
-If a flag is omitted, that agent is untouched. No flag means nothing is removed (the command is a no-op with a warning).
+At least one agent flag is required. If a flag is omitted, that agent is untouched.
 
 ### Claude Code
 
@@ -256,5 +277,6 @@ Both edits are applied in a single file write.
 - **Agent CLI returns non-zero:** ATK reports the exit code and stderr. The remaining agents are still processed.
 - **Config file unwritable:** ATK reports the error and skips that agent.
 - **Plugin not found:** ATK exits immediately before any agent configuration begins.
-- **Plugin has no MCP configuration:** ATK exits immediately before any agent configuration begins.
+- **Plugin has no MCP configuration and no SKILL.md:** ATK exits immediately with "Nothing to plug — plugin has no MCP config or SKILL.md."
+- **Plugin has SKILL.md but no MCP:** ATK skips MCP registration and only performs skill injection. This is the expected path for instruction-only plugins.
 

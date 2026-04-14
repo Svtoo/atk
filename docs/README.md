@@ -19,6 +19,7 @@ Reference documents for ATK design and behavior.
 | [specs/home-spec.md](specs/home-spec.md) | ATK Home structure and manifest |
 | [specs/commands-spec.md](specs/commands-spec.md) | CLI commands reference |
 | [specs/plugin-schema.md](specs/plugin-schema.md) | Plugin YAML schema |
+| [specs/mcp-agent-configure-spec.md](specs/mcp-agent-configure-spec.md) | Plugin-to-agent wiring (`plug`/`unplug`) |
 
 ## Implementation Phases
 
