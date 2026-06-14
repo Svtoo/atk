@@ -13,6 +13,16 @@ from pathlib import Path
 
 logger = logging.getLogger(__name__)
 
+# Secret-ignore rules MUST live at the very end of .gitignore. Git applies
+# the LAST matching pattern, so a `!plugins/<name>/**` exemption added for a
+# local plugin would otherwise re-include that plugin's .env. Keeping these
+# rules last guarantees secrets stay ignored no matter what sits above them.
+GITIGNORE_SECRETS_HEADER = "# Always ignore secrets — keep LAST (gitignore is last-match-wins)"
+GITIGNORE_SECRET_PATTERNS = ("*.env", ".env.*")
+# Header variants recognised when normalising an older .gitignore so we
+# don't leave a stale "# Always ignore secrets" comment behind.
+_GITIGNORE_SECRET_HEADERS = (GITIGNORE_SECRETS_HEADER, "# Always ignore secrets")
+
 
 def is_git_available() -> bool:
     """Check if git command is available on the system.
@@ -173,17 +183,97 @@ def add_gitignore_exemption(path: Path, plugin_dir: str) -> None:
 
     # Check if exemptions already exist (idempotent)
     lines = content.split("\n") if content else []
-    if exemption_dir in lines and exemption_glob in lines:
-        return  # Already exists, nothing to do
+    if not (exemption_dir in lines and exemption_glob in lines):
+        if content and not content.endswith("\n"):
+            content += "\n"
+        content += f"{exemption_dir}\n{exemption_glob}\n"
+        gitignore_path.write_text(content)
 
-    # Add exemptions at the end
-    if content and not content.endswith("\n"):
-        content += "\n"
+    # Always normalise so the secret-ignore rules end up LAST — otherwise the
+    # exemption we just (or previously) added re-includes the plugin's .env.
+    normalize_gitignore(path)
 
-    content += f"{exemption_dir}\n{exemption_glob}\n"
 
-    # Write back
-    gitignore_path.write_text(content)
+def normalize_gitignore(path: Path) -> bool:
+    """Move the secret-ignore rules to the END of .gitignore.
+
+    Git applies the last matching pattern, so a `!plugins/<name>/**` exemption
+    sitting after `*.env` re-includes that plugin's secrets. This rewrites the
+    file so the canonical secret block is always last, regardless of where the
+    rules (or an older header) currently sit. Idempotent.
+
+    Args:
+        path: Path to directory containing .gitignore (typically ATK Home root).
+
+    Returns:
+        True if the file was changed, False if it was already canonical or
+        absent.
+    """
+    gitignore_path = path / ".gitignore"
+    if not gitignore_path.exists():
+        return False
+
+    original = gitignore_path.read_text()
+
+    # Drop every existing secret pattern + recognised secret header wherever
+    # they sit, then re-append the canonical block at the very end.
+    kept = [
+        line
+        for line in original.split("\n")
+        if line.strip() not in GITIGNORE_SECRET_PATTERNS
+        and line.strip() not in _GITIGNORE_SECRET_HEADERS
+    ]
+    while kept and kept[-1].strip() == "":
+        kept.pop()
+
+    rebuilt = [*kept, "", GITIGNORE_SECRETS_HEADER, *GITIGNORE_SECRET_PATTERNS]
+    new_content = "\n".join(rebuilt) + "\n"
+
+    if new_content == original:
+        return False
+    gitignore_path.write_text(new_content)
+    return True
+
+
+def _is_secret_path(file_path: str) -> bool:
+    """True if a repo-relative path names a secret env file (.env, *.env, .env.*)."""
+    name = file_path.rsplit("/", 1)[-1]
+    return name == ".env" or name.endswith(".env") or name.startswith(".env.")
+
+
+def list_tracked_secrets(path: Path) -> list[str]:
+    """Return tracked files that look like secret env files.
+
+    Used by `atk doctor` to find secrets that were committed before the
+    gitignore ordering was fixed. Returns repo-relative paths.
+    """
+    result = subprocess.run(
+        ["git", "ls-files", "-z"],
+        cwd=path,
+        capture_output=True,
+        text=True,
+    )
+    if result.returncode != 0:
+        return []
+    return sorted(
+        f for f in result.stdout.split("\0") if f and _is_secret_path(f)
+    )
+
+
+def git_rm_cached(path: Path, files: list[str]) -> None:
+    """Untrack files from the index while keeping them on disk.
+
+    Raises:
+        subprocess.CalledProcessError: If git rm fails.
+    """
+    if not files:
+        return
+    subprocess.run(
+        ["git", "rm", "--cached", "-q", "--", *files],
+        cwd=path,
+        check=True,
+        capture_output=True,
+    )
 
 
 def remove_gitignore_exemption(path: Path, plugin_dir: str) -> None:
@@ -219,9 +309,13 @@ def remove_gitignore_exemption(path: Path, plugin_dir: str) -> None:
     filtered_lines = [
         line for line in lines if line not in (exemption_dir, exemption_glob)
     ]
+    if filtered_lines == lines:
+        return  # No exemption for this plugin — leave the file untouched.
 
-    # Write back
+    # Write back, then normalise so the secret block stays canonical/last and
+    # we don't leave stray blank lines where the exemption used to be.
     gitignore_path.write_text("\n".join(filtered_lines))
+    normalize_gitignore(path)
 
 
 

@@ -12,6 +12,7 @@ from rich.markdown import Markdown
 from atk import __version__, cli_logger, exit_codes
 from atk.add import AddCancelledError, InstallFailedError, add_plugin
 from atk.banner import print_banner
+from atk.commands.doctor import run_doctor
 from atk.commands.lifecycle import run_lifecycle_cli, run_restart_single_cli, run_uninstall_cli
 from atk.commands.plug import plug_plugin, unplug_plugin
 from atk.commands.preconditions import (
@@ -357,6 +358,53 @@ def setup(
         cli_logger.info(f"\nConfiguring '{plugin_schema.name}':")
         result = run_setup(plugin_schema, plugin_dir, stdin_prompt)
         cli_logger.success(f"Configured {len(result.configured_vars)} variable(s)")
+
+    raise typer.Exit(exit_codes.SUCCESS)
+
+
+@app.command()
+def doctor() -> None:
+    """Repair ATK Home: keep secrets gitignored and untrack any that leaked.
+
+    Fixes the historical bug where a local plugin's .env could be tracked
+    because its .gitignore exemption was ordered after the secret rule.
+    Safe to run anytime; idempotent.
+    """
+    atk_home = require_initialized_home()
+    manifest = load_manifest(atk_home)
+    if manifest.config.auto_commit:
+        require_git()
+
+    result = run_doctor(
+        atk_home,
+        auto_commit=manifest.config.auto_commit,
+        auto_push=manifest.config.auto_push,
+    )
+
+    if result.gitignore_fixed:
+        cli_logger.success("Re-ordered .gitignore so secret rules stay last")
+    else:
+        cli_logger.info(".gitignore already keeps secrets last")
+
+    if result.untracked_secrets:
+        cli_logger.warning(
+            f"Untracked {len(result.untracked_secrets)} secret file(s) "
+            "(kept on disk):"
+        )
+        for secret in result.untracked_secrets:
+            cli_logger.dim(f"  • {secret}")
+        cli_logger.warning(
+            "These were committed before — ROTATE the affected keys, and note "
+            "they remain in git history (rewrite history if you need them gone)."
+        )
+
+    if result.committed:
+        cli_logger.success("Committed the repair")
+    elif (result.gitignore_fixed or result.untracked_secrets) and not manifest.config.auto_commit:
+        cli_logger.info("Changes staged — commit them when ready (auto_commit is off)")
+
+    if not result.gitignore_fixed and not result.untracked_secrets:
+        cli_logger.success("Nothing to fix — ATK Home is healthy")
 
     raise typer.Exit(exit_codes.SUCCESS)
 

@@ -66,6 +66,11 @@ class TestInitAtkHome:
         assert "!plugins/*/custom/**" in gitignore_content
         # Secrets are ignored
         assert "*.env" in gitignore_content
+        # ...and kept LAST so plugin/custom exemptions can't re-include them
+        # (gitignore is last-match-wins).
+        assert gitignore_content.index("*.env") > gitignore_content.index(
+            "!plugins/*/custom/**"
+        )
         # Update check cache is ignored
         assert ".update-cache.yaml" in gitignore_content
 
