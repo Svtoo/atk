@@ -248,6 +248,22 @@ mcp:
 **Idempotency rule**: Always build from scratch. Always `rm -rf` and fresh clone/install — no conditional
 "if exists, pull; else clone" logic.
 
+**External package managers silently skip when already installed — you MUST force re-install.** Bare
+`uv tool install pkg@latest`, `npm install -g pkg@latest`, and `pip install pkg` are no-ops once the
+package is present, even if upstream has shipped a newer version. The user runs `atk install <plugin>`
+expecting an upgrade and gets nothing. Required flags per manager:
+
+| Manager | Wrong (silently skips) | Right (always pulls latest) |
+|---|---|---|
+| uv tool | `uv tool install pkg@latest` | `uv tool install pkg@latest --reinstall` |
+| Homebrew | `brew install pkg` | `brew upgrade pkg \|\| brew install pkg` |
+| npm global | `npm install -g pkg@latest` | `npm install -g pkg@latest --force` |
+| pipx | `pipx install pkg` | `pipx install pkg --force` |
+| cargo | `cargo install pkg` | `cargo install pkg --force` |
+
+If your install relies on a `curl ... \| sh` install script (codanna-style), that's usually fine —
+those scripts typically replace the binary unconditionally. But verify before shipping.
+
 Use `set -e` in `install.sh`: fail fast on errors.
 
 ### start

@@ -175,11 +175,12 @@ class TestRemovePlugin:
         plugin_dir = _add_plugin_to_home(atk_home, plugin_name, directory, source=SourceInfo(type=SourceType.LOCAL))
         add_gitignore_exemption(atk_home, directory)
 
-        # Verify gitignore exemption exists
+        # Verify gitignore exemption exists, with the secret rules kept last.
         gitignore_path = atk_home / ".gitignore"
-        expected_before = f"{GITIGNORE_CONTENT}{exemption_dir}\n{exemption_glob}\n"
-        actual_before = gitignore_path.read_text()
-        assert actual_before == expected_before
+        before_lines = gitignore_path.read_text().split("\n")
+        assert exemption_dir in before_lines
+        assert exemption_glob in before_lines
+        assert before_lines.index("*.env") > before_lines.index(exemption_glob)
 
         # When
         remove_plugin(directory, atk_home)

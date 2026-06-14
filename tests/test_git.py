@@ -18,11 +18,14 @@ from atk.git import (
     git_last_commit_info,
     git_ls_remote,
     git_push,
+    git_rm_cached,
     git_working_dir_status,
     has_remote,
     has_staged_changes,
     is_git_available,
     is_git_repo,
+    list_tracked_secrets,
+    normalize_gitignore,
     read_atk_ref,
     remove_gitignore_exemption,
     write_atk_ref,
@@ -336,23 +339,57 @@ class TestAtkRef:
 class TestAddGitignoreExemption:
     """Tests for add_gitignore_exemption function."""
 
-    def test_adds_exemption_to_existing_gitignore(self, tmp_path: Path) -> None:
-        """Verify add_gitignore_exemption adds exemption lines to existing .gitignore."""
+    def test_adds_exemption_above_secret_rules(self, tmp_path: Path) -> None:
+        """Adds the exemption lines AND keeps the secret rules last, so the
+        exemption can't re-include the plugin's .env (gitignore = last wins)."""
         # Given
         gitignore_path = tmp_path / ".gitignore"
-        existing_content = "*.env\n.DS_Store\n"
-        gitignore_path.write_text(existing_content)
+        gitignore_path.write_text("*.env\n.DS_Store\n")
         plugin_dir = "my-plugin"
         exemption_dir = f"!plugins/{plugin_dir}/"
         exemption_glob = f"!plugins/{plugin_dir}/**"
-        expected_content = f"{existing_content}{exemption_dir}\n{exemption_glob}\n"
 
         # When
         add_gitignore_exemption(tmp_path, plugin_dir)
 
-        # Then
-        actual_content = gitignore_path.read_text()
-        assert actual_content == expected_content
+        # Then — exemptions present, and the secret rule sits AFTER them.
+        lines = gitignore_path.read_text().split("\n")
+        assert exemption_dir in lines
+        assert exemption_glob in lines
+        assert "*.env" in lines
+        assert lines.index("*.env") > lines.index(exemption_glob)
+
+    def test_exemption_keeps_plugin_env_ignored(self, tmp_path: Path) -> None:
+        """Regression: a local plugin's .env stays git-ignored after its
+        exemption is added, while non-secret plugin files become tracked.
+
+        This is the bug that committed plugins/parley/.env — the appended
+        `!plugins/<name>/**` re-included the .env because it sat after *.env."""
+        # Given a real repo with a fresh-ATK-home .gitignore.
+        from atk.init import GITIGNORE_CONTENT
+
+        git_init(tmp_path)
+        (tmp_path / ".gitignore").write_text(GITIGNORE_CONTENT)
+        plugin_dir = "my-plugin"
+        env_file = tmp_path / "plugins" / plugin_dir / ".env"
+        env_file.parent.mkdir(parents=True)
+        env_file.write_text("SECRET=shhh\n")
+        (env_file.parent / "plugin.yaml").write_text("name: my-plugin\n")
+
+        # When
+        add_gitignore_exemption(tmp_path, plugin_dir)
+
+        # Then — the .env is ignored (rc 0) but the plugin source is not (rc 1).
+        env_ignored = subprocess.run(
+            ["git", "check-ignore", f"plugins/{plugin_dir}/.env"],
+            cwd=tmp_path, capture_output=True,
+        )
+        assert env_ignored.returncode == 0, "plugin .env must stay git-ignored"
+        src_ignored = subprocess.run(
+            ["git", "check-ignore", f"plugins/{plugin_dir}/plugin.yaml"],
+            cwd=tmp_path, capture_output=True,
+        )
+        assert src_ignored.returncode == 1, "plugin source must be tracked"
 
     def test_raises_when_gitignore_missing(self, tmp_path: Path) -> None:
         """Verify add_gitignore_exemption raises FileNotFoundError if .gitignore doesn't exist."""
@@ -381,6 +418,81 @@ class TestAddGitignoreExemption:
         assert lines.count(f"!plugins/{plugin_dir}/**") == 1
 
 
+class TestNormalizeGitignore:
+    """Tests for normalize_gitignore function."""
+
+    def test_moves_secrets_to_end(self, tmp_path: Path) -> None:
+        """A .gitignore with an exemption after the secret rules is rewritten
+        so the secret rules come last."""
+        # Given the broken shape: secret rule, then a re-including exemption.
+        gitignore_path = tmp_path / ".gitignore"
+        gitignore_path.write_text("*.env\n.env.*\n!plugins/foo/\n!plugins/foo/**\n")
+
+        # When
+        changed = normalize_gitignore(tmp_path)
+
+        # Then
+        assert changed is True
+        lines = gitignore_path.read_text().split("\n")
+        assert lines.index("*.env") > lines.index("!plugins/foo/**")
+
+    def test_is_idempotent(self, tmp_path: Path) -> None:
+        """Normalising an already-canonical file changes nothing."""
+        # Given
+        gitignore_path = tmp_path / ".gitignore"
+        gitignore_path.write_text("!plugins/foo/\n!plugins/foo/**\n*.env\n")
+        normalize_gitignore(tmp_path)
+        first_pass = gitignore_path.read_text()
+
+        # When
+        changed = normalize_gitignore(tmp_path)
+
+        # Then
+        assert changed is False
+        assert gitignore_path.read_text() == first_pass
+
+    def test_noop_when_gitignore_absent(self, tmp_path: Path) -> None:
+        """No .gitignore -> returns False, creates nothing."""
+        assert normalize_gitignore(tmp_path) is False
+        assert not (tmp_path / ".gitignore").exists()
+
+
+class TestListTrackedSecrets:
+    """Tests for list_tracked_secrets and git_rm_cached."""
+
+    def test_finds_and_untracks_committed_env(self, tmp_path: Path) -> None:
+        """A committed .env is reported, then git_rm_cached untracks it while
+        leaving the file on disk."""
+        # Given a repo with a committed plugin .env.
+        git_init(tmp_path)
+        env_file = tmp_path / "plugins" / "foo" / ".env"
+        env_file.parent.mkdir(parents=True)
+        env_file.write_text("SECRET=x\n")
+        git_add(tmp_path)
+        git_commit(tmp_path, "add secret by mistake")
+
+        # When
+        tracked = list_tracked_secrets(tmp_path)
+
+        # Then
+        assert "plugins/foo/.env" in tracked
+
+        # When untracked
+        git_rm_cached(tmp_path, tracked)
+
+        # Then — gone from the index, still on disk.
+        assert list_tracked_secrets(tmp_path) == []
+        assert env_file.exists()
+
+    def test_no_secrets_returns_empty(self, tmp_path: Path) -> None:
+        """A clean repo reports no tracked secrets."""
+        git_init(tmp_path)
+        (tmp_path / "README.md").write_text("hi\n")
+        git_add(tmp_path)
+        git_commit(tmp_path, "init")
+        assert list_tracked_secrets(tmp_path) == []
+
+
 class TestRemoveGitignoreExemption:
     """Tests for remove_gitignore_exemption function."""
 
@@ -393,14 +505,16 @@ class TestRemoveGitignoreExemption:
         exemption_glob = f"!plugins/{plugin_dir}/**"
         content = f"*.env\n{exemption_dir}\n{exemption_glob}\n.DS_Store\n"
         gitignore_path.write_text(content)
-        expected_content = "*.env\n.DS_Store\n"
 
         # When
         remove_gitignore_exemption(tmp_path, plugin_dir)
 
-        # Then
-        actual_content = gitignore_path.read_text()
-        assert actual_content == expected_content
+        # Then — exemption gone, other content kept, secrets normalised last.
+        lines = gitignore_path.read_text().split("\n")
+        assert exemption_dir not in lines
+        assert exemption_glob not in lines
+        assert ".DS_Store" in lines
+        assert lines.index("*.env") > lines.index(".DS_Store")
 
     def test_preserves_other_plugin_exemptions(self, tmp_path: Path) -> None:
         """Verify remove_gitignore_exemption only removes specified plugin's exemption."""
@@ -414,14 +528,17 @@ class TestRemoveGitignoreExemption:
         other_exemption_glob = f"!plugins/{other_plugin}/**"
         content = f"*.env\n{exemption_dir}\n{exemption_glob}\n{other_exemption_dir}\n{other_exemption_glob}\n.DS_Store\n"
         gitignore_path.write_text(content)
-        expected_content = f"*.env\n{other_exemption_dir}\n{other_exemption_glob}\n.DS_Store\n"
 
         # When
         remove_gitignore_exemption(tmp_path, plugin_dir)
 
-        # Then
-        actual_content = gitignore_path.read_text()
-        assert actual_content == expected_content
+        # Then — only the target plugin's exemption is removed.
+        lines = gitignore_path.read_text().split("\n")
+        assert exemption_dir not in lines
+        assert exemption_glob not in lines
+        assert other_exemption_dir in lines
+        assert other_exemption_glob in lines
+        assert lines.index("*.env") > lines.index(other_exemption_glob)
 
     def test_is_idempotent(self, tmp_path: Path) -> None:
         """Verify remove_gitignore_exemption is idempotent - no error if already removed."""

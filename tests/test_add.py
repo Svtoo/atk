@@ -17,7 +17,7 @@ from atk.cli import app
 from atk.exit_codes import GENERAL_ERROR, HOME_NOT_INITIALIZED, PLUGIN_INVALID, SUCCESS
 from atk.git import ATK_REF_FILE, read_atk_ref
 from atk.git_source import GitPluginNotFoundError
-from atk.init import GITIGNORE_CONTENT, init_atk_home
+from atk.init import init_atk_home
 from atk.manifest_schema import ManifestSchema, SourceType, load_manifest
 from atk.plugin_schema import (
     PLUGIN_SCHEMA_VERSION,
@@ -259,9 +259,11 @@ class TestAddPlugin:
         gitignore_path = atk_home / ".gitignore"
         exemption_dir = f"!plugins/{expected_dir}/"
         exemption_glob = f"!plugins/{expected_dir}/**"
-        expected_gitignore = f"{GITIGNORE_CONTENT}{exemption_dir}\n{exemption_glob}\n"
-        actual_gitignore = gitignore_path.read_text()
-        assert actual_gitignore == expected_gitignore
+        gitignore_lines = gitignore_path.read_text().split("\n")
+        assert exemption_dir in gitignore_lines
+        assert exemption_glob in gitignore_lines
+        # Secret rules stay last so the exemption can't re-include a .env.
+        assert gitignore_lines.index("*.env") > gitignore_lines.index(exemption_glob)
 
     def test_add_plugin_from_single_file(self, tmp_path: Path) -> None:
         """Verify adding plugin from single file creates directory."""
@@ -298,9 +300,11 @@ class TestAddPlugin:
         gitignore_path = atk_home / ".gitignore"
         exemption_dir = f"!plugins/{expected_dir}/"
         exemption_glob = f"!plugins/{expected_dir}/**"
-        expected_gitignore = f"{GITIGNORE_CONTENT}{exemption_dir}\n{exemption_glob}\n"
-        actual_gitignore = gitignore_path.read_text()
-        assert actual_gitignore == expected_gitignore
+        gitignore_lines = gitignore_path.read_text().split("\n")
+        assert exemption_dir in gitignore_lines
+        assert exemption_glob in gitignore_lines
+        # Secret rules stay last so the exemption can't re-include a .env.
+        assert gitignore_lines.index("*.env") > gitignore_lines.index(exemption_glob)
 
     def test_add_plugin_already_in_plugins_directory(self, tmp_path: Path) -> None:
         """Verify adding plugin that's already in plugins/ directory skips copy."""
@@ -342,9 +346,11 @@ class TestAddPlugin:
         gitignore_path = atk_home / ".gitignore"
         exemption_dir = f"!plugins/{expected_dir}/"
         exemption_glob = f"!plugins/{expected_dir}/**"
-        expected_gitignore = f"{GITIGNORE_CONTENT}{exemption_dir}\n{exemption_glob}\n"
-        actual_gitignore = gitignore_path.read_text()
-        assert actual_gitignore == expected_gitignore
+        gitignore_lines = gitignore_path.read_text().split("\n")
+        assert exemption_dir in gitignore_lines
+        assert exemption_glob in gitignore_lines
+        # Secret rules stay last so the exemption can't re-include a .env.
+        assert gitignore_lines.index("*.env") > gitignore_lines.index(exemption_glob)
 
     def test_add_plugin_existing_raises(self, tmp_path: Path) -> None:
         """Verify adding plugin when directory already exists raises error."""

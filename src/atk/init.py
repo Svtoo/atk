@@ -9,7 +9,13 @@ from pathlib import Path
 
 import yaml
 
-from atk.git import git_add, git_commit, git_init
+from atk.git import (
+    GITIGNORE_SECRET_PATTERNS,
+    GITIGNORE_SECRETS_HEADER,
+    git_add,
+    git_commit,
+    git_init,
+)
 from atk.home import validate_atk_home
 from atk.manifest_schema import (
     MANIFEST_SCHEMA_VERSION,
@@ -31,8 +37,11 @@ def _create_initial_manifest() -> str:
     )
     return yaml.dump(manifest.model_dump(), default_flow_style=False, sort_keys=False)
 
-# Gitignore content
-GITIGNORE_CONTENT = """\
+# Gitignore content. The secret-ignore rules are appended LAST (gitignore is
+# last-match-wins) so the per-plugin `!plugins/<name>/**` exemptions that
+# `atk add` inserts above them can never re-include a plugin's .env. See
+# atk.git.normalize_gitignore, which enforces this invariant on every add.
+_GITIGNORE_BASE = """\
 # Ignore all plugin contents
 plugins/*/*
 
@@ -40,16 +49,18 @@ plugins/*/*
 !plugins/*/custom/
 !plugins/*/custom/**
 
-# Always ignore secrets
-*.env
-.env.*
-
 # Update check cache
 .update-cache.yaml
 
 # Local development
 .DS_Store
 """
+GITIGNORE_CONTENT = (
+    _GITIGNORE_BASE
+    + "\n"
+    + "\n".join([GITIGNORE_SECRETS_HEADER, *GITIGNORE_SECRET_PATTERNS])
+    + "\n"
+)
 
 
 def init_atk_home(path: Path) -> ValidationResult:
