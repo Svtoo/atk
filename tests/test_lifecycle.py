@@ -1,6 +1,7 @@
 """Tests for lifecycle business-logic: run_lifecycle_command, restart_all, get_plugin_status."""
 
 import os
+import socket
 from collections.abc import Callable
 from pathlib import Path
 
@@ -13,6 +14,7 @@ from atk.lifecycle import (
     PortStatus,
     get_all_plugins_status,
     get_plugin_status,
+    is_port_listening,
     restart_all_plugins,
     run_lifecycle_command,
 )
@@ -601,3 +603,28 @@ class TestGetAllPluginsStatus:
 
         assert results == []
 
+
+
+class TestIsPortListening:
+    """Tests for is_port_listening function."""
+
+    def test_returns_true_for_a_listening_port(self) -> None:
+        """Verify a bound, listening socket is detected."""
+        # Given
+        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as server:
+            server.bind(("127.0.0.1", 0))
+            server.listen(1)
+            port = server.getsockname()[1]
+
+            # When / Then
+            assert is_port_listening(port) is True
+
+    def test_returns_false_when_nothing_is_listening(self) -> None:
+        """Verify a closed port is reported as not listening."""
+        # Given - bind to claim a port, then release it
+        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as probe:
+            probe.bind(("127.0.0.1", 0))
+            port = probe.getsockname()[1]
+
+        # When / Then
+        assert is_port_listening(port) is False
