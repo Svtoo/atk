@@ -137,8 +137,8 @@ class EnvVarConfig(StrictModel):
     )
 
 
-class LifecycleConfig(StrictModel):
-    """Configuration for lifecycle commands."""
+class LifecycleCommands(StrictModel):
+    """Lifecycle command strings, overridable per platform."""
 
     install: str | None = Field(
         default=None,
@@ -164,9 +164,21 @@ class LifecycleConfig(StrictModel):
         default=None,
         description="Command to check status (exit 0 = running)",
     )
+
+
+class LifecycleConfig(LifecycleCommands):
+    """Configuration for lifecycle commands."""
+
     health_endpoint: str | None = Field(
         default=None,
         description="Health check endpoint URL",
+    )
+    windows: LifecycleCommands | None = Field(
+        default=None,
+        description=(
+            "Windows-specific command overrides. Each command falls back "
+            "individually to the platform-independent one above when unset."
+        ),
     )
 
 
