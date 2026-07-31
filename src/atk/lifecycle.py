@@ -4,6 +4,7 @@ Handles running lifecycle commands defined in plugin.yaml.
 """
 
 import os
+import socket
 import subprocess
 from collections.abc import Callable
 from dataclasses import dataclass, field
@@ -152,7 +153,8 @@ class PortStatus:
 def is_port_listening(port: int) -> bool:
     """Check if a port is listening on localhost.
 
-    Uses netcat (nc) to check if the port is open.
+    Opens a TCP connection with the standard library. Windows ships no netcat,
+    and minimal Linux images often omit it too.
 
     Args:
         port: Port number to check.
@@ -160,11 +162,11 @@ def is_port_listening(port: int) -> bool:
     Returns:
         True if something is listening on the port, False otherwise.
     """
-    result = subprocess.run(
-        ["nc", "-z", "-w", "1", "localhost", str(port)],
-        capture_output=True,
-    )
-    return result.returncode == 0
+    try:
+        with socket.create_connection(("localhost", port), timeout=1):
+            return True
+    except OSError:
+        return False
 
 
 def check_port_conflicts(plugin: PluginSchema) -> list[PortConflict]:
