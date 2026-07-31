@@ -16,7 +16,7 @@ from atk.env import check_required_env_vars, get_env_status, load_env_file
 from atk.manifest_schema import load_manifest
 from atk.mcp import check_sse_reachable
 from atk.plugin import CUSTOM_DIR, PluginNotFoundError, load_plugin
-from atk.plugin_schema import PluginMaturity, PluginSchema
+from atk.plugin_schema import LifecycleConfig, PluginMaturity, PluginSchema
 
 LifecycleCommand = Literal["install", "uninstall", "start", "stop", "logs", "status"]
 
@@ -234,6 +234,30 @@ def _inject_compose_override(command: str, plugin_dir: Path) -> str:
     return f"docker compose -f docker-compose.yml -f {override_rel}{rest}"
 
 
+def resolve_lifecycle_command(
+    lifecycle: LifecycleConfig, command_name: LifecycleCommand
+) -> str | None:
+    """Return the lifecycle command to run on the current platform.
+
+    A `windows:` override wins on Windows, per command: a plugin may override
+    only `start` and inherit the rest. Off Windows, or without an override, the
+    platform-independent command is returned unchanged.
+
+    Args:
+        lifecycle: The plugin's lifecycle configuration.
+        command_name: Which lifecycle command to resolve.
+
+    Returns:
+        The command string, or None if the plugin defines no such command.
+    """
+    if os.name == "nt" and lifecycle.windows is not None:
+        override = getattr(lifecycle.windows, command_name, None)
+        if override is not None:
+            return override
+
+    return getattr(lifecycle, command_name, None)
+
+
 def run_lifecycle_command(
     plugin: PluginSchema, plugin_dir: Path, command_name: LifecycleCommand
 ) -> int:
@@ -253,7 +277,7 @@ def run_lifecycle_command(
     if plugin.lifecycle is None:
         raise LifecycleCommandNotDefinedError(command_name, plugin.name)
 
-    command = getattr(plugin.lifecycle, command_name, None)
+    command = resolve_lifecycle_command(plugin.lifecycle, command_name)
 
     if command is None:
         raise LifecycleCommandNotDefinedError(command_name, plugin.name)

@@ -13,12 +13,19 @@ from atk.lifecycle import (
     PortStatus,
     get_all_plugins_status,
     get_plugin_status,
+    resolve_lifecycle_command,
     restart_all_plugins,
     run_lifecycle_command,
 )
 from atk.manifest_schema import PluginEntry, load_manifest, save_manifest
 from atk.plugin import load_plugin
-from atk.plugin_schema import PLUGIN_SCHEMA_VERSION, McpPluginConfig, PluginSchema
+from atk.plugin_schema import (
+    PLUGIN_SCHEMA_VERSION,
+    LifecycleCommands,
+    LifecycleConfig,
+    McpPluginConfig,
+    PluginSchema,
+)
 
 # Type alias for the plugin factory fixture
 PluginFactory = Callable[..., Path]
@@ -601,3 +608,57 @@ class TestGetAllPluginsStatus:
 
         assert results == []
 
+
+
+class TestResolveLifecycleCommand:
+    """Tests for per-platform lifecycle command resolution."""
+
+    def test_windows_override_wins_on_windows(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """Verify a windows: override replaces the default command on Windows."""
+        # Given
+        lifecycle = LifecycleConfig(
+            start="./start.sh",
+            windows=LifecycleCommands(start="powershell -File start.ps1"),
+        )
+        monkeypatch.setattr(os, "name", "nt")
+
+        # When / Then
+        assert resolve_lifecycle_command(lifecycle, "start") == "powershell -File start.ps1"
+
+    def test_default_is_used_off_windows(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """Verify the same plugin resolves to the default command elsewhere."""
+        # Given
+        lifecycle = LifecycleConfig(
+            start="./start.sh",
+            windows=LifecycleCommands(start="powershell -File start.ps1"),
+        )
+        monkeypatch.setattr(os, "name", "posix")
+
+        # When / Then
+        assert resolve_lifecycle_command(lifecycle, "start") == "./start.sh"
+
+    def test_fallback_is_per_command(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """Verify an unset override falls back to the default, command by command."""
+        # Given - only start is overridden
+        lifecycle = LifecycleConfig(
+            install="./install.sh",
+            start="./start.sh",
+            windows=LifecycleCommands(start="powershell -File start.ps1"),
+        )
+        monkeypatch.setattr(os, "name", "nt")
+
+        # When / Then
+        assert resolve_lifecycle_command(lifecycle, "start") == "powershell -File start.ps1"
+        assert resolve_lifecycle_command(lifecycle, "install") == "./install.sh"
+
+    def test_plugin_without_windows_block_is_unaffected(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Verify plugins declaring no override behave identically on Windows."""
+        # Given
+        lifecycle = LifecycleConfig(install="./install.sh")
+        monkeypatch.setattr(os, "name", "nt")
+
+        # When / Then
+        assert resolve_lifecycle_command(lifecycle, "install") == "./install.sh"
+        assert resolve_lifecycle_command(lifecycle, "start") is None

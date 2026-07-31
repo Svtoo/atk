@@ -2,9 +2,11 @@
 
 import pytest
 import yaml
+from pydantic import ValidationError
 
 from atk.plugin_schema import (
     EnvVarConfig,
+    LifecycleCommands,
     LifecycleConfig,
     McpPluginConfig,
     PluginMaturity,
@@ -1001,3 +1003,31 @@ maturity: verified
 
         # Then
         assert plugin.maturity == PluginMaturity.VERIFIED
+
+
+class TestLifecyclePlatformOverrides:
+    """Tests for the optional per-platform lifecycle overrides."""
+
+    def test_windows_overrides_parse(self) -> None:
+        """Verify a lifecycle block with windows: overrides validates."""
+        config = LifecycleConfig(
+            install="./install.sh",
+            windows=LifecycleCommands(install="powershell -File install.ps1"),
+        )
+
+        assert config.install == "./install.sh"
+        assert config.windows is not None
+        assert config.windows.install == "powershell -File install.ps1"
+
+    def test_windows_block_is_optional(self) -> None:
+        """Verify lifecycle configs without overrides are unchanged."""
+        config = LifecycleConfig(install="./install.sh")
+
+        assert config.windows is None
+
+    def test_unknown_key_inside_windows_is_rejected(self) -> None:
+        """Verify StrictModel validation still applies inside the override block."""
+        with pytest.raises(ValidationError):
+            LifecycleConfig.model_validate(
+                {"install": "./install.sh", "windows": {"instal": "typo.ps1"}}
+            )
