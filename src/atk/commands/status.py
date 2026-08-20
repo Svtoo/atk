@@ -83,6 +83,8 @@ def print_status_table(results: list[PluginStatusResult]) -> None:
             status_str = "[red]stopped[/red]"
         elif result.status == PluginStatus.MCP_ONLY:
             status_str = "[blue]mcp-only[/blue]"
+        elif result.status == PluginStatus.INVALID:
+            status_str = "[red]invalid[/red]"
         else:
             status_str = "[yellow]unknown[/yellow]"
 
@@ -98,6 +100,12 @@ def print_status_table(results: list[PluginStatusResult]) -> None:
         table.add_row(name, status_str, ports_str, env_str, maturity_str)
 
     console.print(table)
+
+    invalid = [r for r in results if r.status == PluginStatus.INVALID and r.error]
+    if invalid:
+        console.print()
+        for result in invalid:
+            console.print(f"[red]✗ {result.directory}:[/red] {result.error}")
 
     has_port_checks = any(p.listening is not None for r in results for p in r.ports)
     has_env_vars = any(r.total_env_vars > 0 for r in results)

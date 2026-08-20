@@ -139,6 +139,7 @@ class PluginStatus(str, Enum):
     STOPPED = "stopped"
     UNKNOWN = "unknown"
     MCP_ONLY = "mcp-only"  # stdio MCP plugin — spawned on demand, no persistent service
+    INVALID = "invalid"  # plugin.yaml could not be read or validated
 
 
 @dataclass
@@ -568,6 +569,7 @@ class PluginStatusResult:
     unset_optional_count: int  # Count of unset optional env vars
     total_env_vars: int  # Total number of env vars defined in plugin.yaml
     maturity: PluginMaturity = field(default=PluginMaturity.AI_GENERATED)
+    error: str | None = None  # Why the plugin could not be read; set only when status is INVALID
 
 
 def get_plugin_status(
@@ -669,7 +671,51 @@ def get_all_plugins_status(
     results: list[PluginStatusResult] = []
 
     for plugin_entry in manifest.plugins:
-        result = get_plugin_status(atk_home, plugin_entry.directory, sse_reachable_fn=sse_reachable_fn)
+        # One unreadable plugin must not hide the state of every other one, so
+        # its failure becomes a row rather than ending the command.
+        try:
+            result = get_plugin_status(
+                atk_home, plugin_entry.directory, sse_reachable_fn=sse_reachable_fn
+            )
+        except (ValueError, FileNotFoundError) as e:
+            result = invalid_plugin_result(plugin_entry.directory, e)
         results.append(result)
 
     return results
+
+
+def invalid_plugin_result(directory: str, error: Exception) -> PluginStatusResult:
+    """Describe a plugin that could not be read, for display alongside the rest."""
+    return PluginStatusResult(
+        name=directory,
+        directory=directory,
+        status=PluginStatus.INVALID,
+        ports=[],
+        missing_required_vars=[],
+        unset_optional_count=0,
+        total_env_vars=0,
+        error=schema_error_hint(str(error)),
+    )
+
+
+def schema_error_hint(message: str) -> str:
+    """Append a version hint when the failure reads as a plugin newer than this ATK.
+
+    An unknown field or an unaccepted enum value is what a plugin written for a
+    later schema looks like from here, and the raw validator text gives the user
+    no reason to suspect their ATK is simply behind.
+    """
+    outgrown = "extra inputs are not permitted" in message or "input should be" in message
+    if not outgrown:
+        return message
+    return f"{message} — this plugin may require a newer atk (installed {atk_version()})"
+
+
+def atk_version() -> str:
+    """Installed atk-cli version, or 'unknown' when the metadata is missing."""
+    try:
+        from importlib.metadata import version
+
+        return version("atk-cli")
+    except Exception:
+        return "unknown"
