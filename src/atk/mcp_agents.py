@@ -5,7 +5,16 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-from atk.mcp import NOT_SET, McpConfig, SseMcpConfig, StdioMcpConfig
+from atk.mcp import NOT_SET, McpConfig, RemoteMcpConfig, StdioMcpConfig
+
+
+def resolved_env(config: McpConfig) -> dict[str, str]:
+    """Env minus the vars that never resolved.
+
+    A NOT_SET sentinel is a display artefact — handing it to an agent would
+    register the literal "<NOT_SET>" as the variable's value.
+    """
+    return {k: v for k, v in config.env.items() if v != NOT_SET}
 
 
 @dataclass
@@ -34,10 +43,22 @@ def build_claude_mcp_config(config: McpConfig, scope: str = "user") -> AgentMcpC
     Returns:
         AgentMcpConfig with the full argv for subprocess.run().
     """
+    # `claude mcp add` has no timeout flag; the field exists only inside a JSON
+    # entry, so a server that sets one has to be registered the JSON way.
+    if config.timeout:
+        entry = config.to_mcp_dict()[config.identifier]
+        entry["env"] = resolved_env(config)
+        if not entry["env"]:
+            del entry["env"]
+        return AgentMcpConfig(
+            argv=["claude", "mcp", "add-json", "--scope", scope,
+                  config.identifier, json.dumps(entry)]
+        )
+
     argv: list[str] = ["claude", "mcp", "add"]
 
-    if isinstance(config, SseMcpConfig):
-        argv += ["--transport", "sse"]
+    if isinstance(config, RemoteMcpConfig):
+        argv += ["--transport", config.transport]
 
     argv += ["--scope", scope]
 
@@ -51,7 +72,7 @@ def build_claude_mcp_config(config: McpConfig, scope: str = "user") -> AgentMcpC
     argv.append("--")
     argv.append(config.identifier)
 
-    if isinstance(config, SseMcpConfig):
+    if isinstance(config, RemoteMcpConfig):
         argv.append(config.url)
     elif isinstance(config, StdioMcpConfig):
         argv.append(config.command)
@@ -75,19 +96,20 @@ def build_gemini_mcp_config(config: McpConfig, scope: str = "user") -> AgentMcpC
     """
     argv: list[str] = ["gemini", "mcp", "add"]
 
-    if isinstance(config, SseMcpConfig):
-        argv += ["--transport", "sse"]
+    if isinstance(config, RemoteMcpConfig):
+        argv += ["--transport", config.transport]
 
     argv += ["--scope", scope]
 
-    # One -e KEY=VAL per resolved variable; skip unset ones.
-    for key, val in config.env.items():
-        if val != NOT_SET:
+    # Only a stdio server has a process to receive them; gemini drops -e on a
+    # URL server anyway.
+    if isinstance(config, StdioMcpConfig):
+        for key, val in resolved_env(config).items():
             argv += ["-e", f"{key}={val}"]
 
     argv.append(config.identifier)
 
-    if isinstance(config, SseMcpConfig):
+    if isinstance(config, RemoteMcpConfig):
         argv.append(config.url)
     elif isinstance(config, StdioMcpConfig):
         argv.append(config.command)
@@ -100,7 +122,7 @@ def build_codex_mcp_config(config: McpConfig) -> AgentMcpConfig:
     """Build the agent config for ``codex mcp add`` from an McpConfig.
 
     For stdio: ``codex mcp add [--env K=V ...] <name> -- <cmd> [args...]``
-    For SSE:   ``codex mcp add [--env K=V ...] <name> --url <url>``
+    For http/sse: ``codex mcp add [--env K=V ...] <name> --url <url>``
 
     Env vars with NOT_SET values are omitted. The ``--`` separator before the
     command is required by Codex's CLI parser so that server args like
@@ -108,13 +130,15 @@ def build_codex_mcp_config(config: McpConfig) -> AgentMcpConfig:
     """
     argv: list[str] = ["codex", "mcp", "add"]
 
-    for key, val in config.env.items():
-        if val != NOT_SET:
+    # --env is only accepted alongside a launch command. Passing it with --url
+    # makes codex reject the whole invocation with "command is required".
+    if isinstance(config, StdioMcpConfig):
+        for key, val in resolved_env(config).items():
             argv += ["--env", f"{key}={val}"]
 
     argv.append(config.identifier)
 
-    if isinstance(config, SseMcpConfig):
+    if isinstance(config, RemoteMcpConfig):
         argv += ["--url", config.url]
     elif isinstance(config, StdioMcpConfig):
         argv += ["--", config.command, *config.args]
@@ -127,7 +151,7 @@ def build_auggie_mcp_config(config: McpConfig) -> AgentMcpConfig:
 
     Auggie's ``add-json`` subcommand accepts a single-line JSON string.
     For stdio: ``{"command": "...", "args": [...], "env": {...}}``
-    For SSE:   ``{"type": "sse", "url": "..."}``
+    For http/sse: ``{"type": "http"|"sse", "url": "..."}``
 
     Args must be a JSON array — auggie silently drops all mcpServers entries
     if any entry has args as a string instead of an array.
@@ -135,15 +159,14 @@ def build_auggie_mcp_config(config: McpConfig) -> AgentMcpConfig:
     """
     payload: dict[str, Any]
 
-    if isinstance(config, SseMcpConfig):
-        payload = {"type": "sse", "url": config.url}
+    if isinstance(config, RemoteMcpConfig):
+        payload = {"type": config.transport, "url": config.url}
     else:
         assert isinstance(config, StdioMcpConfig)
-        resolved_env = {k: v for k, v in config.env.items() if v != NOT_SET}
         payload = {
             "command": config.command,
             "args": config.args,
-            "env": resolved_env,
+            "env": resolved_env(config),
         }
 
     json_str = json.dumps(payload, separators=(",", ":"))
@@ -196,15 +219,15 @@ def build_opencode_mcp_config(
     effective_dir = config_dir if config_dir is not None else _default_opencode_config_dir()
     entry_value: dict[str, Any]
 
-    if isinstance(config, SseMcpConfig):
+    if isinstance(config, RemoteMcpConfig):
+        # OpenCode names the URL case "remote" whichever wire protocol it uses.
         entry_value = {"type": "remote", "url": config.url, "enabled": True}
     else:
         assert isinstance(config, StdioMcpConfig)
-        resolved_env = {k: v for k, v in config.env.items() if v != NOT_SET}
         entry_value = {
             "type": "local",
             "command": [config.command, *config.args],
-            "environment": resolved_env,
+            "environment": resolved_env(config),
             "enabled": True,
         }
 

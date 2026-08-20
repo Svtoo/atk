@@ -3,7 +3,7 @@
 import urllib.error
 import urllib.request
 from abc import ABC, abstractmethod
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
@@ -23,7 +23,7 @@ class McpConfig(ABC):
     """Resolved MCP server configuration for a plugin.
 
     Produced by generate_mcp_config() after substituting environment variables
-    and $ATK_PLUGIN_DIR placeholders.  Use StdioMcpConfig or SseMcpConfig
+    and $ATK_PLUGIN_DIR placeholders.  Use StdioMcpConfig or RemoteMcpConfig
     directly; this base class is never instantiated on its own.
     """
 
@@ -32,6 +32,7 @@ class McpConfig(ABC):
     env: dict[str, str]          # Resolved env vars; NOT_SET sentinel for required vars with no value
     missing_vars: list[str]      # Required vars that have no value (appear as NOT_SET in env)
     optional_unset_vars: list[str]  # Optional vars with no value; omitted from env and JSON entirely
+    timeout: int | None = field(default=None, kw_only=True)  # Per-tool-call limit in ms
 
     @abstractmethod
     def to_mcp_dict(self) -> dict[str, Any]:
@@ -55,19 +56,28 @@ class StdioMcpConfig(McpConfig):
             inner["args"] = self.args
         if self.env:
             inner["env"] = self.env
+        if self.timeout:
+            inner["timeout"] = self.timeout
         return {self.identifier: inner}
 
 
 @dataclass
-class SseMcpConfig(McpConfig):
-    """Resolved MCP config for an SSE (URL-based) server."""
+class RemoteMcpConfig(McpConfig):
+    """Resolved MCP config for a URL-based server: streamable HTTP or SSE.
+
+    Clients need the transport named explicitly — an entry carrying a url but
+    no type is a configuration error they skip rather than guess at.
+    """
 
     url: str
+    transport: str = "sse"
 
     def to_mcp_dict(self) -> dict[str, Any]:
-        inner: dict[str, Any] = {"url": self.url}
+        inner: dict[str, Any] = {"type": self.transport, "url": self.url}
         if self.env:
             inner["env"] = self.env
+        if self.timeout:
+            inner["timeout"] = self.timeout
         return {self.identifier: inner}
 
 
@@ -136,7 +146,8 @@ def generate_mcp_config(
         plugin_identifier: The identifier used as the key in MCP JSON output.
 
     Returns:
-        StdioMcpConfig for stdio transport, SseMcpConfig for SSE transport.
+        StdioMcpConfig for stdio transport, RemoteMcpConfig for the URL-based
+        'http' and 'sse' transports.
     """
     if plugin.mcp is None:
         raise ValueError(f"Plugin '{plugin.name}' has no MCP configuration")
@@ -177,20 +188,25 @@ def generate_mcp_config(
             env=env,
             missing_vars=missing_vars,
             optional_unset_vars=optional_unset_vars,
+            timeout=mcp.timeout,
         )
 
-    # sse
+    # http and sse: both are a URL the client connects to directly.
     if not mcp.endpoint:
         raise ValueError(
-            f"Plugin '{plugin.name}' has transport 'sse' but no endpoint defined."
+            f"Plugin '{plugin.name}' has transport '{mcp.transport}' but no endpoint defined."
         )
-    return SseMcpConfig(
+    return RemoteMcpConfig(
         identifier=plugin_identifier,
         plugin_name=plugin.name,
-        url=mcp.endpoint,
+        # Substituted like args are: an endpoint naming a configured host or
+        # bank is useless to a client if it arrives as a literal $VAR.
+        url=substitute_env_vars(substitute_plugin_dir(mcp.endpoint, plugin_dir), env),
+        transport=mcp.transport,
         env=env,
         missing_vars=missing_vars,
         optional_unset_vars=optional_unset_vars,
+        timeout=mcp.timeout,
     )
 
 
@@ -198,8 +214,8 @@ def format_mcp_plaintext(config: McpConfig) -> str:
     """Format MCP config as human-readable plaintext with Rich markup.
 
     Renders sections appropriate to the transport type:
-    - StdioMcpConfig: Name, Command (command + args joined), Environment Variables
-    - SseMcpConfig:   Name, URL, Environment Variables
+    - StdioMcpConfig:  Name, Command (command + args joined), Environment Variables
+    - RemoteMcpConfig: Name, URL, Environment Variables
 
     Args:
         config: The resolved MCP config.
@@ -214,7 +230,7 @@ def format_mcp_plaintext(config: McpConfig) -> str:
     if isinstance(config, StdioMcpConfig):
         command_parts = [config.command, *config.args]
         lines.append(f"[bold]Command:[/bold]  {' '.join(command_parts)}")
-    elif isinstance(config, SseMcpConfig):
+    elif isinstance(config, RemoteMcpConfig):
         lines.append(f"[bold]URL:[/bold]     {config.url}")
 
     if config.env or config.optional_unset_vars:

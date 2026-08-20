@@ -17,7 +17,7 @@ class StrictModel(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
 # Schema version - update when plugin schema changes
-PLUGIN_SCHEMA_VERSION = "2026-01-23"
+PLUGIN_SCHEMA_VERSION = "2026-08-20"
 
 
 class PluginMaturity(str, Enum):
@@ -173,8 +173,11 @@ class LifecycleConfig(StrictModel):
 class McpPluginConfig(StrictModel):
     """MCP integration declared in a plugin's plugin.yaml."""
 
-    transport: Literal["stdio", "sse"] = Field(
-        description="Transport type: stdio (command-based) or sse (URL-based)",
+    transport: Literal["stdio", "sse", "http"] = Field(
+        description=(
+            "Transport type: stdio (command-based), http (streamable HTTP, "
+            "preferred for remote servers) or sse (URL-based, deprecated)"
+        ),
     )
     command: str | None = Field(
         default=None,
@@ -186,32 +189,46 @@ class McpPluginConfig(StrictModel):
     )
     endpoint: str | None = Field(
         default=None,
-        description="SSE endpoint URL (for sse transport)",
+        description="Server URL (for http and sse transports)",
     )
     env: list[str] | None = Field(
         default=None,
         description="Environment variable names to include in MCP config",
+    )
+    timeout: int | None = Field(
+        default=None,
+        description=(
+            "Per-tool-call timeout in milliseconds. Set it for a server whose "
+            "calls legitimately outlast the client's default, so a slow call is "
+            "not mistaken for a dead one. Not every agent honours it."
+        ),
     )
 
     @model_validator(mode="after")
     def validate_transport_fields(self) -> "McpPluginConfig":
         """Enforce transport-specific field requirements.
 
-        - stdio: command is required; endpoint must not be set.
-        - sse:   endpoint is required; command and args must not be set.
+        - stdio:      command is required; endpoint must not be set.
+        - http, sse:  endpoint is required; command and args must not be set.
         """
         if self.transport == "stdio":
             if self.command is None:
                 raise ValueError("'command' is required when transport is 'stdio'")
             if self.endpoint is not None:
                 raise ValueError("'endpoint' must not be set when transport is 'stdio'")
-        elif self.transport == "sse":
+        elif self.transport in ("sse", "http"):
             if self.endpoint is None:
-                raise ValueError("'endpoint' is required when transport is 'sse'")
+                raise ValueError(
+                    f"'endpoint' is required when transport is '{self.transport}'"
+                )
             if self.command is not None:
-                raise ValueError("'command' must not be set when transport is 'sse'")
+                raise ValueError(
+                    f"'command' must not be set when transport is '{self.transport}'"
+                )
             if self.args is not None:
-                raise ValueError("'args' must not be set when transport is 'sse'")
+                raise ValueError(
+                    f"'args' must not be set when transport is '{self.transport}'"
+                )
         return self
 
 

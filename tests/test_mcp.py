@@ -11,7 +11,9 @@ from rich.console import Console
 from atk import exit_codes
 from atk.cli import app
 from atk.mcp import (
+    NOT_SET,
     McpConfig,
+    RemoteMcpConfig,
     StdioMcpConfig,
     format_mcp_plaintext,
     generate_mcp_config,
@@ -191,19 +193,23 @@ def _make_stdio_plugin(
     )
 
 
-def _make_sse_plugin(
+def _make_remote_plugin(
     *,
     name: str = "TestPlugin",
     endpoint: str = "http://localhost:8080/mcp",
     mcp_env: list[str] | None = None,
     env_vars: list[EnvVarConfig] | None = None,
+    transport: str = "sse",
+    timeout: int | None = None,
 ) -> PluginSchema:
-    """Build a PluginSchema with an SSE MCP config."""
+    """Build a PluginSchema with a URL-based (http or sse) MCP config."""
     return PluginSchema(
         schema_version=PLUGIN_SCHEMA_VERSION,
         name=name,
         description="Test plugin",
-        mcp=McpPluginConfig(transport="sse", endpoint=endpoint, env=mcp_env),
+        mcp=McpPluginConfig(
+            transport=transport, endpoint=endpoint, env=mcp_env, timeout=timeout
+        ),
         env_vars=env_vars or [],
     )
 
@@ -452,7 +458,7 @@ def test_format_mcp_plaintext_sse(tmp_path: Path) -> None:
     """SSE plugin: exact rendered output with Name and URL; no Environment Variables section."""
     # Given
     endpoint = "http://localhost:8080/mcp"
-    plugin = _make_sse_plugin(endpoint=endpoint)  # no env vars
+    plugin = _make_remote_plugin(endpoint=endpoint)  # no env vars
     plugin_dir = tmp_path / "plugin"
     plugin_dir.mkdir()
     mcp_config = generate_mcp_config(plugin, plugin_dir, "test-plugin")
@@ -644,7 +650,7 @@ def test_build_claude_mcp_config_sse(tmp_path: Path) -> None:
     # Given
     plugin_name = "my-plugin"
     endpoint = "http://localhost:8080/mcp"
-    plugin = _make_sse_plugin(name=plugin_name, endpoint=endpoint)
+    plugin = _make_remote_plugin(name=plugin_name, endpoint=endpoint)
     plugin_dir = tmp_path / "plugin"
     plugin_dir.mkdir()
     mcp_config = generate_mcp_config(plugin, plugin_dir, plugin_name)
@@ -792,7 +798,7 @@ def test_build_codex_mcp_config_sse(tmp_path: Path) -> None:
     """SSE plugin: --url <url> instead of -- <cmd>."""
     plugin_name = "my-plugin"
     endpoint = "http://localhost:8080/mcp"
-    plugin = _make_sse_plugin(name=plugin_name, endpoint=endpoint)
+    plugin = _make_remote_plugin(name=plugin_name, endpoint=endpoint)
     plugin_dir = tmp_path / "plugin"
     plugin_dir.mkdir()
     mcp_config = generate_mcp_config(plugin, plugin_dir, plugin_name)
@@ -891,7 +897,7 @@ def test_build_auggie_mcp_config_sse(tmp_path: Path) -> None:
     """SSE plugin: payload is {type: sse, url: ...}."""
     plugin_name = "my-plugin"
     endpoint = "http://localhost:8080/mcp"
-    plugin = _make_sse_plugin(name=plugin_name, endpoint=endpoint)
+    plugin = _make_remote_plugin(name=plugin_name, endpoint=endpoint)
     plugin_dir = tmp_path / "plugin"
     plugin_dir.mkdir()
     mcp_config = generate_mcp_config(plugin, plugin_dir, plugin_name)
@@ -981,7 +987,7 @@ def test_build_opencode_mcp_config_sse(tmp_path: Path) -> None:
     """SSE plugin: entry has type=remote and url."""
     plugin_name = "my-plugin"
     endpoint = "http://localhost:8080/mcp"
-    plugin = _make_sse_plugin(name=plugin_name, endpoint=endpoint)
+    plugin = _make_remote_plugin(name=plugin_name, endpoint=endpoint)
     plugin_dir = tmp_path / "plugin"
     plugin_dir.mkdir()
     mcp_config = generate_mcp_config(plugin, plugin_dir, plugin_name)
@@ -1243,7 +1249,7 @@ def test_build_gemini_mcp_config_sse(tmp_path: Path) -> None:
     # Given
     plugin_name = "my-plugin"
     endpoint = "http://localhost:8080/mcp"
-    plugin = _make_sse_plugin(name=plugin_name, endpoint=endpoint)
+    plugin = _make_remote_plugin(name=plugin_name, endpoint=endpoint)
     plugin_dir = tmp_path / "plugin"
     plugin_dir.mkdir()
     mcp_config = generate_mcp_config(plugin, plugin_dir, plugin_name)
@@ -1293,3 +1299,226 @@ def test_build_gemini_mcp_config_custom_scope(tmp_path: Path) -> None:
     assert result.argv[scope_index + 1] == custom_scope
 
 
+
+
+# ---------------------------------------------------------------------------
+# http transport, endpoint substitution and per-call timeout
+# ---------------------------------------------------------------------------
+
+
+def test_generate_mcp_config_http_transport_returns_remote_config(tmp_path: Path) -> None:
+    # Given
+    endpoint_url = "http://localhost:8888/mcp/"
+    plugin_name = "HttpPlugin"
+    plugin = _make_remote_plugin(name=plugin_name, endpoint=endpoint_url, transport="http")
+    plugin_dir = tmp_path / "http-plugin"
+    plugin_dir.mkdir()
+
+    # When
+    result = generate_mcp_config(plugin, plugin_dir, plugin_name)
+
+    # Then
+    assert isinstance(result, RemoteMcpConfig)
+    assert result.transport == "http"
+    assert result.to_mcp_dict() == {plugin_name: {"type": "http", "url": endpoint_url}}
+
+
+def test_generate_mcp_config_substitutes_env_var_in_endpoint(tmp_path: Path) -> None:
+    """$VAR in an endpoint is resolved, as it already is in args.
+
+    A remote transport puts the whole address in `endpoint`, so leaving it
+    literal hands the client a URL containing "$SVC_URL" and nothing connects.
+    """
+    # Given
+    url_var, bank_var = "SVC_URL", "SVC_BANK"
+    base_url, bank_name = "http://localhost:8888", "my-bank"
+    plugin_name = "HttpPlugin"
+    plugin = _make_remote_plugin(
+        name=plugin_name,
+        endpoint=f"${url_var}/mcp/${bank_var}/",
+        transport="http",
+        mcp_env=[url_var, bank_var],
+        env_vars=[
+            EnvVarConfig(name=url_var, default=base_url),
+            EnvVarConfig(name=bank_var, default=bank_name),
+        ],
+    )
+    plugin_dir = tmp_path / "http-plugin"
+    plugin_dir.mkdir()
+
+    # When
+    result = generate_mcp_config(plugin, plugin_dir, plugin_name)
+
+    # Then
+    assert isinstance(result, RemoteMcpConfig)
+    assert result.url == f"{base_url}/mcp/{bank_name}/"
+
+
+def test_generate_mcp_config_carries_timeout_into_json(tmp_path: Path) -> None:
+    # Given
+    timeout_ms = 600000
+    endpoint_url = "http://localhost:8888/mcp/"
+    plugin_name = "SlowPlugin"
+    plugin = _make_remote_plugin(
+        name=plugin_name, endpoint=endpoint_url, transport="http", timeout=timeout_ms
+    )
+    plugin_dir = tmp_path / "slow-plugin"
+    plugin_dir.mkdir()
+
+    # When
+    result = generate_mcp_config(plugin, plugin_dir, plugin_name)
+
+    # Then
+    assert result.timeout == timeout_ms
+    assert result.to_mcp_dict()[plugin_name]["timeout"] == timeout_ms
+
+
+def test_generate_mcp_config_omits_timeout_when_unset(tmp_path: Path) -> None:
+    # Given
+    endpoint_url = "http://localhost:8888/mcp/"
+    plugin_name = "PlainPlugin"
+    plugin = _make_remote_plugin(name=plugin_name, endpoint=endpoint_url, transport="http")
+    plugin_dir = tmp_path / "plain-plugin"
+    plugin_dir.mkdir()
+
+    # When
+    result = generate_mcp_config(plugin, plugin_dir, plugin_name)
+
+    # Then
+    assert "timeout" not in result.to_mcp_dict()[plugin_name]
+
+
+def test_build_claude_mcp_config_http_passes_transport(tmp_path: Path) -> None:
+    # Given
+    endpoint_url = "http://localhost:8888/mcp/"
+    plugin_name = "HttpPlugin"
+    plugin = _make_remote_plugin(name=plugin_name, endpoint=endpoint_url, transport="http")
+    plugin_dir = tmp_path / "http-plugin"
+    plugin_dir.mkdir()
+    mcp_config = generate_mcp_config(plugin, plugin_dir, plugin_name)
+
+    # When
+    result = build_claude_mcp_config(mcp_config)
+
+    # Then — 'sse' would register the wrong transport for an http server
+    assert "--transport" in result.argv
+    assert result.argv[result.argv.index("--transport") + 1] == "http"
+
+
+def test_build_claude_mcp_config_uses_add_json_when_timeout_set(tmp_path: Path) -> None:
+    """`claude mcp add` has no timeout flag, so a timeout forces the JSON form."""
+    # Given
+    timeout_ms = 600000
+    endpoint_url = "http://localhost:8888/mcp/"
+    plugin_name = "SlowPlugin"
+    plugin = _make_remote_plugin(
+        name=plugin_name, endpoint=endpoint_url, transport="http", timeout=timeout_ms
+    )
+    plugin_dir = tmp_path / "slow-plugin"
+    plugin_dir.mkdir()
+    mcp_config = generate_mcp_config(plugin, plugin_dir, plugin_name)
+
+    # When
+    result = build_claude_mcp_config(mcp_config)
+
+    # Then
+    assert result.argv[:3] == ["claude", "mcp", "add-json"]
+    entry = json.loads(result.argv[-1])
+    assert entry == {"type": "http", "url": endpoint_url, "timeout": timeout_ms}
+
+
+def test_build_claude_mcp_config_add_json_omits_unresolved_env(tmp_path: Path) -> None:
+    """A NOT_SET sentinel must never be registered as a variable's value."""
+    # Given
+    timeout_ms = 600000
+    required_var = "MISSING_TOKEN"
+    endpoint_url = "http://localhost:8888/mcp/"
+    plugin_name = "SlowPlugin"
+    plugin = _make_remote_plugin(
+        name=plugin_name,
+        endpoint=endpoint_url,
+        transport="http",
+        timeout=timeout_ms,
+        mcp_env=[required_var],
+    )
+    plugin_dir = tmp_path / "slow-plugin"
+    plugin_dir.mkdir()
+    mcp_config = generate_mcp_config(plugin, plugin_dir, plugin_name)
+
+    # When
+    result = build_claude_mcp_config(mcp_config)
+
+    # Then
+    entry = json.loads(result.argv[-1])
+    assert NOT_SET not in json.dumps(entry)
+    assert "env" not in entry
+
+
+def test_build_codex_mcp_config_remote_omits_env_flags(tmp_path: Path) -> None:
+    """codex rejects --env alongside --url with "command is required".
+
+    Regression: a URL-based plugin declaring env vars produced an invocation
+    codex exited 1 on, so the plugin never registered.
+    """
+    # Given
+    declared_var = "SVC_TOKEN"
+    endpoint_url = "http://localhost:8888/mcp/"
+    plugin_name = "RemotePlugin"
+    plugin = _make_remote_plugin(
+        name=plugin_name,
+        endpoint=endpoint_url,
+        transport="http",
+        mcp_env=[declared_var],
+        env_vars=[EnvVarConfig(name=declared_var, default="secret")],
+    )
+    plugin_dir = tmp_path / "remote-plugin"
+    plugin_dir.mkdir()
+    mcp_config = generate_mcp_config(plugin, plugin_dir, plugin_name)
+
+    # When
+    result = build_codex_mcp_config(mcp_config)
+
+    # Then
+    assert "--env" not in result.argv
+    assert result.argv == ["codex", "mcp", "add", plugin_name, "--url", endpoint_url]
+
+
+def test_build_codex_mcp_config_stdio_still_passes_env_flags(tmp_path: Path) -> None:
+    # Given
+    declared_var = "SVC_TOKEN"
+    var_value = "secret"
+    plugin = _make_stdio_plugin(
+        command="npx", args=["server"], mcp_env=[declared_var],
+        env_vars=[EnvVarConfig(name=declared_var, default=var_value)],
+    )
+    plugin_dir = tmp_path / "stdio-plugin"
+    plugin_dir.mkdir()
+    mcp_config = generate_mcp_config(plugin, plugin_dir, "stdio-plugin")
+
+    # When
+    result = build_codex_mcp_config(mcp_config)
+
+    # Then
+    assert "--env" in result.argv
+    assert f"{declared_var}={var_value}" in result.argv
+
+
+def test_build_gemini_mcp_config_remote_omits_env_flags(tmp_path: Path) -> None:
+    # Given
+    declared_var = "SVC_TOKEN"
+    endpoint_url = "http://localhost:8888/mcp/"
+    plugin_name = "RemotePlugin"
+    plugin = _make_remote_plugin(
+        name=plugin_name, endpoint=endpoint_url, transport="http",
+        mcp_env=[declared_var],
+        env_vars=[EnvVarConfig(name=declared_var, default="secret")],
+    )
+    plugin_dir = tmp_path / "remote-plugin"
+    plugin_dir.mkdir()
+    mcp_config = generate_mcp_config(plugin, plugin_dir, plugin_name)
+
+    # When
+    result = build_gemini_mcp_config(mcp_config)
+
+    # Then
+    assert "-e" not in result.argv

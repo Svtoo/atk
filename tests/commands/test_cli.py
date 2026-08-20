@@ -1217,7 +1217,9 @@ class TestMcpCli:
         # Then
         assert result.exit_code == exit_codes.SUCCESS
         output = json.loads(result.output)
-        expected = {plugin_name: {"url": endpoint_url}}
+        # A url with no type is a config error clients skip, so the transport
+        # is named explicitly.
+        expected = {plugin_name: {"type": "sse", "url": endpoint_url}}
         assert output == expected
         assert "command" not in output[plugin_name]
         assert "args" not in output[plugin_name]
