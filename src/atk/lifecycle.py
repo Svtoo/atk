@@ -11,6 +11,7 @@ from enum import Enum
 from pathlib import Path
 from typing import Literal
 
+from atk import __version__
 from atk.bootstrap import fetch_missing_plugin
 from atk.env import check_required_env_vars, get_env_status, load_env_file
 from atk.manifest_schema import load_manifest
@@ -701,14 +702,5 @@ def schema_error_hint(message: str) -> str:
     outgrown = "extra inputs are not permitted" in message or "input should be" in message
     if not outgrown:
         return message
-    return f"{message}. This plugin may require a newer atk (installed {atk_version()})"
+    return f"{message}. This plugin may require a newer atk (installed {__version__})"
 
-
-def atk_version() -> str:
-    """Installed atk-cli version, or 'unknown' when the metadata is missing."""
-    try:
-        from importlib.metadata import version
-
-        return version("atk-cli")
-    except Exception:
-        return "unknown"
