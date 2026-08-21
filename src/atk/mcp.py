@@ -63,11 +63,7 @@ class StdioMcpConfig(McpConfig):
 
 @dataclass
 class RemoteMcpConfig(McpConfig):
-    """Resolved MCP config for a URL-based server: streamable HTTP or SSE.
-
-    Clients need the transport named explicitly — an entry carrying a url but
-    no type is a configuration error they skip rather than guess at.
-    """
+    """Resolved MCP config for a URL-based server: streamable HTTP or SSE."""
 
     url: str
     transport: str = "sse"
@@ -191,7 +187,6 @@ def generate_mcp_config(
             timeout=mcp.timeout,
         )
 
-    # http and sse: both are a URL the client connects to directly.
     if not mcp.endpoint:
         raise ValueError(
             f"Plugin '{plugin.name}' has transport '{mcp.transport}' but no endpoint defined."
@@ -199,8 +194,6 @@ def generate_mcp_config(
     return RemoteMcpConfig(
         identifier=plugin_identifier,
         plugin_name=plugin.name,
-        # Substituted like args are: an endpoint naming a configured host or
-        # bank is useless to a client if it arrives as a literal $VAR.
         url=substitute_env_vars(substitute_plugin_dir(mcp.endpoint, plugin_dir), env),
         transport=mcp.transport,
         env=env,

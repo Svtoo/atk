@@ -671,8 +671,6 @@ def get_all_plugins_status(
     results: list[PluginStatusResult] = []
 
     for plugin_entry in manifest.plugins:
-        # One unreadable plugin must not hide the state of every other one, so
-        # its failure becomes a row rather than ending the command.
         try:
             result = get_plugin_status(
                 atk_home, plugin_entry.directory, sse_reachable_fn=sse_reachable_fn
@@ -685,7 +683,7 @@ def get_all_plugins_status(
 
 
 def invalid_plugin_result(directory: str, error: Exception) -> PluginStatusResult:
-    """Describe a plugin that could not be read, for display alongside the rest."""
+    """Build the status row for a plugin that could not be read."""
     return PluginStatusResult(
         name=directory,
         directory=directory,
@@ -699,16 +697,11 @@ def invalid_plugin_result(directory: str, error: Exception) -> PluginStatusResul
 
 
 def schema_error_hint(message: str) -> str:
-    """Append a version hint when the failure reads as a plugin newer than this ATK.
-
-    An unknown field or an unaccepted enum value is what a plugin written for a
-    later schema looks like from here, and the raw validator text gives the user
-    no reason to suspect their ATK is simply behind.
-    """
+    """Append the installed version to a failure that reads as a newer schema."""
     outgrown = "extra inputs are not permitted" in message or "input should be" in message
     if not outgrown:
         return message
-    return f"{message} — this plugin may require a newer atk (installed {atk_version()})"
+    return f"{message}. This plugin may require a newer atk (installed {atk_version()})"
 
 
 def atk_version() -> str:

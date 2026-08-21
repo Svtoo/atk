@@ -1114,9 +1114,8 @@ class TestSetupCli:
     def test_cli_setup_all_survives_a_plugin_directory_with_no_manifest_file(
         self, create_plugin: PluginFactory, cli_runner
     ) -> None:
-        """Regression: 'unreadable' was defined differently at each sweep site, so
-        a missing plugin.yaml was survivable in status but fatal in setup."""
-        # Given — a plugin whose plugin.yaml is gone, and a healthy one
+        """setup --all configures every readable plugin when one has no plugin.yaml."""
+        # Given a plugin whose plugin.yaml is gone, and a healthy one
         var_name = "MY_VAR"
         var_value = "my-value"
         gutted_dir = create_plugin("Gutted", "gutted")
@@ -1135,9 +1134,8 @@ class TestSetupCli:
     def test_cli_setup_all_skips_an_unreadable_plugin_and_configures_the_rest(
         self, create_plugin: PluginFactory, cli_runner
     ) -> None:
-        """Regression: a plugin.yaml this ATK cannot validate ended the whole run,
-        so every plugin after it went unconfigured."""
-        # Given — a broken plugin, and a healthy one that still needs a value
+        """setup --all configures every readable plugin when one fails validation."""
+        # Given a plugin carrying a field this schema rejects
         var_name = "MY_VAR"
         var_value = "my-value"
         broken_dir = "from-the-future"
@@ -1152,7 +1150,7 @@ class TestSetupCli:
         # When
         result = cli_runner.invoke(app, ["setup", "--all"], input=f"{var_value}\n")
 
-        # Then — the run completes and the healthy plugin is still configured
+        # Then
         assert result.exit_code == exit_codes.SUCCESS
         assert broken_dir in result.output
         assert (healthy_dir / ".env").exists()
@@ -1264,8 +1262,6 @@ class TestMcpCli:
         # Then
         assert result.exit_code == exit_codes.SUCCESS
         output = json.loads(result.output)
-        # A url with no type is a config error clients skip, so the transport
-        # is named explicitly.
         expected = {plugin_name: {"type": "sse", "url": endpoint_url}}
         assert output == expected
         assert "command" not in output[plugin_name]

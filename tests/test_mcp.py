@@ -1324,11 +1324,7 @@ def test_generate_mcp_config_http_transport_returns_remote_config(tmp_path: Path
 
 
 def test_generate_mcp_config_substitutes_env_var_in_endpoint(tmp_path: Path) -> None:
-    """$VAR in an endpoint is resolved, as it already is in args.
-
-    A remote transport puts the whole address in `endpoint`, so leaving it
-    literal hands the client a URL containing "$SVC_URL" and nothing connects.
-    """
+    """$VAR in an endpoint is resolved, as it already is in args."""
     # Given
     url_var, bank_var = "SVC_URL", "SVC_BANK"
     base_url, bank_name = "http://localhost:8888", "my-bank"
@@ -1400,7 +1396,7 @@ def test_build_claude_mcp_config_http_passes_transport(tmp_path: Path) -> None:
     # When
     result = build_claude_mcp_config(mcp_config)
 
-    # Then — 'sse' would register the wrong transport for an http server
+    # Then
     assert "--transport" in result.argv
     assert result.argv[result.argv.index("--transport") + 1] == "http"
 
@@ -1455,11 +1451,7 @@ def test_build_claude_mcp_config_add_json_omits_unresolved_env(tmp_path: Path) -
 
 
 def test_build_codex_mcp_config_remote_omits_env_flags(tmp_path: Path) -> None:
-    """codex rejects --env alongside --url with "command is required".
-
-    Regression: a URL-based plugin declaring env vars produced an invocation
-    codex exited 1 on, so the plugin never registered.
-    """
+    """codex rejects --env alongside --url, so a URL server is given none."""
     # Given
     declared_var = "SVC_TOKEN"
     endpoint_url = "http://localhost:8888/mcp/"

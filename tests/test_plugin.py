@@ -91,8 +91,7 @@ class TestLoadPlugin:
         )
         save_manifest(manifest, tmp_path)
 
-        # When/Then — a directory with no plugin.yaml is one of the ways a plugin
-        # is unreadable, and the sweep commands catch exactly that type.
+        # When/Then
         with pytest.raises(PluginUnreadableError, match="plugin.yaml"):
             load_plugin(tmp_path, self.plugin_directory)
 

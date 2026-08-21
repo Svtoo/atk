@@ -35,12 +35,7 @@ def _deep_merge(base: dict[str, Any], overrides: dict[str, Any]) -> dict[str, An
 
 
 class PluginUnreadableError(ValueError):
-    """Raised when an installed plugin cannot be turned into a schema.
-
-    Covers every way that fails — no manifest file, unparseable YAML, a schema
-    this ATK does not recognise — so a command sweeping every plugin has one
-    thing to catch instead of a tuple that drifts per call site.
-    """
+    """Raised when an installed plugin cannot be turned into a schema."""
 
 
 def load_plugin_schema(source: Path) -> PluginSchema:

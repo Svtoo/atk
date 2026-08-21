@@ -352,8 +352,6 @@ def setup(
 
     manifest = load_manifest(atk_home)
     for plugin_entry in manifest.plugins:
-        # One unreadable plugin.yaml must not end the run: the plugins after it
-        # would go unconfigured while the ones before it look done.
         try:
             plugin_schema, plugin_dir = load_plugin(atk_home, plugin_entry.directory)
         except PluginUnreadableError as e:

@@ -604,13 +604,8 @@ class TestGetAllPluginsStatus:
     def test_one_unreadable_plugin_does_not_hide_the_others(
         self, configure_atk_home, create_plugin: PluginFactory
     ) -> None:
-        """A plugin written for a newer schema must not end the whole command.
-
-        Regression: a plugin.yaml using a field this ATK does not know raised
-        out of the loop, so `atk status` reported nothing at all about the
-        plugins that were perfectly fine.
-        """
-        # Given — a healthy plugin, then one carrying an unknown mcp field
+        """Every plugin is reported when one carries a field this schema rejects."""
+        # Given a healthy plugin, then one carrying an unknown mcp field
         atk_home = configure_atk_home()
         healthy_name, broken_dir = "Healthy", "from-the-future"
         create_plugin(healthy_name, "healthy", {"status": "exit 0"})
@@ -625,7 +620,7 @@ class TestGetAllPluginsStatus:
         # When
         results = get_all_plugins_status(atk_home)
 
-        # Then — both are reported, and the broken one says why
+        # Then
         assert len(results) == 2
         healthy, broken = results[0], results[1]
         assert healthy.name == healthy_name

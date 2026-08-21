@@ -9,11 +9,7 @@ from atk.mcp import NOT_SET, McpConfig, RemoteMcpConfig, StdioMcpConfig
 
 
 def resolved_env(config: McpConfig) -> dict[str, str]:
-    """Env minus the vars that never resolved.
-
-    A NOT_SET sentinel is a display artefact — handing it to an agent would
-    register the literal "<NOT_SET>" as the variable's value.
-    """
+    """Env minus the vars that never resolved."""
     return {k: v for k, v in config.env.items() if v != NOT_SET}
 
 
@@ -43,8 +39,7 @@ def build_claude_mcp_config(config: McpConfig, scope: str = "user") -> AgentMcpC
     Returns:
         AgentMcpConfig with the full argv for subprocess.run().
     """
-    # `claude mcp add` has no timeout flag; the field exists only inside a JSON
-    # entry, so a server that sets one has to be registered the JSON way.
+    # `claude mcp add` has no timeout flag; the field exists only inside a JSON entry.
     if config.timeout:
         entry = config.to_mcp_dict()[config.identifier]
         entry["env"] = resolved_env(config)
@@ -101,8 +96,7 @@ def build_gemini_mcp_config(config: McpConfig, scope: str = "user") -> AgentMcpC
 
     argv += ["--scope", scope]
 
-    # Only a stdio server has a process to receive them; gemini drops -e on a
-    # URL server anyway.
+    # gemini drops -e on a URL server.
     if isinstance(config, StdioMcpConfig):
         for key, val in resolved_env(config).items():
             argv += ["-e", f"{key}={val}"]
@@ -220,7 +214,7 @@ def build_opencode_mcp_config(
     entry_value: dict[str, Any]
 
     if isinstance(config, RemoteMcpConfig):
-        # OpenCode names the URL case "remote" whichever wire protocol it uses.
+        # OpenCode names every URL transport "remote".
         entry_value = {"type": "remote", "url": config.url, "enabled": True}
     else:
         assert isinstance(config, StdioMcpConfig)
