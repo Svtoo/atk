@@ -40,7 +40,7 @@ from atk.lifecycle import (
 )
 from atk.manifest_schema import load_manifest
 from atk.mcp import format_mcp_plaintext, generate_mcp_config
-from atk.plugin import PluginNotFoundError, load_plugin
+from atk.plugin import PluginNotFoundError, PluginUnreadableError, load_plugin
 from atk.registry import (
     PluginNotFoundError as RegistryPluginNotFoundError,
 )
@@ -356,7 +356,7 @@ def setup(
         # would go unconfigured while the ones before it look done.
         try:
             plugin_schema, plugin_dir = load_plugin(atk_home, plugin_entry.directory)
-        except ValueError as e:
+        except PluginUnreadableError as e:
             cli_logger.error(f"Skipping '{plugin_entry.directory}': {e}")
             continue
         if not plugin_schema.env_vars:

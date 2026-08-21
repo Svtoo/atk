@@ -18,7 +18,7 @@ from atk.git_source import normalize_git_url
 from atk.home import validate_atk_home
 from atk.lifecycle import LifecycleCommandNotDefinedError, run_lifecycle_command
 from atk.manifest_schema import SourceType, load_manifest, save_manifest
-from atk.plugin import CUSTOM_DIR, load_plugin_schema
+from atk.plugin import CUSTOM_DIR, PluginUnreadableError, load_plugin_schema
 from atk.plugin_schema import PluginSchema
 from atk.setup import run_setup
 
@@ -213,7 +213,7 @@ def upgrade_plugin(
     # and ends the whole run.
     try:
         old_schema = load_plugin_schema(plugin_dir)
-    except ValueError as e:
+    except PluginUnreadableError as e:
         raise UpgradeError(str(e)) from e
     current_ref = _get_current_ref(plugin_dir, plugin_entry.source.ref)
 

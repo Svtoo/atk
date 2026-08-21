@@ -15,7 +15,7 @@ from atk.bootstrap import fetch_missing_plugin
 from atk.env import check_required_env_vars, get_env_status, load_env_file
 from atk.manifest_schema import load_manifest
 from atk.mcp import check_sse_reachable
-from atk.plugin import CUSTOM_DIR, PluginNotFoundError, load_plugin
+from atk.plugin import CUSTOM_DIR, PluginNotFoundError, PluginUnreadableError, load_plugin
 from atk.plugin_schema import PluginMaturity, PluginSchema
 
 LifecycleCommand = Literal["install", "uninstall", "start", "stop", "logs", "status"]
@@ -677,7 +677,7 @@ def get_all_plugins_status(
             result = get_plugin_status(
                 atk_home, plugin_entry.directory, sse_reachable_fn=sse_reachable_fn
             )
-        except (ValueError, FileNotFoundError) as e:
+        except PluginUnreadableError as e:
             result = invalid_plugin_result(plugin_entry.directory, e)
         results.append(result)
 

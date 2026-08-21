@@ -1111,6 +1111,27 @@ class TestSetupCli:
         assert (plugin_with_vars_dir / ".env").exists()
         assert not (plugin_without_vars_dir / ".env").exists()
 
+    def test_cli_setup_all_survives_a_plugin_directory_with_no_manifest_file(
+        self, create_plugin: PluginFactory, cli_runner
+    ) -> None:
+        """Regression: 'unreadable' was defined differently at each sweep site, so
+        a missing plugin.yaml was survivable in status but fatal in setup."""
+        # Given — a plugin whose plugin.yaml is gone, and a healthy one
+        var_name = "MY_VAR"
+        var_value = "my-value"
+        gutted_dir = create_plugin("Gutted", "gutted")
+        (gutted_dir / "plugin.yaml").unlink()
+        healthy_dir = create_plugin(
+            "Healthy", "healthy-two", env_vars=[EnvVarConfig(name=var_name)]
+        )
+
+        # When
+        result = cli_runner.invoke(app, ["setup", "--all"], input=f"{var_value}\n")
+
+        # Then
+        assert result.exit_code == exit_codes.SUCCESS
+        assert (healthy_dir / ".env").read_text() == f"{var_name}={var_value}\n"
+
     def test_cli_setup_all_skips_an_unreadable_plugin_and_configures_the_rest(
         self, create_plugin: PluginFactory, cli_runner
     ) -> None:

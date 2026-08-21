@@ -7,7 +7,7 @@ import yaml
 
 from atk.init import init_atk_home
 from atk.manifest_schema import PluginEntry, load_manifest, save_manifest
-from atk.plugin import PluginNotFoundError, load_plugin, load_plugin_schema
+from atk.plugin import PluginNotFoundError, PluginUnreadableError, load_plugin, load_plugin_schema
 from atk.plugin_schema import PLUGIN_SCHEMA_VERSION, LifecycleConfig, PluginSchema
 from tests.conftest import write_plugin_yaml
 
@@ -91,8 +91,9 @@ class TestLoadPlugin:
         )
         save_manifest(manifest, tmp_path)
 
-        # When/Then
-        with pytest.raises(FileNotFoundError, match="plugin.yaml"):
+        # When/Then — a directory with no plugin.yaml is one of the ways a plugin
+        # is unreadable, and the sweep commands catch exactly that type.
+        with pytest.raises(PluginUnreadableError, match="plugin.yaml"):
             load_plugin(tmp_path, self.plugin_directory)
 
     def test_loads_plugin_with_lifecycle_commands(self, tmp_path: Path) -> None:

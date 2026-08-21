@@ -34,6 +34,15 @@ def _deep_merge(base: dict[str, Any], overrides: dict[str, Any]) -> dict[str, An
     return result
 
 
+class PluginUnreadableError(ValueError):
+    """Raised when an installed plugin cannot be turned into a schema.
+
+    Covers every way that fails — no manifest file, unparseable YAML, a schema
+    this ATK does not recognise — so a command sweeping every plugin has one
+    thing to catch instead of a tuple that drifts per call site.
+    """
+
+
 def load_plugin_schema(source: Path) -> PluginSchema:
     """Load and validate plugin.yaml from source.
 
@@ -63,7 +72,7 @@ def load_plugin_schema(source: Path) -> PluginSchema:
             plugin_yaml = source / "plugin.yml"
         if not plugin_yaml.exists():
             msg = f"Directory '{source}' does not contain plugin.yaml or plugin.yml"
-            raise FileNotFoundError(msg)
+            raise PluginUnreadableError(msg)
     else:
         plugin_yaml = source
 
@@ -97,7 +106,7 @@ def load_plugin_schema(source: Path) -> PluginSchema:
     except ValidationError as e:
         clean_errors = format_validation_errors(e)
         msg = f"Invalid plugin '{plugin_yaml}': {clean_errors}"
-        raise ValueError(msg) from e
+        raise PluginUnreadableError(msg) from e
 
 
 class PluginNotFoundError(Exception):
@@ -136,6 +145,9 @@ def load_plugin(atk_home: Path, identifier: str) -> tuple[PluginSchema, Path]:
         raise PluginNotFoundError(identifier)
 
     plugin_dir = atk_home / "plugins" / plugin_entry.directory
-    schema = load_plugin_schema(plugin_dir)
+    try:
+        schema = load_plugin_schema(plugin_dir)
+    except FileNotFoundError as e:
+        raise PluginUnreadableError(str(e)) from e
     return schema, plugin_dir
 
