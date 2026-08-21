@@ -634,4 +634,3 @@ class TestGetAllPluginsStatus:
         assert broken.directory == broken_dir
         assert broken.error is not None
         assert "may require a newer atk" in broken.error
-

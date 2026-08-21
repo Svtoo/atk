@@ -352,7 +352,13 @@ def setup(
 
     manifest = load_manifest(atk_home)
     for plugin_entry in manifest.plugins:
-        plugin_schema, plugin_dir = load_plugin(atk_home, plugin_entry.directory)
+        # One unreadable plugin.yaml must not end the run: the plugins after it
+        # would go unconfigured while the ones before it look done.
+        try:
+            plugin_schema, plugin_dir = load_plugin(atk_home, plugin_entry.directory)
+        except ValueError as e:
+            cli_logger.error(f"Skipping '{plugin_entry.directory}': {e}")
+            continue
         if not plugin_schema.env_vars:
             continue
         cli_logger.info(f"\nConfiguring '{plugin_schema.name}':")

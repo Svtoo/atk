@@ -1111,6 +1111,32 @@ class TestSetupCli:
         assert (plugin_with_vars_dir / ".env").exists()
         assert not (plugin_without_vars_dir / ".env").exists()
 
+    def test_cli_setup_all_skips_an_unreadable_plugin_and_configures_the_rest(
+        self, create_plugin: PluginFactory, cli_runner
+    ) -> None:
+        """Regression: a plugin.yaml this ATK cannot validate ended the whole run,
+        so every plugin after it went unconfigured."""
+        # Given — a broken plugin, and a healthy one that still needs a value
+        var_name = "MY_VAR"
+        var_value = "my-value"
+        broken_dir = "from-the-future"
+        broken_plugin_dir = create_plugin("FromTheFuture", broken_dir)
+        broken_yaml = broken_plugin_dir / "plugin.yaml"
+        broken_yaml.write_text(broken_yaml.read_text() + "\nmcp:\n  transport: stdio\n"
+                               "  command: x\n  retries: 3\n")
+        healthy_dir = create_plugin(
+            "Healthy", "healthy", env_vars=[EnvVarConfig(name=var_name)]
+        )
+
+        # When
+        result = cli_runner.invoke(app, ["setup", "--all"], input=f"{var_value}\n")
+
+        # Then — the run completes and the healthy plugin is still configured
+        assert result.exit_code == exit_codes.SUCCESS
+        assert broken_dir in result.output
+        assert (healthy_dir / ".env").exists()
+        assert var_value in (healthy_dir / ".env").read_text()
+
 
 class TestMcpCli:
     """Tests for atk mcp CLI command."""

@@ -208,7 +208,13 @@ def upgrade_plugin(
         raise UpgradeError(msg)
 
     plugin_dir = atk_home / "plugins" / plugin_entry.directory
-    old_schema = load_plugin_schema(plugin_dir)
+    # An unreadable plugin.yaml is this plugin's problem, not the caller's:
+    # raised as ValueError it escapes the per-plugin handling in upgrade --all
+    # and ends the whole run.
+    try:
+        old_schema = load_plugin_schema(plugin_dir)
+    except ValueError as e:
+        raise UpgradeError(str(e)) from e
     current_ref = _get_current_ref(plugin_dir, plugin_entry.source.ref)
 
     # Quick check: if remote HEAD hasn't changed, plugin is definitely up to date
