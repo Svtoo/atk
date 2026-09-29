@@ -21,8 +21,8 @@ class TestPluginEntry:
 
     def setup_method(self) -> None:
         """Set up test fixtures."""
-        self.valid_name = "OpenMemory"
-        self.valid_directory = "openmemory"
+        self.valid_name = "Hindsight"
+        self.valid_directory = "hindsight"
         self.valid_source = SourceInfo(type=SourceType.LOCAL)
 
     def test_plugin_entry_with_all_required_fields(self) -> None:
@@ -78,8 +78,8 @@ class TestPluginEntry:
         "directory",
         [
             pytest.param("ab", id="minimum-2-chars"),
-            pytest.param("openmemory", id="simple-name"),
-            pytest.param("open-memory", id="with-hyphen"),
+            pytest.param("hindsight", id="simple-name"),
+            pytest.param("hindsight-mcp", id="with-hyphen"),
             pytest.param("plugin-v2", id="with-number-suffix"),
             pytest.param("my-cool-plugin", id="multiple-hyphens"),
             pytest.param("a1", id="letter-then-number"),
@@ -101,14 +101,14 @@ class TestPluginEntry:
         [
             pytest.param("a", id="too-short"),
             pytest.param("A", id="uppercase-single"),
-            pytest.param("OpenMemory", id="mixed-case"),
-            pytest.param("open_memory", id="underscore-not-allowed"),
+            pytest.param("Hindsight", id="mixed-case"),
+            pytest.param("hindsight_mcp", id="underscore-not-allowed"),
             pytest.param("1plugin", id="starts-with-number"),
             pytest.param("plugin-", id="ends-with-hyphen"),
             pytest.param("-plugin", id="starts-with-hyphen"),
             pytest.param("my--plugin", id="consecutive-hyphens"),
-            pytest.param("open memory", id="contains-space"),
-            pytest.param("open/memory", id="contains-slash"),
+            pytest.param("hindsight mcp", id="contains-space"),
+            pytest.param("hindsight/mcp", id="contains-slash"),
         ],
     )
     def test_directory_validation_invalid_names(self, directory: str) -> None:
@@ -169,8 +169,8 @@ class TestManifestSchema:
     def setup_method(self) -> None:
         """Set up test fixtures."""
         self.schema_version = "2026-01-22"
-        self.plugin_name = "OpenMemory"
-        self.plugin_directory = "openmemory"
+        self.plugin_name = "Hindsight"
+        self.plugin_directory = "hindsight"
 
     def test_minimal_manifest(self) -> None:
         """Verify minimal manifest with only schema_version is valid."""
@@ -254,8 +254,8 @@ class TestLoadManifest:
     def test_loads_manifest_with_plugins(self, tmp_path: Path) -> None:
         """Verify load_manifest loads plugins correctly."""
         # Given
-        plugin_name = "OpenMemory"
-        plugin_directory = "openmemory"
+        plugin_name = "Hindsight"
+        plugin_directory = "hindsight"
         plugin_source_type = "local"
         manifest_path = tmp_path / "manifest.yaml"
         manifest_content = {

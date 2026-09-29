@@ -18,8 +18,8 @@ class TestLoadPlugin:
     def setup_method(self) -> None:
         """Set up test fixtures."""
         self.schema_version = PLUGIN_SCHEMA_VERSION
-        self.plugin_name = "OpenMemory"
-        self.plugin_directory = "openmemory"
+        self.plugin_name = "Hindsight"
+        self.plugin_directory = "hindsight"
         self.plugin_description = "A test plugin"
 
     def _create_plugin(self, atk_home: Path, name: str, directory: str) -> Path:

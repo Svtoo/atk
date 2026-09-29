@@ -11,7 +11,7 @@ class TestSanitizeDirectoryName:
     @pytest.mark.parametrize(
         ("display_name", "expected"),
         [
-            pytest.param("OpenMemory", "openmemory", id="camelcase"),
+            pytest.param("MyPlugin", "myplugin", id="camelcase"),
             pytest.param("My Plugin", "my-plugin", id="spaces-to-hyphens"),
             pytest.param("my_plugin", "my-plugin", id="underscores-to-hyphens"),
             pytest.param("My Cool Plugin", "my-cool-plugin", id="multiple-words"),
