@@ -1,9 +1,9 @@
 # demo-hero.tape
 # Shows the killer feature: wire one MCP to multiple agents in one command.
-# Records: atk plug openmemory --claude --auggie -y
+# Records: atk plug hindsight --claude --auggie -y
 #
 # Prerequisites before recording:
-#   - openmemory plugin installed (atk add openmemory)
+#   - hindsight plugin installed (atk add hindsight)
 #   - claude CLI on PATH (Claude Code installed)
 #   - auggie CLI on PATH (Augment Code installed)
 #
@@ -24,18 +24,18 @@ Sleep 500ms
 
 # Silently reset state so the add demo is clean (hidden from the viewer)
 Hide
-Type "atk unplug openmemory --claude --auggie -y"
+Type "atk unplug hindsight --claude --auggie -y"
 Enter
 Sleep 5s
 Type "clear"
 Enter
 Show
 
-Type "atk plug openmemory --claude --auggie -y"
+Type "atk plug hindsight --claude --auggie -y"
 Sleep 400ms
 Enter
 
-# claude mcp add + skill injection, then auggie mcp add-json + skill injection.
+# claude mcp add-json + skill injection, then auggie mcp add-json + skill injection.
 # Both CLI calls + skill steps take ~8s total.
 Sleep 12s
 

@@ -99,9 +99,9 @@ Your agent doesn't just have access to the tool. It knows **how** and **when** t
 **Manage the full lifecycle of everything**
 
 ```bash
-atk start openmemory        # start a service
+atk start hindsight         # start a service
 atk stop langfuse           # stop it
-atk logs openmemory         # tail logs
+atk logs hindsight          # tail logs
 atk upgrade --all           # pull latest for all plugins
 atk remove github           # stop + uninstall + delete
 ```
@@ -131,7 +131,7 @@ The registry currently ships **20 plugins**:
 | | |
 |---|---|
 | **Code intelligence** | `serena` (LSP-backed symbol navigation and refactors), `codanna` (call graphs and semantic search) |
-| **Memory** | `openmemory` (persistent agent memory with semantic search) |
+| **Memory** | `hindsight` (self-hosted agent memory with retain/recall/reflect over MCP) |
 | **Web** | `exa` (neural search), `fetch` (URL to Markdown), `playwright` (browser automation) |
 | **Dev platforms** | `github`, `gitlab`, `git-local` |
 | **Work tools** | `slack`, `notion`, `google-workspace`, `streamlinear` (token-efficient Linear), `metabase` |
@@ -157,16 +157,16 @@ A live, per-chat executive dashboard for Claude Code sessions:
 atk add claude-dashboard
 ```
 
-### Spotlight: openmemory
+### Spotlight: hindsight
 
 Persistent memory for your agents, self-hosted:
 
-- Agents store and recall memories across sessions via MCP, with semantic search
-- Local SQLite plus Ollama embeddings; all data stays on your machine, no cloud API
-- Ships a `SKILL.md` so plugged agents know when to store and when to recall
+- Agents write what they learn with `retain`, pull it back with `recall`, and ask `reflect` what is true now, all over MCP
+- Runs in Docker on your machine or connects to a remote instance; locally, `atk run hindsight backup` dumps the database to `HINDSIGHT_BACKUP_DIR` without downtime
+- Ships a `SKILL.md`, the per-turn memory protocol plugged agents follow
 
 ```bash
-atk add openmemory
+atk add hindsight
 ```
 
 ---
@@ -201,7 +201,7 @@ atk add openmemory
 ### 1. Official ATK Registry (vetted plugins)
 
 ```bash
-atk add openmemory
+atk add hindsight
 atk add langfuse
 ```
 

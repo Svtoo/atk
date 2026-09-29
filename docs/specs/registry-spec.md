@@ -12,7 +12,7 @@ The ATK Registry is a curated, git-backed repository of plugins. It enables `atk
 ```
 atk-registry/
 ├── plugins/
-│   ├── openmemory/
+│   ├── hindsight/
 │   │   ├── plugin.yaml
 │   │   ├── docker-compose.yml
 │   │   └── ...
@@ -36,9 +36,9 @@ atk-registry/
 # index.yaml
 schema_version: "2026-01-31"
 plugins:
-  - name: openmemory
-    path: plugins/openmemory
-    description: "Persistent memory layer for AI agents"
+  - name: hindsight
+    path: plugins/hindsight
+    description: "Self-hosted agent memory with retain/recall/reflect over MCP; runs locally in Docker or connects to a remote instance"
   - name: langfuse
     path: plugins/langfuse
     description: "Open-source LLM observability platform"
@@ -56,11 +56,11 @@ plugins:
 
 ### Resolution Flow
 
-1. User runs `atk add openmemory`
+1. User runs `atk add hindsight`
 2. ATK fetches `index.yaml` from registry (cached with TTL)
-3. ATK looks up `openmemory` in index
-4. ATK sparse-checkouts `plugins/openmemory/` from registry
-5. ATK copies files to `~/.atk/plugins/openmemory/`
+3. ATK looks up `hindsight` in index
+4. ATK sparse-checkouts `plugins/hindsight/` from registry
+5. ATK copies files to `~/.atk/plugins/hindsight/`
 6. ATK records source in manifest:
    ```yaml
    source:

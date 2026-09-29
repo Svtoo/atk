@@ -19,13 +19,13 @@ Registry and git URL sources for plugins, version pinning, and the upgrade comma
 
 ### Scenario 1: Installing from Registry
 
-**User story:** I want to install OpenMemory without knowing where it lives.
+**User story:** I want to install Hindsight without knowing where it lives.
 
 **Flow:**
-1. `atk add openmemory`
-2. ATK fetches registry index, finds openmemory
-3. ATK sparse-checkouts `plugins/openmemory/` from registry
-4. ATK copies files to `~/.atk/plugins/openmemory/`
+1. `atk add hindsight`
+2. ATK fetches registry index, finds hindsight
+3. ATK sparse-checkouts `plugins/hindsight/` from registry
+4. ATK copies files to `~/.atk/plugins/hindsight/`
 5. ATK updates manifest with source type and commit hash
 6. ATK prompts for required env vars
 7. ATK runs install lifecycle
@@ -57,10 +57,10 @@ Registry and git URL sources for plugins, version pinning, and the upgrade comma
 
 ### Scenario 3: Upgrading a Plugin
 
-**User story:** I want to update OpenMemory to the latest version.
+**User story:** I want to update Hindsight to the latest version.
 
 **Flow:**
-1. `atk upgrade openmemory`
+1. `atk upgrade hindsight`
 2. ATK reads source info from manifest
 3. ATK fetches latest from source (registry or git)
 4. ATK replaces plugin files (preserving `custom/` directory)

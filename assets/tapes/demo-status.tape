@@ -2,7 +2,7 @@
 # Shows atk status: the live table of running services with port health checks.
 # Records: atk status
 #
-# Best recorded with at least one service running (openmemory, langfuse, etc.)
+# Best recorded with at least one service running (hindsight, langfuse, etc.)
 # so the table has real rows to show.
 #
 # Produce the GIF:

@@ -125,7 +125,7 @@ Run the install lifecycle command for plugin(s). Used for:
 - [x] Status display format:
   ```
   NAME              STATUS    PORTS
-  OpenMemory        running   8787
+  Hindsight         running   8888, 9999
   Langfuse          stopped   -
   ```
 - [x] Run `status` lifecycle command to get state

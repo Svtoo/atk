@@ -14,7 +14,7 @@ class RegistryPluginEntry(BaseModel):
     """Entry for a plugin in the registry index."""
 
     name: str = Field(description="Plugin identifier (directory name)")
-    path: str = Field(description="Path within registry repo (e.g., plugins/openmemory)")
+    path: str = Field(description="Path within registry repo (e.g., plugins/hindsight)")
     description: str = Field(description="One-line description from plugin.yaml")
 
 

@@ -16,7 +16,7 @@ Managing AI development tools is fragmented:
 A CLI tool that manages AI development tools through a **git-backed, declarative manifest**. Install once, sync everywhere.
 
 ```
-atk add openmemory        # Copy plugin, update manifest, run install lifecycle, commit
+atk add hindsight         # Copy plugin, update manifest, run install lifecycle, commit
 git push                  # Backup/sync to remote
 ```
 
@@ -63,7 +63,7 @@ flowchart TB
 ├── .git/                         # Initialized on first run
 ├── manifest.yaml                 # Installed plugins + versions
 ├── plugins/
-│   ├── openmemory/
+│   ├── hindsight/
 │   │   ├── plugin.yaml           # Plugin definition
 │   │   ├── docker-compose.yml    # Service config (if applicable)
 │   │   └── .env                  # Secrets (gitignored)
@@ -78,7 +78,7 @@ Uses date-based versioning (AWS-style): `YYYY-MM-DD`
 
 ```yaml
 schema_version: "2026-01-22"
-name: OpenMemory
+name: Example Memory
 description: Persistent memory layer for AI agents
 
 # How to run the service
@@ -88,13 +88,13 @@ service:
 
 # Optional: clone from upstream
 vendor:
-  url: https://github.com/CaviraOSS/OpenMemory.git
+  url: https://github.com/org/example-memory.git
   ref: v1.2.3                   # tag, branch, or commit
 
 # Network ports
 ports:
   - name: API
-    port: 8787
+    port: 8080
     configurable: true          # Can be changed during install
     health_endpoint: /health
 
@@ -135,7 +135,7 @@ atk stop <plugin>          # Stop a plugin's service (--all for all plugins)
 atk restart <plugin>       # Restart a plugin's service (--all for all plugins)
 atk status [plugin]        # Show plugin status (all plugins if none specified)
 atk logs <plugin>          # View plugin logs
-atk run <plugin> <script>  # Run a plugin script (e.g., atk run openmemory backup)
+atk run <plugin> <script>  # Run a plugin script (e.g., atk run hindsight backup)
 atk plug <plugin>          # Plug a plugin into coding agents (MCP + skill, adapts to what plugin offers)
 atk unplug <plugin>        # Unplug a plugin from coding agents
 atk mcp <plugin>           # Show MCP config for manual copy-paste
@@ -147,7 +147,7 @@ All commands return structured output suitable for AI agent consumption.
 
 | Source | Example | Use Case |
 |--------|---------|----------|
-| **Registry** | `atk add openmemory` | Curated, tested plugins |
+| **Registry** | `atk add hindsight` | Curated, tested plugins |
 | **Git URL** | `atk add github.com/org/repo` | Any repo with `atk.yaml` |
 | **Local** | `atk add ./my-plugin.yaml` | Custom/private plugins |
 

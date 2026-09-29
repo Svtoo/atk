@@ -30,22 +30,22 @@ At least one agent flag is required. Multiple agent flags may be passed simultan
 
 ```
 # Plug into Claude Code only
-atk plug openmemory --claude
+atk plug hindsight --claude
 
 # Plug into Claude and Gemini together
-atk plug openmemory --claude --gemini
+atk plug hindsight --claude --gemini
 
 # Plug into all five agents at once
-atk plug openmemory --claude --codex --gemini --auggie --opencode
+atk plug hindsight --claude --codex --gemini --auggie --opencode
 
 # Plug a skill-only plugin (no MCP server)
 atk plug sasha-persona --claude --codex --auggie
 
 # Unplug from a specific agent
-atk unplug openmemory --gemini
+atk unplug hindsight --gemini
 
 # Unplug from all agents
-atk unplug openmemory --claude --codex --gemini --auggie --opencode
+atk unplug hindsight --claude --codex --gemini --auggie --opencode
 ```
 
 ### `atk mcp` (Diagnostic/Export)

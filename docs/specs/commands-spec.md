@@ -126,7 +126,7 @@ atk add ./my-plugin.yaml        # Single plugin.yaml file
 
 | Source | Example | Behavior |
 |--------|---------|----------|
-| Directory | `atk add ./openmemory/` | Copies entire directory to plugins/ |
+| Directory | `atk add ./hindsight/` | Copies entire directory to plugins/ |
 | Single file | `atk add ./mcp-server.yaml` | Creates plugin dir, copies only the yaml |
 
 **Behavior:**
@@ -159,8 +159,8 @@ Remove a plugin from ATK Home.
 
 **Usage:**
 ```bash
-atk remove openmemory
-atk remove openmemory --force    # Skip confirmation
+atk remove hindsight
+atk remove hindsight --force     # Skip confirmation
 ```
 
 **Parameters:**
@@ -505,10 +505,10 @@ At least one agent flag is required.
 
 **Usage:**
 ```bash
-atk plug openmemory --claude                           # Claude only
-atk plug openmemory --claude --codex --auggie          # Multiple agents
+atk plug hindsight --claude                            # Claude only
+atk plug hindsight --claude --codex --auggie           # Multiple agents
 atk plug sasha-persona --claude --codex --auggie       # Skill-only plugin
-atk plug openmemory --claude -y                        # Skip confirmations
+atk plug hindsight --claude -y                         # Skip confirmations
 ```
 
 **Behavior:**
@@ -543,8 +543,8 @@ Unplug a plugin from one or more coding agents. Reverse of `atk plug`.
 
 **Usage:**
 ```bash
-atk unplug openmemory --claude                # Remove from Claude only
-atk unplug openmemory --claude --codex        # Remove from multiple agents
+atk unplug hindsight --claude                 # Remove from Claude only
+atk unplug hindsight --claude --codex         # Remove from multiple agents
 ```
 
 **Behavior:**
@@ -572,8 +572,8 @@ Display MCP configuration for a plugin. Read-only diagnostic/export tool.
 
 **Usage:**
 ```bash
-atk mcp openmemory          # Human-readable MCP config
-atk mcp openmemory --json   # JSON for manual copy-paste
+atk mcp hindsight           # Human-readable MCP config
+atk mcp hindsight --json    # JSON for manual copy-paste
 ```
 
 **Behavior:**
@@ -634,7 +634,7 @@ Update plugin(s) to the latest version from their source.
 
 **Usage:**
 ```bash
-atk upgrade openmemory    # Update one plugin to latest
+atk upgrade hindsight     # Update one plugin to latest
 atk upgrade --all         # Update all plugins to latest
 ```
 
