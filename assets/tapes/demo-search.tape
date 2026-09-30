@@ -1,5 +1,5 @@
 # demo-search.tape
-# Shows the ATK registry: 11 vetted plugins with installed-status markers.
+# Shows the ATK registry: every vetted plugin with installed-status markers.
 # Records: atk search
 #
 # Note: atk search does a live git sparse-clone from GitHub — allow 15s.
@@ -13,7 +13,7 @@ Output assets/demo-search.gif
 Set Shell "zsh"
 Set FontSize 15
 Set Width 1200
-Set Height 700
+Set Height 1080
 Set Theme "Catppuccin Mocha"
 Set Padding 24
 Set TypingSpeed 80ms
