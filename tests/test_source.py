@@ -128,10 +128,10 @@ class TestResolveSourceRegistry:
     """Registry name detection: bare names without path separators or URL patterns."""
 
     def test_simple_name(self) -> None:
-        result = resolve_source("openmemory")
+        result = resolve_source("hindsight")
 
         assert result.source_type == SourceType.REGISTRY
-        assert result.name == "openmemory"
+        assert result.name == "hindsight"
 
     def test_hyphenated_name(self) -> None:
         result = resolve_source("piper-tts")
@@ -158,10 +158,10 @@ class TestResolveSourceEdgeCases:
             resolve_source("   ")
 
     def test_name_that_looks_like_path_but_doesnt_exist(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-        """A bare name like 'openmemory' that doesn't exist on disk is registry, not local."""
+        """A bare name like 'hindsight' that doesn't exist on disk is registry, not local."""
         monkeypatch.chdir(tmp_path)
 
-        result = resolve_source("openmemory")
+        result = resolve_source("hindsight")
 
         assert result.source_type == SourceType.REGISTRY
 

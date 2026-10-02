@@ -2,7 +2,7 @@
 # Shows atk status: the live table of running services with port health checks.
 # Records: atk status
 #
-# Best recorded with at least one service running (openmemory, langfuse, etc.)
+# Best recorded with at least one service running (hindsight, langfuse, etc.)
 # so the table has real rows to show.
 #
 # Produce the GIF:
@@ -13,7 +13,7 @@ Output assets/demo-status.gif
 Set Shell "zsh"
 Set FontSize 15
 Set Width 1200
-Set Height 500
+Set Height 600
 Set Theme "Catppuccin Mocha"
 Set Padding 24
 Set TypingSpeed 80ms

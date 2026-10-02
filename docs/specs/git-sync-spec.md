@@ -113,7 +113,7 @@ Repository:
   Branch:      main
   Remote:      origin -> git@github.com:user/dotfiles-atk.git
   Sync:        (no tracking branch)
-  Last commit: Add plugin 'openmemory' (1h ago)
+  Last commit: Add plugin 'Hindsight' (1h ago)
   Working dir: clean
 ```
 

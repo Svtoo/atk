@@ -19,15 +19,15 @@ Environment variable management, port conflict detection, and MCP configuration 
 
 ### Scenario 1: Adding a New Plugin
 
-**User story:** I'm adding OpenMemory to my ATK setup for the first time.
+**User story:** I'm adding GitHub to my ATK setup for the first time.
 
 **Flow:**
-1. `atk add ./openmemory/`
+1. `atk add ./github/`
 2. ATK copies plugin files
-3. ATK detects plugin has required env vars (OPENAI_API_KEY)
-4. ATK prompts: `OPENAI_API_KEY (required, secret): `
-5. User enters API key (masked input)
-6. ATK saves to `plugins/openmemory/.env`
+3. ATK detects plugin has required env vars (GITHUB_PERSONAL_ACCESS_TOKEN)
+4. ATK prompts: `GITHUB_PERSONAL_ACCESS_TOKEN (required, secret): `
+5. User enters access token (masked input)
+6. ATK saves to `plugins/github/.env`
 7. ATK runs install lifecycle
 8. Success message
 
@@ -75,12 +75,12 @@ Environment variable management, port conflict detection, and MCP configuration 
 **User story:** I try to start a plugin but forgot to run setup.
 
 **Flow:**
-1. `atk start openmemory`
+1. `atk start github`
 2. ATK checks required env vars
-3. OPENAI_API_KEY is not set
-4. Error: `✗ Missing required environment variables for 'openmemory':`
-   `  • OPENAI_API_KEY`
-   `Run 'atk setup openmemory' to configure.`
+3. GITHUB_PERSONAL_ACCESS_TOKEN is not set
+4. Error: `✗ Missing required environment variables for 'github':`
+   `  • GITHUB_PERSONAL_ACCESS_TOKEN`
+   `Run 'atk setup github' to configure.`
 5. Exit code 8
 
 **Edge cases:**
@@ -142,10 +142,10 @@ Environment variable management, port conflict detection, and MCP configuration 
 1. `atk status`
 2. Output shows missing required vars explicitly:
    ```
-   NAME          STATUS    PORTS       ENV
-   OpenMemory    running   8787 ✓      ✓
-   Langfuse      stopped   3000 ✗      ! LANGFUSE_SECRET_KEY, LANGFUSE_PUBLIC_KEY (+2 optional)
-   CustomTool    stopped   -           -
+   NAME          STATUS    PORTS             ENV
+   Hindsight     running   8888 ✓, 9999 ✓    ✓
+   Langfuse      stopped   3000 ✗            ! LANGFUSE_SECRET_KEY, LANGFUSE_PUBLIC_KEY (+2 optional)
+   CustomTool    stopped   -                 -
    ```
 3. Legend: `✓` = all required set, `!` = missing required (listed), `-` = no vars defined
 4. Optional vars shown as count only: `(+N optional)`

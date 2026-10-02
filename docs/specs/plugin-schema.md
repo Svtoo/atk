@@ -352,20 +352,20 @@ When checking service health, ATK tries in order:
 
 ```yaml
 schema_version: "2026-01-22"
-name: openmemory
+name: example-memory
 description: "Persistent memory layer for AI agents"
 
 vendor:
-  name: "Mem0"
-  url: "https://mem0.ai"
-  docs: "https://docs.mem0.ai"
+  name: "Example Vendor"
+  url: "https://example.com"
+  docs: "https://docs.example.com"
 
 service:
   type: docker-compose
   compose_file: docker-compose.yml
 
 ports:
-  - port: 8765
+  - port: 8080
     protocol: http
     description: "API endpoint"
 

@@ -21,8 +21,8 @@ class TestRunCommand:
         """Regression test: .env vars must be visible to scripts run via `atk run`.
 
         Before the fix, subprocess.run was called without env=, so .env vars
-        were never injected and the backup script always saw OPENMEMORY_BACKUP_DIR
-        as unset even when the user had configured it.
+        were never injected and a plugin's backup script always saw its backup
+        directory variable as unset even when the user had configured it.
         """
         # Given
         env_var_name = "MY_RUN_TEST_VAR"

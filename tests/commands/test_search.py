@@ -17,7 +17,7 @@ class TestFilterRegistryPlugins:
         lang_name = "langfuse"
         plugins = [
             _entry(lang_name, "LLM observability platform"),
-            _entry("openmemory", "Persistent memory for AI agents"),
+            _entry("hindsight", "Persistent memory for AI agents"),
         ]
         query = "lang"
 
@@ -31,7 +31,7 @@ class TestFilterRegistryPlugins:
     def test_matches_by_description_substring(self) -> None:
         """Returns plugins whose description contains the query."""
         # Given
-        mem_name = "openmemory"
+        mem_name = "hindsight"
         plugins = [
             _entry("langfuse", "LLM observability platform"),
             _entry(mem_name, "Persistent memory for AI agents"),
@@ -64,7 +64,7 @@ class TestFilterRegistryPlugins:
         # Given
         plugins = [
             _entry("langfuse", "LLM observability platform"),
-            _entry("openmemory", "Persistent memory for AI agents"),
+            _entry("hindsight", "Persistent memory for AI agents"),
         ]
         query = "zzznomatch"
 

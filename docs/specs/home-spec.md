@@ -28,7 +28,7 @@ This allows:
 ├── .git/                         # Git repository
 ├── manifest.yaml                 # Installed plugins with source references
 ├── plugins/
-│   ├── openmemory/
+│   ├── hindsight/
 │   │   ├── plugin.yaml           # Plugin definition (from source, gitignored)
 │   │   ├── docker-compose.yml    # Service configuration (from source, gitignored)
 │   │   ├── .env                  # Secrets (gitignored)
@@ -99,8 +99,8 @@ config:
   auto_push: false                # Push after auto-commit (default: false)
 
 plugins:
-  - name: "OpenMemory"            # Display name (user-friendly)
-    directory: openmemory         # Sanitized directory name
+  - name: "Hindsight"             # Display name (user-friendly)
+    directory: hindsight          # Sanitized directory name
     source:                       # Where plugin came from (for upgrades)
       type: registry              # registry | git | local
       ref: abc123def              # Git commit hash (for registry/git sources)
@@ -140,7 +140,7 @@ Plugin **directory names** must match: `^[a-z][a-z0-9-]*[a-z0-9]$`
 | Rule                       | Example Valid | Example Invalid |
 |----------------------------|---------------|-----------------|
 | Lowercase only             | `langfuse`    | `LangFuse`      |
-| Alphanumeric + hyphens     | `open-memory` | `open_memory`   |
+| Alphanumeric + hyphens     | `hind-sight`  | `hind_sight`    |
 | Must start with letter     | `my-plugin`   | `1plugin`       |
 | Must end with alphanumeric | `plugin-v2`   | `plugin-`       |
 | No consecutive hyphens     | `my-plugin`   | `my--plugin`    |
@@ -277,8 +277,8 @@ All lifecycle commands are plugin-agnostic — they execute whatever the plugin 
 ATK supports three plugin source types:
 
 ```bash
-atk add ./openmemory/              # Local directory
-atk add openmemory                 # Registry (by name)
+atk add ./hindsight/               # Local directory
+atk add hindsight                  # Registry (by name)
 atk add github.com/org/repo        # Git URL
 ```
 
@@ -295,7 +295,7 @@ The ATK registry (`atk-registry` repo) contains curated plugins:
 ```
 atk-registry/
 ├── plugins/
-│   ├── openmemory/
+│   ├── hindsight/
 │   │   ├── plugin.yaml
 │   │   └── docker-compose.yml
 │   └── langfuse/

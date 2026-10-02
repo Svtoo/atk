@@ -352,14 +352,15 @@ def test_format_mcp_plaintext_shows_optional_unset_vars_as_note(tmp_path: Path) 
 def test_generate_mcp_config_substitutes_env_var_in_args(tmp_path: Path) -> None:
     """$VAR references in args are replaced with the resolved env var value.
 
-    Regression: OpenMemory uses args=['-y', 'mcp-remote', '$OPENMEMORY_URL/mcp'].
+    Regression: a stdio plugin whose args embed a URL variable, e.g. an
+    mcp-remote bridge with args=['-y', 'mcp-remote', '$SERVICE_URL/mcp'].
     Claude Code spawns servers via execve (no shell), so $VAR in args is never
     expanded at runtime. ATK must substitute the resolved value before handing
     the config to any agent CLI.
     """
     # Given
-    var_name = "OPENMEMORY_URL"
-    var_value = "http://localhost:8787"
+    var_name = "SERVICE_URL"
+    var_value = "http://localhost:8080"
     plugin = _make_stdio_plugin(
         command="npx",
         args=["-y", "mcp-remote", f"${var_name}/mcp"],
@@ -372,7 +373,7 @@ def test_generate_mcp_config_substitutes_env_var_in_args(tmp_path: Path) -> None
     # When
     result = generate_mcp_config(plugin, plugin_dir, "test-plugin")
 
-    # Then — $OPENMEMORY_URL/mcp must be replaced with the resolved URL
+    # Then - $SERVICE_URL/mcp must be replaced with the resolved URL
     assert isinstance(result, StdioMcpConfig)
     expected_args = ["-y", "mcp-remote", f"{var_value}/mcp"]
     assert result.args == expected_args

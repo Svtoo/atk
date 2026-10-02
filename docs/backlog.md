@@ -34,7 +34,7 @@ Fast manifest-only listing (no container queries). Deferred because `atk status`
 atk list
 # Output:
 # NAME              DIRECTORY
-# OpenMemory        openmemory
+# Hindsight         hindsight
 # Langfuse          langfuse
 ```
 

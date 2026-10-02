@@ -136,9 +136,9 @@ class TestVendorConfig:
 
     def setup_method(self) -> None:
         """Set up test fixtures."""
-        self.vendor_name = "Mem0"
-        self.vendor_url = "https://mem0.ai"
-        self.vendor_docs = "https://docs.mem0.ai"
+        self.vendor_name = "Vectorize"
+        self.vendor_url = "https://github.com/vectorize-io/hindsight"
+        self.vendor_docs = "https://hindsight.vectorize.io"
         self.vendor_data_full = {
             "name": self.vendor_name,
             "url": self.vendor_url,
@@ -203,7 +203,7 @@ class TestPortConfig:
     def setup_method(self) -> None:
         """Set up test fixtures."""
         self.port_data = {
-            "port": 8787,
+            "port": 8443,
             "protocol": "https",
             "description": "Main API endpoint",
         }
@@ -211,7 +211,7 @@ class TestPortConfig:
     def test_port_config_full(self) -> None:
         """Verify full port config is valid."""
         # Given
-        port_number = 8787
+        port_number = 8443
         protocol = "https"
         description = "Main API endpoint"
         data = {"port": port_number, "protocol": protocol, "description": description}
@@ -453,12 +453,12 @@ class TestMcpPluginConfig:
         self.mcp_stdio_data = {
             "transport": "stdio",
             "command": "docker",
-            "args": ["exec", "-i", "openmemory", "python", "-m", "mcp_server"],
+            "args": ["exec", "-i", "example-memory", "python", "-m", "example_memory_mcp"],
             "env": ["PYTHONPATH"],
         }
         self.mcp_sse_data = {
             "transport": "sse",
-            "endpoint": "http://localhost:8787/mcp",
+            "endpoint": "http://localhost:8080/mcp",
         }
 
     def test_mcp_config_stdio_transport(self) -> None:
@@ -559,28 +559,28 @@ class TestPluginSchemaFull:
         """Set up test fixtures."""
         self.full_plugin_data = {
             "schema_version": "2026-01-22",
-            "name": "OpenMemory",
+            "name": "Example Memory",
             "description": "Persistent memory layer for AI agents",
             "service": {
                 "type": "docker-compose",
                 "compose_file": "docker-compose.yml",
             },
             "vendor": {
-                "name": "Cavira OSS",
-                "url": "https://github.com/CaviraOSS/OpenMemory.git",
+                "name": "Example Vendor",
+                "url": "https://github.com/example/example-memory.git",
             },
             "ports": [
                 {
                     "name": "API",
-                    "port": 8787,
+                    "port": 8080,
                     "protocol": "http",
-                    "description": "OpenMemory API endpoint",
+                    "description": "Example Memory API endpoint",
                 },
                 {
                     "name": "Dashboard",
-                    "port": 3737,
+                    "port": 3000,
                     "protocol": "http",
-                    "description": "OpenMemory Dashboard",
+                    "description": "Example Memory Dashboard",
                 },
             ],
             "env_vars": [
@@ -600,7 +600,7 @@ class TestPluginSchemaFull:
             },
             "mcp": {
                 "transport": "sse",
-                "endpoint": "http://localhost:8787/mcp",
+                "endpoint": "http://localhost:8080/mcp",
             },
         }
 
@@ -629,7 +629,7 @@ class TestPluginSchemaFull:
         assert len(plugin.ports) == 2
         first_port = plugin.ports[0]
         assert first_port.name == "API"
-        assert first_port.port == 8787
+        assert first_port.port == 8080
 
         # And - env_vars
         assert len(plugin.env_vars) == 1
@@ -646,33 +646,33 @@ class TestPluginSchemaFull:
         # And - mcp
         assert plugin.mcp is not None
         assert plugin.mcp.transport == "sse"
-        assert plugin.mcp.endpoint == "http://localhost:8787/mcp"
+        assert plugin.mcp.endpoint == "http://localhost:8080/mcp"
 
 
 class TestYamlParsing:
     """Tests for parsing full YAML plugin configurations from design doc examples."""
 
     def test_parse_docker_compose_service(self) -> None:
-        """Parse openmemory example - Docker Compose service with MCP stdio."""
+        """Parse the example-memory example - Docker Compose service with MCP stdio."""
         import yaml
 
         # Given - exact YAML from docs/plugin-schema.md lines 271-309
         yaml_content = """
 schema_version: "2026-01-22"
-name: openmemory
+name: example-memory
 description: "Persistent memory layer for AI agents"
 
 vendor:
-  name: "Mem0"
-  url: "https://mem0.ai"
-  docs: "https://docs.mem0.ai"
+  name: "Example Vendor"
+  url: "https://example.com"
+  docs: "https://docs.example.com"
 
 service:
   type: docker-compose
   compose_file: docker-compose.yml
 
 ports:
-  - port: 8765
+  - port: 8080
     protocol: http
     description: "API endpoint"
 
@@ -701,14 +701,14 @@ mcp:
 
         # Then - core fields
         assert plugin.schema_version == "2026-01-22"
-        assert plugin.name == "openmemory"
+        assert plugin.name == "example-memory"
         assert plugin.description == "Persistent memory layer for AI agents"
 
         # Then - vendor
         assert plugin.vendor is not None
-        assert plugin.vendor.name == "Mem0"
-        assert plugin.vendor.url == "https://mem0.ai"
-        assert plugin.vendor.docs == "https://docs.mem0.ai"
+        assert plugin.vendor.name == "Example Vendor"
+        assert plugin.vendor.url == "https://example.com"
+        assert plugin.vendor.docs == "https://docs.example.com"
 
         # Then - service
         assert plugin.service is not None
@@ -718,7 +718,7 @@ mcp:
         # Then - ports
         assert len(plugin.ports) == 1
         port = plugin.ports[0]
-        assert port.port == 8765
+        assert port.port == 8080
         assert port.protocol == "http"
         assert port.description == "API endpoint"
 

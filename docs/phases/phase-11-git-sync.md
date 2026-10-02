@@ -35,7 +35,7 @@ Remote synchronization for ATK Home. Users can add a git remote, auto-push after
 
 **Flow:**
 1. Edit `manifest.yaml` to set `auto_push: true`
-2. `atk add openmemory`
+2. `atk add hindsight`
 3. ATK adds plugin, commits (auto_commit), pushes (auto_push)
 4. Remote now has the latest state
 
