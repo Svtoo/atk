@@ -74,54 +74,8 @@ flowchart TB
 
 ### Plugin YAML Schema
 
-Uses date-based versioning (AWS-style): `YYYY-MM-DD`
-
-```yaml
-schema_version: "2026-01-22"
-name: Example Memory
-description: Persistent memory layer for AI agents
-
-# How to run the service
-service:
-  type: docker-compose          # docker-compose | docker | systemd | script
-  compose_file: docker-compose.yml
-
-# Optional: clone from upstream
-vendor:
-  url: https://github.com/org/example-memory.git
-  ref: v1.2.3                   # tag, branch, or commit
-
-# Network ports
-ports:
-  - name: API
-    port: 8080
-    configurable: true          # Can be changed during install
-    health_endpoint: /health
-
-# Environment variables
-env_vars:
-  - name: OPENAI_API_KEY
-    required: false
-    secret: true
-    description: OpenAI API key for embeddings
-
-# Lifecycle commands (sensible defaults if omitted)
-lifecycle:
-  install: ./install.sh         # Default: docker compose pull
-  start: docker compose up -d   # Default: docker compose up -d
-  stop: docker compose down     # Default: docker compose down
-  logs: docker compose logs     # Default: docker compose logs
-  status: ...                   # Default: check container status
-  # Future: backup, restore, upgrade
-
-# Optional: MCP integration
-mcp:
-  enabled: true
-  type: http-proxy              # http-proxy | stdio | binary
-  endpoint: http://localhost:${API_PORT}/mcp
-```
-
-Full schema reference: see `docs/plugin-schema.md` (TODO)
+Each plugin is described by a `plugin.yaml` with a date-based `schema_version` (`YYYY-MM-DD`).
+Its fields, rules and examples are defined in [plugin-schema.md](plugin-schema.md).
 
 ## CLI Commands
 

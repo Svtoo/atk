@@ -656,7 +656,7 @@ class TestYamlParsing:
         """Parse the example-memory example - Docker Compose service with MCP stdio."""
         import yaml
 
-        # Given - exact YAML from docs/plugin-schema.md lines 271-309
+        # Given - exact YAML of the Docker Compose Service example in docs/specs/plugin-schema.md
         yaml_content = """
 schema_version: "2026-01-22"
 name: example-memory
@@ -682,18 +682,24 @@ env_vars:
     required: true
     secret: true
 
+lifecycle:
+  start: "docker compose up -d"
+  stop: "docker compose down"
+  logs: "docker compose logs -f"
+  status: "docker compose ps --filter status=running --services | grep -q example-memory"
+
 mcp:
   transport: stdio
   command: docker
   args:
     - exec
     - -i
-    - langfuse
-    - npx
-    - "@langfuse/mcp-server"
+    - -e
+    - OPENAI_API_KEY
+    - example-memory
+    - example-memory-mcp
   env:
-    - LANGFUSE_PUBLIC_KEY
-    - LANGFUSE_SECRET_KEY
+    - OPENAI_API_KEY
 """
         # When
         data = yaml.safe_load(yaml_content)
@@ -734,8 +740,10 @@ mcp:
         assert plugin.mcp is not None
         assert plugin.mcp.transport == "stdio"
         assert plugin.mcp.command == "docker"
-        assert plugin.mcp.args == ["exec", "-i", "langfuse", "npx", "@langfuse/mcp-server"]
-        assert plugin.mcp.env == ["LANGFUSE_PUBLIC_KEY", "LANGFUSE_SECRET_KEY"]
+        assert plugin.mcp.args == [
+            "exec", "-i", "-e", "OPENAI_API_KEY", "example-memory", "example-memory-mcp"
+        ]
+        assert plugin.mcp.env == ["OPENAI_API_KEY"]
 
 
 class TestLifecycleValidation:
@@ -806,7 +814,7 @@ class TestLifecycleValidation:
 
     def test_parse_systemd_service(self) -> None:
         """Parse ollama example - Systemd service with install lifecycle."""
-        # Given - exact YAML from docs/plugin-schema.md lines 328-348
+        # Given - exact YAML of the Systemd Service example in docs/specs/plugin-schema.md
         yaml_content = """
 schema_version: "2026-01-22"
 name: ollama
@@ -828,6 +836,10 @@ ports:
 lifecycle:
   install: "curl -fsSL https://ollama.ai/install.sh | sh"
   uninstall: "systemctl stop ollama && systemctl disable ollama"
+  start: "systemctl start ollama"
+  stop: "systemctl stop ollama"
+  logs: "journalctl -u ollama -f"
+  status: "systemctl is-active ollama"
 """
         # When
         data = yaml.safe_load(yaml_content)
@@ -861,7 +873,7 @@ lifecycle:
 
     def test_parse_script_service(self) -> None:
         """Parse custom-tool example - Script service with full lifecycle."""
-        # Given - exact YAML from docs/plugin-schema.md lines 352-366
+        # Given - exact YAML of the Script Service example in docs/specs/plugin-schema.md
         yaml_content = """
 schema_version: "2026-01-22"
 name: custom-tool

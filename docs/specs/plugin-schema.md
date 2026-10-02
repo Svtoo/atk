@@ -48,6 +48,7 @@ classDiagram
         +schema_version: str
         +name: str
         +description: str
+        +maturity: PluginMaturity
         +service: ServiceConfig?
         +vendor: VendorConfig?
         +ports: PortConfig[]
@@ -59,8 +60,6 @@ classDiagram
     class ServiceConfig {
         +type: ServiceType
         +compose_file: str?
-        +container_name: str?
-        +service_name: str?
         +unit_name: str?
     }
     
@@ -72,6 +71,7 @@ classDiagram
     
     class PortConfig {
         +port: int
+        +name: str?
         +protocol: str
         +description: str?
     }
@@ -95,12 +95,12 @@ classDiagram
     }
     
     class McpConfig {
-        +enabled: bool
         +transport: str
         +command: str?
         +args: list[str]?
         +endpoint: str?
         +env: list[str]?
+        +timeout: int?
     }
     
     PluginSchema --> ServiceConfig
@@ -120,6 +120,7 @@ classDiagram
 | `schema_version` | string | ✅ | Schema version in `YYYY-MM-DD` format |
 | `name` | string | ✅ | Plugin identifier (lowercase, hyphens allowed) |
 | `description` | string | ✅ | Human-readable description |
+| `maturity` | enum | ❌ | One of: `ai-generated`, `community`, `verified` (default: `ai-generated`). Registry CI requires `verified` |
 | `service` | object | ❌ | Service configuration |
 | `vendor` | object | ❌ | Vendor/author information |
 | `ports` | array | ❌ | Exposed ports |
@@ -133,13 +134,11 @@ Defines how the plugin runs as a service.
 
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
-| `type` | enum | ✅ | One of: `docker-compose`, `docker`, `systemd`, `script` |
+| `type` | enum | ❌ | One of: `docker-compose`, `docker`, `systemd`, `script` (default: `docker-compose`) |
 | `compose_file` | string | ❌ | Path to compose file (default: `docker-compose.yml`) |
-| `container_name` | string | ❌ | Docker container name |
-| `service_name` | string | ❌ | Compose service name |
 | `unit_name` | string | ❌ | Systemd unit name |
 
-**Service Type Behaviors**:
+**Service Type Behaviors** (planned, not implemented yet; see [Sensible Defaults](#sensible-defaults)):
 
 | Type | Default Lifecycle | Health Check |
 |------|-------------------|--------------|
@@ -164,7 +163,8 @@ Declares ports exposed by the service.
 
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
-| `port` | integer | ✅ | Port number |
+| `port` | integer | ✅ | Port number (1-65535) |
+| `name` | string | ❌ | Human-readable port name |
 | `protocol` | string | ❌ | Protocol: `http`, `https`, `tcp`, `grpc` (default: `http`) |
 | `description` | string | ❌ | Human-readable port purpose |
 
@@ -187,7 +187,7 @@ Declares environment variables the plugin uses.
 
 ### LifecycleConfig
 
-Custom commands for lifecycle operations. These override defaults based on `service.type`.
+Commands for lifecycle operations. ATK runs only the commands defined here: `service.type` supplies no defaults yet (see [Sensible Defaults](#sensible-defaults)), so running a command the plugin does not define fails with an error.
 
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
@@ -197,7 +197,7 @@ Custom commands for lifecycle operations. These override defaults based on `serv
 | `uninstall` | string | ❌ | Cleanup command (remove volumes, images, etc.) |
 | `status` | string | ❌ | Command to check if running |
 | `logs` | string | ❌ | Command to view logs |
-| `health_endpoint` | string | ❌ | HTTP endpoint for health checks |
+| `health_endpoint` | string | ❌ | HTTP endpoint for health checks (accepted, not checked yet) |
 
 **Notes:**
 - There is no `restart` field. The `atk restart` command always executes `stop` then `start` in sequence.
@@ -207,22 +207,22 @@ Custom commands for lifecycle operations. These override defaults based on `serv
 
 Configuration for MCP (Model Context Protocol) server exposure. ATK uses this configuration to:
 
-1. **Generate MCP client configs** — Users can run `atk mcp-config <plugin>` to get a ready-to-paste JSON snippet for Claude Desktop, LootCode, or other MCP clients.
-2. **Direct installation** — ATK can install the MCP server directly into supported tools (e.g., append to Claude Desktop's config file).
-3. **Combine with local state** — ATK merges plugin config with user-specific data from `.atk/` (environment variables, secrets, local overrides).
+1. **Generate MCP client configs**: `atk mcp <plugin>` prints a ready-to-paste snippet for Claude Desktop, LootCode, or other MCP clients (`--json` for JSON).
+2. **Direct installation**: `atk plug <plugin>` wires the MCP server into supported coding agents.
+3. **Combine with local state**: ATK merges plugin config with user-specific data from `.atk/` (environment variables, secrets, local overrides).
 
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
-| `enabled` | boolean | ❌ | Expose as MCP server (default: `false`) |
-| `transport` | string | ❌ | Transport type: `stdio`, `sse` (default: `stdio`) |
+| `transport` | string | ✅ | Transport type: `stdio`, `http` (streamable HTTP, preferred for remote servers), or `sse` (deprecated) |
 | `command` | string | ❌ | Command to run for stdio transport (e.g., `docker`, `npx`, `uvx`) |
-| `args` | array | ❌ | Arguments for the command |
-| `endpoint` | string | ❌ | HTTP endpoint for SSE transport |
+| `args` | array | ❌ | Arguments for the command (stdio transport) |
+| `endpoint` | string | ❌ | Server URL for `http` and `sse` transports |
 | `env` | array | ❌ | Environment variable names to pass (references plugin's `env_vars`) |
+| `timeout` | integer | ❌ | Per-tool-call timeout in milliseconds, for a server whose calls legitimately outlast the client's default. Not every agent honours it |
 
 **Transport-specific requirements:**
-- `stdio`: Requires `command`. Optional: `args`, `env`.
-- `sse`: Requires `endpoint`. The `command`/`args` are ignored.
+- `stdio`: Requires `command`. Optional: `args`, `env`. `endpoint` must not be set.
+- `http`, `sse`: Require `endpoint`. Optional: `env`. `command` and `args` must not be set.
 
 #### Plugin Path Resolution with `$ATK_PLUGIN_DIR`
 
@@ -308,7 +308,9 @@ instructions for how to use this MCP effectively regardless of which agent is co
 
 ## Sensible Defaults
 
-ATK applies sensible defaults to minimize configuration:
+> **Status**: Deferred. ATK does not derive lifecycle commands from `service.type` yet, so a plugin defines every command it needs in `lifecycle`. The planned defaults below are tracked in [backlog.md](../backlog.md#sensible-lifecycle-defaults-by-service-type).
+
+ATK will apply sensible defaults to minimize configuration:
 
 ### By Service Type
 
@@ -341,10 +343,12 @@ lifecycle:
 
 ### Health Check Order
 
-When checking service health, ATK tries in order:
-1. Custom `lifecycle.status` command (if defined)
-2. `lifecycle.health_endpoint` HTTP check (if defined)
-3. Default status command for service type
+When checking plugin status, ATK tries in order:
+1. `lifecycle.status` command, if defined (exit 0 = running)
+2. For an `sse` MCP transport, a reachability probe of `mcp.endpoint`
+3. Otherwise `mcp-only` for a plugin with MCP, `unknown` for one without
+
+`lifecycle.health_endpoint` is accepted by the schema but not checked yet.
 
 ## Examples
 
@@ -375,31 +379,35 @@ env_vars:
     required: true
     secret: true
 
+lifecycle:
+  start: "docker compose up -d"
+  stop: "docker compose down"
+  logs: "docker compose logs -f"
+  status: "docker compose ps --filter status=running --services | grep -q example-memory"
+
 mcp:
-  enabled: true
   transport: stdio
   command: docker
   args:
     - exec
     - -i
-    - langfuse
-    - npx
-    - "@langfuse/mcp-server"
+    - -e
+    - OPENAI_API_KEY
+    - example-memory
+    - example-memory-mcp
   env:
-    - LANGFUSE_PUBLIC_KEY
-    - LANGFUSE_SECRET_KEY
+    - OPENAI_API_KEY
 ```
 
 This MCP configuration allows ATK to generate a Claude Desktop config snippet:
 
 ```json
 {
-  "langfuse": {
+  "example-memory": {
     "command": "docker",
-    "args": ["exec", "-i", "langfuse", "npx", "@langfuse/mcp-server"],
+    "args": ["exec", "-i", "-e", "OPENAI_API_KEY", "example-memory", "example-memory-mcp"],
     "env": {
-      "LANGFUSE_PUBLIC_KEY": "<from .atk/env or user prompt>",
-      "LANGFUSE_SECRET_KEY": "<from .atk/env or user prompt>"
+      "OPENAI_API_KEY": "<from the plugin's .env>"
     }
   }
 }
@@ -427,6 +435,11 @@ ports:
 
 lifecycle:
   install: "curl -fsSL https://ollama.ai/install.sh | sh"
+  uninstall: "systemctl stop ollama && systemctl disable ollama"
+  start: "systemctl start ollama"
+  stop: "systemctl stop ollama"
+  logs: "journalctl -u ollama -f"
+  status: "systemctl is-active ollama"
 ```
 
 ### Script Service
@@ -445,6 +458,7 @@ lifecycle:
   status: "pgrep -f custom-tool > /dev/null"
   logs: "tail -f logs/custom-tool.log"
   install: "./install.sh"
+  uninstall: "./uninstall.sh"
 ```
 
 ## Migration & Compatibility
