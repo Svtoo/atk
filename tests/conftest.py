@@ -22,6 +22,12 @@ from atk.plugin_schema import (
 )
 from atk.registry_schema import REGISTRY_SCHEMA_VERSION, RegistryIndexSchema, RegistryPluginEntry
 
+# Unset what a git hook exports (GIT_DIR, GIT_INDEX_FILE, ...) so git in a temp dir uses that dir.
+for _name in subprocess.run(
+    ["git", "rev-parse", "--local-env-vars"], check=True, capture_output=True, text=True,
+).stdout.split():
+    os.environ.pop(_name, None)
+
 GIT_ENV = {
     **os.environ,
     "GIT_AUTHOR_NAME": "Test",
