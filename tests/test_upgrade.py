@@ -7,17 +7,22 @@ from typing import NamedTuple
 
 import pytest
 import yaml
+from typer.testing import CliRunner
 
+from atk import exit_codes
 from atk.add import add_plugin
+from atk.cli import app
 from atk.init import init_atk_home
 from atk.manifest_schema import PluginEntry, SourceInfo, SourceType, load_manifest, save_manifest
 from atk.plugin_schema import PLUGIN_SCHEMA_VERSION
+from atk.registry_schema import RegistryIndexSchema
 from atk.upgrade import LocalPluginError, UpgradeError, upgrade_plugin
 from tests.conftest import (
     create_fake_git_repo,
     create_fake_registry,
     git_commit_all,
     noop_prompt,
+    update_fake_repo,
 )
 
 
@@ -54,6 +59,45 @@ def _setup_git_plugin(tmp_path: Path) -> _GitPluginFixture:
         original_ref=repo.commit_hash,
         plugin_identifier=plugin_identifier,
     )
+
+
+class _RegistryPluginFixture(NamedTuple):
+    """Everything needed to test upgrade on a registry plugin."""
+
+    atk_home: Path
+    registry_work_dir: Path
+    plugin_identifier: str
+
+
+def _setup_registry_plugin(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> _RegistryPluginFixture:
+    """Create a fake registry, add its test-plugin to ATK home, return fixture."""
+    atk_home = tmp_path / "atk-home"
+    init_atk_home(atk_home)
+    registry = create_fake_registry(tmp_path)
+    monkeypatch.setattr("atk.registry.REGISTRY_URL", registry.url)
+    plugin_identifier = "test-plugin"
+    add_plugin(plugin_identifier, atk_home, noop_prompt)
+    return _RegistryPluginFixture(
+        atk_home=atk_home,
+        registry_work_dir=Path(registry.url.removeprefix("file://")),
+        plugin_identifier=plugin_identifier,
+    )
+
+
+def _remove_plugin_from_registry(fix: _RegistryPluginFixture, *, drop_index_entry: bool) -> None:
+    """Delete the plugin's directory, and optionally its index entry, from the registry and commit."""
+    subprocess.run(
+        ["git", "rm", "-r", "-q", f"plugins/{fix.plugin_identifier}"],
+        cwd=fix.registry_work_dir,
+        check=True,
+    )
+    if drop_index_entry:
+        (fix.registry_work_dir / "index.yaml").write_text(
+            yaml.dump(RegistryIndexSchema().model_dump(exclude_none=True))
+        )
+    git_commit_all(fix.registry_work_dir, f"Remove plugin '{fix.plugin_identifier}'")
 
 
 class TestUpgradeRegistryPlugin:
@@ -498,3 +542,61 @@ class TestUpgradeErrors:
         # When / Then
         with pytest.raises(UpgradeError, match="not found"):
             upgrade_plugin("nonexistent", atk_home, noop_prompt)
+
+    def test_upgrade_plugin_removed_from_registry_raises_error(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """A plugin that left the registry fails with a hint to remove it."""
+        # Given
+        fix = _setup_registry_plugin(tmp_path, monkeypatch)
+        _remove_plugin_from_registry(fix, drop_index_entry=True)
+
+        # When
+        with pytest.raises(UpgradeError) as exc_info:
+            upgrade_plugin(fix.plugin_identifier, fix.atk_home, noop_prompt)
+
+        # Then
+        expected_message = (
+            "Plugin 'Test Plugin' is no longer in the registry; "
+            "remove it with 'atk remove test-plugin'"
+        )
+        assert str(exc_info.value) == expected_message
+
+    def test_upgrade_plugin_missing_from_registry_tree_raises_error(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """A plugin still in the registry index but gone from its tree fails as an upgrade error."""
+        # Given
+        fix = _setup_registry_plugin(tmp_path, monkeypatch)
+        _remove_plugin_from_registry(fix, drop_index_entry=False)
+
+        # When
+        with pytest.raises(UpgradeError) as exc_info:
+            upgrade_plugin(fix.plugin_identifier, fix.atk_home, noop_prompt)
+
+        # Then
+        expected_message = (
+            "Plugin directory 'plugins/test-plugin' listed in index but missing from registry"
+        )
+        assert str(exc_info.value) == expected_message
+
+    def test_cli_upgrade_all_continues_past_plugin_removed_from_registry(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, cli_runner: CliRunner,
+    ) -> None:
+        """`atk upgrade --all` still upgrades the plugins after one that left the registry."""
+        # Given - a registry plugin that left the registry, then a git plugin with a new version
+        fix = _setup_registry_plugin(tmp_path, monkeypatch)
+        git_repo = create_fake_git_repo(tmp_path)
+        add_plugin(git_repo.url, fix.atk_home, noop_prompt)
+        monkeypatch.setenv("ATK_HOME", str(fix.atk_home))
+        _remove_plugin_from_registry(fix, drop_index_entry=True)
+        new_git_ref = update_fake_repo(git_repo.url, ".atk/plugin.yaml")
+
+        # When
+        result = cli_runner.invoke(app, ["upgrade", "--all"])
+
+        # Then - the git plugin is upgraded and the run reports one failure
+        assert load_manifest(fix.atk_home).plugins[1].source.ref == new_git_ref
+        expected_summary = "✗ Upgrade complete: 1 upgraded, 1 failed"
+        assert expected_summary in result.stdout.splitlines()
+        assert result.exit_code == exit_codes.GENERAL_ERROR

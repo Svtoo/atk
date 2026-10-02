@@ -231,13 +231,22 @@ def upgrade_plugin(
         backup_dir = Path(tmp) / "backup"
         backup_dir.mkdir()
 
-        new_ref = _fetch_to_staging(
-            plugin_entry.source.type,
-            source_url,
-            plugin_entry.directory,
-            staging_dir,
-            ref=latest_ref,
-        )
+        try:
+            new_ref = _fetch_to_staging(
+                plugin_entry.source.type,
+                source_url,
+                plugin_entry.directory,
+                staging_dir,
+                ref=latest_ref,
+            )
+        except registry_mod.PluginNotFoundError as e:
+            msg = (
+                f"Plugin '{plugin_entry.name}' is no longer in the registry; "
+                f"remove it with 'atk remove {plugin_entry.directory}'"
+            )
+            raise UpgradeError(msg) from e
+        except registry_mod.RegistryFetchError as e:
+            raise UpgradeError(str(e)) from e
 
         if not _plugin_content_changed(plugin_dir, staging_dir):
             # Repo HEAD changed but plugin directory content is identical.
